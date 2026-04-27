@@ -218,18 +218,57 @@ function drawBase() {
   baseCtx.fillStyle = "#cfe2ec"; baseCtx.fillRect(0, 0, W, H);
   const k = zoomTransform.k;
   const sphere = { type: "Sphere" };
-  const land = topojson.feature(world, world.objects.countries);
-  const borders = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
   const cp = d3.geoPath(projection, baseCtx);
   baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
-  baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
-  baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
-  if (usStates) {
+
+  const useHistorical = borderLayer === "historical" && currentHistoricalWorld;
+  let countryFeatures = null;
+  if (useHistorical) {
+    const fc = currentHistoricalWorld;
+    countryFeatures = fc.features || [];
+    baseCtx.beginPath(); cp(fc); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill();
+    baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
+  } else {
+    const land = topojson.feature(world, world.objects.countries);
+    const borders = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
+    countryFeatures = land.features;
+    baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
+    baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  }
+  if (usStates && (!useHistorical)) {
     const stateBorders = topojson.mesh(usStates, usStates.objects.states, (a, b) => a !== b);
     baseCtx.beginPath(); cp(stateBorders);
     baseCtx.strokeStyle = `rgba(140,120,90,${Math.min(0.7, 0.2 + k * 0.08)})`;
     baseCtx.lineWidth = 0.35; baseCtx.stroke();
+  }
+
+  // Country labels
+  if (countryFeatures && k <= 8) {
+    const areaCutoff = k >= 4 ? 30 : k >= 2 ? 150 : 500;
+    baseCtx.font = "bold 12px -apple-system, sans-serif";
+    baseCtx.textAlign = "center"; baseCtx.textBaseline = "middle";
+    const cpProj = d3.geoPath(projection);
+    for (const f of countryFeatures) {
+      const props = f.properties || {};
+      const name = props.NAME || props.name || props.SOVEREIGNT || "";
+      if (!name) continue;
+      const a = cpProj.area(f);
+      if (a < areaCutoff) continue;
+      const c = cpProj.centroid(f);
+      if (!c || isNaN(c[0])) continue;
+      if (c[0] < 0 || c[0] > W || c[1] < 0 || c[1] > H) continue;
+      const tw = baseCtx.measureText(name).width;
+      const rect = { x: c[0] - tw/2 - 2, y: c[1] - 8, w: tw + 4, h: 16 };
+      let collides = false;
+      for (const ex of staticLabelRects) { if (rectsOverlap(rect, ex)) { collides = true; break; } }
+      if (collides) continue;
+      staticLabelRects.push(rect);
+      baseCtx.fillStyle = "rgba(255,255,255,0.7)";
+      baseCtx.fillText(name, c[0]+1, c[1]+1);
+      baseCtx.fillStyle = "rgba(70,55,30,0.75)";
+      baseCtx.fillText(name, c[0], c[1]);
+    }
   }
   const cities = currentCities();
   if (cities && cities.length) {
@@ -447,6 +486,7 @@ function tick(now) {
     yearLabel.textContent = yint;
     yearBig.textContent = yint;
   }
+  maybeUpdateHistoricalBasemap();
   frame(parseFloat(trailSel.value));
   requestAnimationFrame(tick);
 }
@@ -1394,7 +1434,7 @@ $("export").addEventListener("click", exportHtml);
 async function bootBasemap() {
   stats.textContent = "loading basemap...";
   const [w, us] = await Promise.all([
-    fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json()),
+    fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(r => r.json()),
     fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(r => r.json()).catch(() => null),
   ]);
   world = w; usStates = us;
@@ -1402,6 +1442,49 @@ async function bootBasemap() {
   stats.textContent = "ready - drop or open a .ged file";
   welcome.classList.remove("hidden");
   requestAnimationFrame(tick);
+}
+
+const HISTORICAL_SNAPSHOTS = [1000, 1279, 1492, 1530, 1600, 1650, 1700, 1715, 1783, 1815, 1880, 1914, 1920, 1938, 1945, 1960, 1994, 2000];
+let activeHistoricalYear = -1;
+
+function pickSnapshotYear(year) {
+  let pick = HISTORICAL_SNAPSHOTS[0];
+  for (const s of HISTORICAL_SNAPSHOTS) if (s <= year) pick = s;
+  return pick;
+}
+
+async function fetchHistoricalBasemap(snapYear) {
+  if (historicalBasemaps.has(snapYear)) return historicalBasemaps.get(snapYear);
+  const url = `https://cdn.jsdelivr.net/gh/aourednik/historical-basemaps/geojson/world_${snapYear}.geojson`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("status " + r.status);
+    const j = await r.json();
+    historicalBasemaps.set(snapYear, j);
+    return j;
+  } catch (e) {
+    console.warn("historical basemap fetch failed", snapYear, e);
+    historicalBasemaps.set(snapYear, null);
+    return null;
+  }
+}
+
+function maybeUpdateHistoricalBasemap() {
+  if (borderLayer !== "historical") {
+    if (activeHistoricalYear !== -1) { activeHistoricalYear = -1; currentHistoricalWorld = null; drawBase(); }
+    return;
+  }
+  const snap = pickSnapshotYear(curYear);
+  if (snap === activeHistoricalYear) return;
+  activeHistoricalYear = snap;
+  const cached = historicalBasemaps.get(snap);
+  if (cached) { currentHistoricalWorld = cached; drawBase(); return; }
+  fetchHistoricalBasemap(snap).then(j => {
+    if (activeHistoricalYear === snap) {
+      currentHistoricalWorld = j;
+      drawBase();
+    }
+  });
 }
 bootBasemap().catch(e => { stats.textContent = "boot error: " + e.message; });
 </script>
