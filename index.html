@@ -138,7 +138,7 @@ let W = 0, H = 0;
 const projection = d3.geoNaturalEarth1();
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
-let world = null, gazetteer = null, geocoder = null, timelineLoaded = false;
+let world = null, usStates = null, majorCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
 
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellSx, dwellSy, dwellOrder;
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood;
@@ -185,6 +185,7 @@ function drawBase() {
   if (!world) return;
   baseCtx.clearRect(0, 0, W, H);
   baseCtx.fillStyle = "#cfe2ec"; baseCtx.fillRect(0, 0, W, H);
+  const k = zoomTransform.k;
   const sphere = { type: "Sphere" };
   const land = topojson.feature(world, world.objects.countries);
   const borders = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
@@ -193,6 +194,33 @@ function drawBase() {
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
   baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
   baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  if (usStates) {
+    const stateBorders = topojson.mesh(usStates, usStates.objects.states, (a, b) => a !== b);
+    baseCtx.beginPath(); cp(stateBorders);
+    baseCtx.strokeStyle = `rgba(140,120,90,${Math.min(0.7, 0.2 + k * 0.08)})`;
+    baseCtx.lineWidth = 0.35; baseCtx.stroke();
+  }
+  if (majorCities) {
+    const popThresh = k >= 16 ? 50000 : k >= 8 ? 150000 : k >= 4 ? 400000 : k >= 2 ? 800000 : 1500000;
+    const labelThresh = k >= 16 ? 200000 : k >= 8 ? 500000 : k >= 4 ? 1500000 : k >= 2 ? 3000000 : 6000000;
+    baseCtx.font = "11px -apple-system, sans-serif";
+    baseCtx.textAlign = "left"; baseCtx.textBaseline = "middle";
+    for (const c of majorCities) {
+      if (c.pop < popThresh) continue;
+      const p = projection([c.lon, c.lat]); if (!p) continue;
+      if (p[0] < -10 || p[0] > W + 10 || p[1] < -10 || p[1] > H + 10) continue;
+      const r = c.pop >= 5000000 ? 2.5 : c.pop >= 1000000 ? 2 : 1.5;
+      baseCtx.fillStyle = "rgba(60,60,70,0.85)";
+      baseCtx.beginPath(); baseCtx.arc(p[0], p[1], r, 0, Math.PI * 2); baseCtx.fill();
+      baseCtx.strokeStyle = "rgba(255,255,255,0.9)"; baseCtx.lineWidth = 0.7; baseCtx.stroke();
+      if (c.pop >= labelThresh) {
+        baseCtx.fillStyle = "rgba(255,255,255,0.85)";
+        baseCtx.fillText(c.name, p[0] + r + 3, p[1] + 0.5);
+        baseCtx.fillStyle = "rgba(40,40,55,0.95)";
+        baseCtx.fillText(c.name, p[0] + r + 2, p[1]);
+      }
+    }
+  }
 }
 
 const COLOR_PATERNAL   = [40, 100, 220];
@@ -736,7 +764,25 @@ async function ensureGazetteer() {
   const r = await fetch("gazetteer.json");
   const j = await r.json();
   gazetteer = j; geocoder = buildGeocoder(j);
+  buildMajorCities(j);
   return j;
+}
+
+function buildMajorCities(gz) {
+  // De-dupe by city name + cc + admin1; keep highest-pop entry. Filter to pop >= 50k.
+  const byKey = new Map();
+  for (const row of gz.cities) {
+    const [s, cc, st, lat, lon, pop] = row;
+    if (pop < 50000) continue;
+    const key = cc + "|" + st + "|" + s;
+    const ex = byKey.get(key);
+    if (!ex || ex.pop < pop) byKey.set(key, { name: titleCase(s), cc, st, lat, lon, pop });
+  }
+  majorCities = Array.from(byKey.values()).sort((a, b) => b.pop - a.pop);
+}
+
+function titleCase(s) {
+  return s.replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function rankRootCandidates(individuals, isParent, parentsOf, indiById) {
@@ -859,10 +905,12 @@ function buildExportHtml(tl, worldData, label, candidatesData) {
     dwellIndi: tl.dwellIndi, flowIndi: tl.flowIndi,
     dwellSrc: tl.dwellSrc, flowSrc: tl.flowSrc,
     candidates: candidatesData,
+    cities: majorCities ? majorCities.slice(0, 4000) : [],
     min_year: tl.min_year, max_year: tl.max_year,
   };
   const tlJson = JSON.stringify(exportTl).replace(/<\//g, "<\\/");
   const worldJson = JSON.stringify(worldData).replace(/<\//g, "<\\/");
+  const usStatesJson = (usStates ? JSON.stringify(usStates) : "null").replace(/<\//g, "<\\/");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -913,11 +961,14 @@ label { color:#566480; font-size:11px; }
 </div>
 <script id="tl" type="application/json">${tlJson}<\/script>
 <script id="world" type="application/json">${worldJson}<\/script>
+<script id="us" type="application/json">${usStatesJson}<\/script>
 <script type="module">
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 import * as topojson from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
 const tl = JSON.parse(document.getElementById("tl").textContent);
 const world = JSON.parse(document.getElementById("world").textContent);
+const usStates = JSON.parse(document.getElementById("us").textContent);
+const majorCities = tl.cities || [];
 const baseCanvas=document.getElementById("base"), fxCanvas=document.getElementById("fx");
 const baseCtx=baseCanvas.getContext("2d"), fxCtx=fxCanvas.getContext("2d");
 const yearLabel=document.getElementById("year"), yearBig=document.getElementById("yearBig");
@@ -994,12 +1045,38 @@ d3.select(fxCanvas).on("dblclick.zoom",()=>{
 });
 function drawBase(){
   baseCtx.clearRect(0,0,W,H); baseCtx.fillStyle="#cfe2ec"; baseCtx.fillRect(0,0,W,H);
+  const k=zoomTransform.k;
   const sphere={type:"Sphere"}; const land=topojson.feature(world,world.objects.countries); const borders=topojson.mesh(world,world.objects.countries,(a,b)=>a!==b);
   const cp=d3.geoPath(projection,baseCtx);
   baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
   baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
   baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  if (usStates) {
+    const sb=topojson.mesh(usStates,usStates.objects.states,(a,b)=>a!==b);
+    baseCtx.beginPath(); cp(sb);
+    baseCtx.strokeStyle="rgba(140,120,90,"+Math.min(0.7,0.2+k*0.08)+")";
+    baseCtx.lineWidth=0.35; baseCtx.stroke();
+  }
+  if (majorCities && majorCities.length) {
+    const popThresh = k>=16?50000:k>=8?150000:k>=4?400000:k>=2?800000:1500000;
+    const labelThresh = k>=16?200000:k>=8?500000:k>=4?1500000:k>=2?3000000:6000000;
+    baseCtx.font="11px -apple-system, sans-serif";
+    baseCtx.textAlign="left"; baseCtx.textBaseline="middle";
+    for (const c of majorCities) {
+      if (c.pop < popThresh) continue;
+      const p=projection([c.lon,c.lat]); if(!p) continue;
+      if (p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10) continue;
+      const r = c.pop>=5000000?2.5:c.pop>=1000000?2:1.5;
+      baseCtx.fillStyle="rgba(60,60,70,0.85)";
+      baseCtx.beginPath(); baseCtx.arc(p[0],p[1],r,0,Math.PI*2); baseCtx.fill();
+      baseCtx.strokeStyle="rgba(255,255,255,0.9)"; baseCtx.lineWidth=0.7; baseCtx.stroke();
+      if (c.pop >= labelThresh) {
+        baseCtx.fillStyle="rgba(255,255,255,0.85)"; baseCtx.fillText(c.name,p[0]+r+3,p[1]+0.5);
+        baseCtx.fillStyle="rgba(40,40,55,0.95)"; baseCtx.fillText(c.name,p[0]+r+2,p[1]);
+      }
+    }
+  }
 }
 function projectAll(){
   for (let i=0;i<N;i++){const p=projection([dwellLon[i],dwellLat[i]]); if(p){dwellSx[i]=p[0]; dwellSy[i]=p[1];} else {dwellSx[i]=-9999; dwellSy[i]=-9999;}}
@@ -1099,8 +1176,12 @@ $("export").addEventListener("click", exportHtml);
 
 async function bootBasemap() {
   stats.textContent = "loading basemap...";
-  const w = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json());
-  world = w; resize();
+  const [w, us] = await Promise.all([
+    fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json()),
+    fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(r => r.json()).catch(() => null),
+  ]);
+  world = w; usStates = us;
+  resize();
   stats.textContent = "ready - drop or open a .ged file";
   welcome.classList.remove("hidden");
   requestAnimationFrame(tick);
