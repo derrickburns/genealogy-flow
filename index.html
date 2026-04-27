@@ -140,7 +140,7 @@ let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
 let world = null, usStates = null, majorCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
 
-let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellSx, dwellSy, dwellOrder;
+let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellSx, dwellSy, dwellOrder;
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
@@ -279,6 +279,9 @@ function frame(activeTrailFade) {
 
   const y = curYear, dw = 6;
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
+  const labeledThisFrame = new Set();
+  fxCtx.font = "10px -apple-system, sans-serif";
+  fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
     const dy = y - dwellY[i]; if (dy < 0) continue;
@@ -290,6 +293,14 @@ function frame(activeTrailFade) {
     fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
     const r = 1.7 + (1 - dy / dw) * 1.4;
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
+    if (dwellCity && dwellCity[i] >= 0 && !labeledThisFrame.has(dwellCity[i]) && dy < 3) {
+      labeledThisFrame.add(dwellCity[i]);
+      const cn = majorCities[dwellCity[i]].name;
+      fxCtx.fillStyle = `rgba(255,255,255,${(0.7 * a).toFixed(3)})`;
+      fxCtx.fillText(cn, dwellSx[i] + r + 3, dwellSy[i] + 0.5);
+      fxCtx.fillStyle = `rgba(20,28,48,${(0.95 * a).toFixed(3)})`;
+      fxCtx.fillText(cn, dwellSx[i] + r + 2, dwellSy[i]);
+    }
   }
 
   const fHi = lowerBound(flowFromY, flowFromOrder, y + 1);
@@ -779,6 +790,24 @@ function buildMajorCities(gz) {
     if (!ex || ex.pop < pop) byKey.set(key, { name: titleCase(s), cc, st, lat, lon, pop });
   }
   majorCities = Array.from(byKey.values()).sort((a, b) => b.pop - a.pop);
+  for (let i = 0; i < majorCities.length; i++) majorCities[i]._idx = i;
+}
+
+let cityTree = null;
+function buildCityTree() {
+  if (!majorCities) return null;
+  cityTree = d3.quadtree().x(c => c.lon).y(c => c.lat).addAll(majorCities);
+  return cityTree;
+}
+
+function precomputeDwellCities() {
+  if (!majorCities || !dwellLat) return;
+  if (!cityTree) buildCityTree();
+  dwellCity = new Int32Array(dwellLat.length);
+  for (let i = 0; i < dwellLat.length; i++) {
+    const c = cityTree.find(dwellLon[i], dwellLat[i]);
+    dwellCity[i] = c ? c._idx : -1;
+  }
 }
 
 function titleCase(s) {
@@ -870,6 +899,7 @@ function applyRoot(rootId) {
     for (let i = 0; i < lastIndividuals.length; i++) sideForIdx[i] = lastSideById.get(lastIndividuals[i].id) ?? 2;
     loadTimelineArrays(lastTimeline, sideForIdx);
     rebuildSideArrays();
+    precomputeDwellCities();
   }
   const rootInd = lastIndiById.get(rootId);
   const sel = $("rootSel");
@@ -992,9 +1022,13 @@ for (const c of candidates) {
 }
 const dwellY=new Int16Array(N), dwellLat=new Float32Array(N), dwellLon=new Float32Array(N);
 const dwellSide=new Uint8Array(N), dwellSrc=new Uint8Array(N), dwellBlood=new Uint8Array(N);
-const dwellIndi=new Int32Array(N);
+const dwellIndi=new Int32Array(N), dwellCity=new Int32Array(N);
 const dwellSx=new Float32Array(N), dwellSy=new Float32Array(N);
 for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i];}
+for (let i=0;i<majorCities.length;i++) majorCities[i]._idx=i;
+const cityTree = majorCities.length ? d3.quadtree().x(c=>c.lon).y(c=>c.lat).addAll(majorCities) : null;
+if (cityTree) for (let i=0;i<N;i++){ const c=cityTree.find(dwellLon[i],dwellLat[i]); dwellCity[i]=c?c._idx:-1; }
+else for (let i=0;i<N;i++) dwellCity[i]=-1;
 const flowFromY=new Int16Array(F), flowToY=new Int16Array(F);
 const flowFromLat=new Float32Array(F), flowFromLon=new Float32Array(F), flowToLat=new Float32Array(F), flowToLon=new Float32Array(F);
 const flowSide=new Uint8Array(F), flowSrc=new Uint8Array(F), flowBlood=new Uint8Array(F);
@@ -1097,6 +1131,9 @@ function frame(fade){
   fxCtx.globalCompositeOperation="source-over";
   const y=curYear, dw=6;
   const lo=lowerBound(dwellY,dwellOrder,y-dw), hi=lowerBound(dwellY,dwellOrder,y+1);
+  const labeled=new Set();
+  fxCtx.font="10px -apple-system, sans-serif";
+  fxCtx.textAlign="left"; fxCtx.textBaseline="middle";
   for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const dy=y-dwellY[i]; if(dy<0) continue;
     const sd=dwellSide[i], ps=dwellSrc[i];
     if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
@@ -1105,6 +1142,14 @@ function frame(fade){
     fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+a.toFixed(3)+")";
     const r=1.7+(1-dy/dw)*1.4;
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
+    if (dwellCity[i]>=0 && !labeled.has(dwellCity[i]) && dy<3){
+      labeled.add(dwellCity[i]);
+      const cn=majorCities[dwellCity[i]].name;
+      fxCtx.fillStyle="rgba(255,255,255,"+(0.7*a).toFixed(3)+")";
+      fxCtx.fillText(cn, dwellSx[i]+r+3, dwellSy[i]+0.5);
+      fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")";
+      fxCtx.fillText(cn, dwellSx[i]+r+2, dwellSy[i]);
+    }
   }
   const fHi=lowerBound(flowFromY,flowOrder,y+1);
   for (let k=0;k<fHi;k++){const i=flowOrder[k]; if(flowToY[i]<y-1) continue;
