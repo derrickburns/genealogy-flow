@@ -89,6 +89,14 @@
         <option value="historical">historical</option>
       </select>
     </label>
+    <label>migration
+      <select id="migViz" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
+        <option value="lines" selected>arrival arcs</option>
+        <option value="pulse">arrival pulse</option>
+        <option value="discrete">no transit</option>
+        <option value="continuous">continuous</option>
+      </select>
+    </label>
   </span>
   <span class="legend" id="legend" style="display:none;">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal ancestor of root</span>
@@ -160,6 +168,7 @@ let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwel
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
+let migrationViz = "lines";
 let lastBloodSet = null;
 let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
 
@@ -308,10 +317,14 @@ function projectAll() {
 }
 
 function frame(activeTrailFade) {
-  fxCtx.globalCompositeOperation = "destination-out";
-  fxCtx.fillStyle = `rgba(0,0,0,${activeTrailFade})`;
-  fxCtx.fillRect(0, 0, W, H);
-  fxCtx.globalCompositeOperation = "source-over";
+  if (migrationViz === "lines") {
+    fxCtx.clearRect(0, 0, W, H);
+  } else {
+    fxCtx.globalCompositeOperation = "destination-out";
+    fxCtx.fillStyle = `rgba(0,0,0,${activeTrailFade})`;
+    fxCtx.fillRect(0, 0, W, H);
+    fxCtx.globalCompositeOperation = "source-over";
+  }
   if (!timelineLoaded) return;
 
   const y = curYear, dw = 6;
@@ -355,12 +368,50 @@ function frame(activeTrailFade) {
     }
   }
 
+  if (migrationViz === "discrete") return;
+
+  if (migrationViz === "lines") {
+    // Persistent arcs for completed migrations, fade with age
+    const fLen = flowFromY.length;
+    for (let i = 0; i < fLen; i++) {
+      if (flowToY[i] > y) continue;
+      const age = y - flowToY[i];
+      if (age > 200) continue;
+      const fs = flowSide[i], fp = flowSrc[i];
+      if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
+      if (curFilter === "blood" && !flowBlood[i]) continue;
+      const x0 = flowFromSx[i], y0 = flowFromSy[i], x1 = flowToSx[i], y1 = flowToSy[i];
+      if (x0 < -1000 || x1 < -1000) continue;
+      if ((x1 - x0) === 0 && (y1 - y0) === 0) continue;
+      const mx = (x0 + x1) / 2 - (y1 - y0) * 0.18;
+      const my = (y0 + y1) / 2 + (x1 - x0) * 0.18;
+      const c = colorForFinal(fs, fp);
+      const alpha = Math.max(0.08, 1 - age / 80) * 0.55;
+      fxCtx.beginPath();
+      fxCtx.moveTo(x0, y0);
+      fxCtx.quadraticCurveTo(mx, my, x1, y1);
+      fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(3)})`;
+      fxCtx.lineWidth = age < 3 ? 1.2 : 0.5;
+      fxCtx.stroke();
+    }
+    return;
+  }
+
+  // pulse and continuous both render moving particles
   const fHi = lowerBound(flowFromY, flowFromOrder, y + 1);
   for (let k = 0; k < fHi; k++) {
     const i = flowFromOrder[k];
     if (flowToY[i] < y - 1) continue;
-    const span = Math.max(1, flowToY[i] - flowFromY[i]);
-    const t = Math.max(0, Math.min(1, (y - flowFromY[i]) / span));
+    let t;
+    if (migrationViz === "pulse") {
+      // active only in the last year before destination
+      const win = 1.0;
+      if (y < flowToY[i] - win || y > flowToY[i] + 0.1) continue;
+      t = Math.max(0, Math.min(1, (y - (flowToY[i] - win)) / win));
+    } else {
+      const span = Math.max(1, flowToY[i] - flowFromY[i]);
+      t = Math.max(0, Math.min(1, (y - flowFromY[i]) / span));
+    }
     if (t <= 0 || t >= 1) continue;
     const x0 = flowFromSx[i], y0 = flowFromSy[i], x1 = flowToSx[i], y1 = flowToSy[i];
     if (x0 < -1000 || x1 < -1000) continue;
@@ -1024,8 +1075,11 @@ $("cityLayer").addEventListener("change", e => {
 });
 $("borderLayer").addEventListener("change", e => {
   borderLayer = e.target.value;
-  // historical borders: see followup commit
   drawBase();
+});
+$("migViz").addEventListener("change", e => {
+  migrationViz = e.target.value;
+  fxCtx.clearRect(0, 0, W, H);
 });
 
 $("pick").addEventListener("click", () => fileInp.click());
