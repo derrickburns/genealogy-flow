@@ -140,8 +140,8 @@ let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
 let world = null, usStates = null, majorCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
 
-let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellSx, dwellSy, dwellOrder;
-let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood;
+let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellSx, dwellSy, dwellOrder;
+let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
 let lastBloodSet = null;
@@ -280,7 +280,6 @@ function frame(activeTrailFade) {
   const y = curYear, dw = 6;
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
   const labeledThisFrame = new Set();
-  fxCtx.font = "10px -apple-system, sans-serif";
   fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
@@ -291,13 +290,15 @@ function frame(activeTrailFade) {
     const a = Math.max(0, 1 - dy / dw) * 0.85;
     const c = colorForFinal(sd, ps);
     fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
-    const r = 1.7 + (1 - dy / dw) * 1.4;
+    const exact = dwellExact[i];
+    const r = (1.7 + (1 - dy / dw) * 1.4) * (exact ? 1.4 : 1);
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
     if (dwellCity && dwellCity[i] >= 0 && !labeledThisFrame.has(dwellCity[i]) && dy < 3) {
       labeledThisFrame.add(dwellCity[i]);
       const city = majorCities[dwellCity[i]];
       const p = projection([city.lon, city.lat]);
       if (p) {
+        fxCtx.font = (exact ? "bold " : "") + "10px -apple-system, sans-serif";
         fxCtx.fillStyle = `rgba(255,255,255,${(0.7 * a).toFixed(3)})`;
         fxCtx.fillText(city.name, p[0] + 4, p[1] + 0.5);
         fxCtx.fillStyle = `rgba(20,28,48,${(0.95 * a).toFixed(3)})`;
@@ -325,7 +326,7 @@ function frame(activeTrailFade) {
     if (curFilter === "blood" && !flowBlood[i]) continue;
     const c = colorForFinal(fs, fp);
     fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.95)`;
-    const r = 1.9;
+    const r = flowExact[i] ? 2.6 : 1.9;
     drawShape(fxCtx, px, py, r, fp);
   }
 }
@@ -685,6 +686,7 @@ function parentStatus(id, parentsOf) {
 function buildTimeline(individuals, geocode, parentsOf) {
   const dwells = [], flows = [];
   const dwellIndi = [], flowIndi = [], dwellSrc = [], flowSrc = [];
+  const dwellExact = [], flowExact = [];
   let mn = 9999, mx = 0, geocoded = 0, missed = 0;
   const cache = new Map();
   for (let idx = 0; idx < individuals.length; idx++) {
@@ -698,45 +700,48 @@ function buildTimeline(individuals, geocode, parentsOf) {
       if (!g) { missed++; continue; }
       geocoded++;
       const [lat, lon] = jitter(g.lat, g.lon);
-      coded.push([e.year, lat, lon]);
+      const exact = g.level === "city" ? 1 : 0;
+      coded.push([e.year, lat, lon, exact]);
     }
     if (!coded.length) continue;
     coded.sort((a, b) => a[0] - b[0]);
     let prev = null;
-    for (const [y, lat, lon] of coded) {
+    for (const [y, lat, lon, exact] of coded) {
       if (y < mn) mn = y; if (y > mx) mx = y;
-      dwells.push([y, lat, lon]); dwellIndi.push(idx); dwellSrc.push(isSource);
+      dwells.push([y, lat, lon]); dwellIndi.push(idx); dwellSrc.push(isSource); dwellExact.push(exact);
       if (prev) {
-        const [py, plat, plon] = prev;
+        const [py, plat, plon, pex] = prev;
         if ((plat !== lat || plon !== lon) && y > py) {
           flows.push([py, y, plat, plon, lat, lon]);
           flowIndi.push(idx); flowSrc.push(isSource);
+          flowExact.push(exact && pex ? 1 : 0);
         }
       }
-      prev = [y, lat, lon];
+      prev = [y, lat, lon, exact];
     }
   }
   if (mn > mx) { mn = 1700; mx = 2026; }
-  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, min_year: mn, max_year: mx, geocoded, missed };
+  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, min_year: mn, max_year: mx, geocoded, missed };
 }
 
 function loadTimelineArrays(t, sideForIdx) {
   const N = t.dwells.length, F = t.flows.length;
   dwellY = new Int16Array(N); dwellLat = new Float32Array(N); dwellLon = new Float32Array(N);
   dwellSide = new Uint8Array(N); dwellSrc = new Uint8Array(N); dwellIndi = new Int32Array(N);
-  dwellBlood = new Uint8Array(N);
+  dwellBlood = new Uint8Array(N); dwellExact = new Uint8Array(N);
   dwellSx = new Float32Array(N); dwellSy = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const d = t.dwells[i];
     dwellY[i] = d[0]; dwellLat[i] = d[1]; dwellLon[i] = d[2];
     dwellIndi[i] = t.dwellIndi[i]; dwellSrc[i] = t.dwellSrc[i];
+    dwellExact[i] = t.dwellExact ? t.dwellExact[i] : 0;
     dwellSide[i] = sideForIdx[t.dwellIndi[i]] ?? 3;
   }
   flowFromY = new Int16Array(F); flowToY = new Int16Array(F);
   flowFromLat = new Float32Array(F); flowFromLon = new Float32Array(F);
   flowToLat = new Float32Array(F); flowToLon = new Float32Array(F);
   flowSide = new Uint8Array(F); flowSrc = new Uint8Array(F); flowIndi = new Int32Array(F);
-  flowBlood = new Uint8Array(F);
+  flowBlood = new Uint8Array(F); flowExact = new Uint8Array(F);
   flowFromSx = new Float32Array(F); flowFromSy = new Float32Array(F);
   flowToSx = new Float32Array(F); flowToSy = new Float32Array(F);
   for (let i = 0; i < F; i++) {
@@ -745,6 +750,7 @@ function loadTimelineArrays(t, sideForIdx) {
     flowFromLat[i] = f[2]; flowFromLon[i] = f[3];
     flowToLat[i] = f[4]; flowToLon[i] = f[5];
     flowIndi[i] = t.flowIndi[i]; flowSrc[i] = t.flowSrc[i];
+    flowExact[i] = t.flowExact ? t.flowExact[i] : 0;
     flowSide[i] = sideForIdx[t.flowIndi[i]] ?? 3;
   }
   dwellOrder = new Int32Array(N); for (let i = 0; i < N; i++) dwellOrder[i] = i; dwellOrder.sort((a, b) => dwellY[a] - dwellY[b]);
@@ -937,6 +943,7 @@ function buildExportHtml(tl, worldData, label, candidatesData) {
     dwells: tl.dwells, flows: tl.flows,
     dwellIndi: tl.dwellIndi, flowIndi: tl.flowIndi,
     dwellSrc: tl.dwellSrc, flowSrc: tl.flowSrc,
+    dwellExact: tl.dwellExact, flowExact: tl.flowExact,
     candidates: candidatesData,
     cities: majorCities ? majorCities.slice(0, 4000) : [],
     min_year: tl.min_year, max_year: tl.max_year,
@@ -1024,20 +1031,20 @@ for (const c of candidates) {
   rootSel.appendChild(opt);
 }
 const dwellY=new Int16Array(N), dwellLat=new Float32Array(N), dwellLon=new Float32Array(N);
-const dwellSide=new Uint8Array(N), dwellSrc=new Uint8Array(N), dwellBlood=new Uint8Array(N);
+const dwellSide=new Uint8Array(N), dwellSrc=new Uint8Array(N), dwellBlood=new Uint8Array(N), dwellExact=new Uint8Array(N);
 const dwellIndi=new Int32Array(N), dwellCity=new Int32Array(N);
 const dwellSx=new Float32Array(N), dwellSy=new Float32Array(N);
-for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i];}
+for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i]; dwellExact[i]=tl.dwellExact?tl.dwellExact[i]:0;}
 for (let i=0;i<majorCities.length;i++) majorCities[i]._idx=i;
 const cityTree = majorCities.length ? d3.quadtree().x(c=>c.lon).y(c=>c.lat).addAll(majorCities) : null;
 if (cityTree) for (let i=0;i<N;i++){ const c=cityTree.find(dwellLon[i],dwellLat[i]); dwellCity[i]=c?c._idx:-1; }
 else for (let i=0;i<N;i++) dwellCity[i]=-1;
 const flowFromY=new Int16Array(F), flowToY=new Int16Array(F);
 const flowFromLat=new Float32Array(F), flowFromLon=new Float32Array(F), flowToLat=new Float32Array(F), flowToLon=new Float32Array(F);
-const flowSide=new Uint8Array(F), flowSrc=new Uint8Array(F), flowBlood=new Uint8Array(F);
+const flowSide=new Uint8Array(F), flowSrc=new Uint8Array(F), flowBlood=new Uint8Array(F), flowExact=new Uint8Array(F);
 const flowIndi=new Int32Array(F);
 const flowFromSx=new Float32Array(F), flowFromSy=new Float32Array(F), flowToSx=new Float32Array(F), flowToSy=new Float32Array(F);
-for (let i=0;i<F;i++){const f=tl.flows[i]; flowFromY[i]=f[0]; flowToY[i]=f[1]; flowFromLat[i]=f[2]; flowFromLon[i]=f[3]; flowToLat[i]=f[4]; flowToLon[i]=f[5]; flowSrc[i]=tl.flowSrc[i]; flowIndi[i]=tl.flowIndi[i];}
+for (let i=0;i<F;i++){const f=tl.flows[i]; flowFromY[i]=f[0]; flowToY[i]=f[1]; flowFromLat[i]=f[2]; flowFromLon[i]=f[3]; flowToLat[i]=f[4]; flowToLon[i]=f[5]; flowSrc[i]=tl.flowSrc[i]; flowIndi[i]=tl.flowIndi[i]; flowExact[i]=tl.flowExact?tl.flowExact[i]:0;}
 function applyCandidate(c){
   curCandidate = c;
   if (!c) return;
@@ -1135,7 +1142,6 @@ function frame(fade){
   const y=curYear, dw=6;
   const lo=lowerBound(dwellY,dwellOrder,y-dw), hi=lowerBound(dwellY,dwellOrder,y+1);
   const labeled=new Set();
-  fxCtx.font="10px -apple-system, sans-serif";
   fxCtx.textAlign="left"; fxCtx.textBaseline="middle";
   for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const dy=y-dwellY[i]; if(dy<0) continue;
     const sd=dwellSide[i], ps=dwellSrc[i];
@@ -1143,13 +1149,15 @@ function frame(fade){
     if (curFilter==="blood" && !dwellBlood[i]) continue;
     const a=Math.max(0,1-dy/dw)*0.85; const c=colorForFinal(sd,ps);
     fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+a.toFixed(3)+")";
-    const r=1.7+(1-dy/dw)*1.4;
+    const exact=dwellExact[i];
+    const r=(1.7+(1-dy/dw)*1.4)*(exact?1.4:1);
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
     if (dwellCity[i]>=0 && !labeled.has(dwellCity[i]) && dy<3){
       labeled.add(dwellCity[i]);
       const city=majorCities[dwellCity[i]];
       const p=projection([city.lon,city.lat]);
       if (p) {
+        fxCtx.font=(exact?"bold ":"")+"10px -apple-system, sans-serif";
         fxCtx.fillStyle="rgba(255,255,255,"+(0.7*a).toFixed(3)+")";
         fxCtx.fillText(city.name, p[0]+4, p[1]+0.5);
         fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")";
@@ -1169,7 +1177,7 @@ function frame(fade){
     if (curFilter==="blood" && !flowBlood[i]) continue;
     const c=colorForFinal(fs,fp);
     fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+",0.95)";
-    drawShape(fxCtx, px, py, 1.9, fp);
+    drawShape(fxCtx, px, py, flowExact[i]?2.6:1.9, fp);
   }
 }
 let last=0;
