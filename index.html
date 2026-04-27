@@ -295,11 +295,14 @@ function frame(activeTrailFade) {
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
     if (dwellCity && dwellCity[i] >= 0 && !labeledThisFrame.has(dwellCity[i]) && dy < 3) {
       labeledThisFrame.add(dwellCity[i]);
-      const cn = majorCities[dwellCity[i]].name;
-      fxCtx.fillStyle = `rgba(255,255,255,${(0.7 * a).toFixed(3)})`;
-      fxCtx.fillText(cn, dwellSx[i] + r + 3, dwellSy[i] + 0.5);
-      fxCtx.fillStyle = `rgba(20,28,48,${(0.95 * a).toFixed(3)})`;
-      fxCtx.fillText(cn, dwellSx[i] + r + 2, dwellSy[i]);
+      const city = majorCities[dwellCity[i]];
+      const p = projection([city.lon, city.lat]);
+      if (p) {
+        fxCtx.fillStyle = `rgba(255,255,255,${(0.7 * a).toFixed(3)})`;
+        fxCtx.fillText(city.name, p[0] + 4, p[1] + 0.5);
+        fxCtx.fillStyle = `rgba(20,28,48,${(0.95 * a).toFixed(3)})`;
+        fxCtx.fillText(city.name, p[0] + 3, p[1]);
+      }
     }
   }
 
@@ -1144,11 +1147,14 @@ function frame(fade){
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
     if (dwellCity[i]>=0 && !labeled.has(dwellCity[i]) && dy<3){
       labeled.add(dwellCity[i]);
-      const cn=majorCities[dwellCity[i]].name;
-      fxCtx.fillStyle="rgba(255,255,255,"+(0.7*a).toFixed(3)+")";
-      fxCtx.fillText(cn, dwellSx[i]+r+3, dwellSy[i]+0.5);
-      fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")";
-      fxCtx.fillText(cn, dwellSx[i]+r+2, dwellSy[i]);
+      const city=majorCities[dwellCity[i]];
+      const p=projection([city.lon,city.lat]);
+      if (p) {
+        fxCtx.fillStyle="rgba(255,255,255,"+(0.7*a).toFixed(3)+")";
+        fxCtx.fillText(city.name, p[0]+4, p[1]+0.5);
+        fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")";
+        fxCtx.fillText(city.name, p[0]+3, p[1]);
+      }
     }
   }
   const fHi=lowerBound(flowFromY,flowOrder,y+1);
