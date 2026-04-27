@@ -197,8 +197,14 @@ d3.select(fxCanvas).on("dblclick.zoom", () => {
   d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity);
 });
 
+let staticLabelRects = [];
+function rectsOverlap(a, b) {
+  return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+}
+
 function drawBase() {
   if (!world) return;
+  staticLabelRects = [];
   baseCtx.clearRect(0, 0, W, H);
   baseCtx.fillStyle = "#cfe2ec"; baseCtx.fillRect(0, 0, W, H);
   const k = zoomTransform.k;
@@ -223,7 +229,10 @@ function drawBase() {
     const labelThresh = isEvents ? 0 : k >= 16 ? 200000 : k >= 8 ? 500000 : k >= 4 ? 1500000 : k >= 2 ? 3000000 : 6000000;
     baseCtx.font = "11px -apple-system, sans-serif";
     baseCtx.textAlign = "left"; baseCtx.textBaseline = "middle";
-    for (const c of cities) {
+    const labeledNames = new Set();
+    // sort by importance descending so big cities label first and win collisions
+    const ordered = cities.slice().sort((a, b) => (b.pop || b.count || 0) - (a.pop || a.count || 0));
+    for (const c of ordered) {
       const w = isEvents ? c.count : c.pop;
       if (w < popThresh) continue;
       const p = projection([c.lon, c.lat]); if (!p) continue;
@@ -234,7 +243,14 @@ function drawBase() {
       baseCtx.fillStyle = "rgba(60,60,70,0.85)";
       baseCtx.beginPath(); baseCtx.arc(p[0], p[1], r, 0, Math.PI * 2); baseCtx.fill();
       baseCtx.strokeStyle = "rgba(255,255,255,0.9)"; baseCtx.lineWidth = 0.7; baseCtx.stroke();
-      if (w >= labelThresh) {
+      if (w >= labelThresh && !labeledNames.has(c.name)) {
+        const tw = baseCtx.measureText(c.name).width;
+        const rect = { x: p[0] + r + 2, y: p[1] - 7, w: tw + 4, h: 14 };
+        let collides = false;
+        for (const ex of staticLabelRects) { if (rectsOverlap(rect, ex)) { collides = true; break; } }
+        if (collides) continue;
+        labeledNames.add(c.name);
+        staticLabelRects.push(rect);
         baseCtx.fillStyle = "rgba(255,255,255,0.85)";
         baseCtx.fillText(c.name, p[0] + r + 3, p[1] + 0.5);
         baseCtx.fillStyle = "rgba(40,40,55,0.95)";
@@ -300,7 +316,8 @@ function frame(activeTrailFade) {
 
   const y = curYear, dw = 6;
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
-  const labeledThisFrame = new Set();
+  const labeledNamesFrame = new Set();
+  const dynamicLabelRects = [];
   fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
@@ -314,18 +331,27 @@ function frame(activeTrailFade) {
     const exact = dwellExact[i];
     const r = (1.7 + (1 - dy / dw) * 1.4) * (exact ? 1.4 : 1);
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
-    if (dwellCity && dwellCity[i] >= 0 && !labeledThisFrame.has(dwellCity[i]) && dy < 3) {
-      labeledThisFrame.add(dwellCity[i]);
+    if (dwellCity && dwellCity[i] >= 0 && dy < 3) {
       const cities = currentCities();
-      const city = cities && cities[dwellCity[i]];
-      const p = city && projection([city.lon, city.lat]);
-      if (p) {
-        fxCtx.font = (exact ? "bold " : "") + "10px -apple-system, sans-serif";
-        fxCtx.fillStyle = `rgba(255,255,255,${(0.7 * a).toFixed(3)})`;
-        fxCtx.fillText(city.name, p[0] + 4, p[1] + 0.5);
-        fxCtx.fillStyle = `rgba(20,28,48,${(0.95 * a).toFixed(3)})`;
-        fxCtx.fillText(city.name, p[0] + 3, p[1]);
-      }
+      const rawCity = cities && cities[dwellCity[i]];
+      if (!rawCity) continue;
+      const canonical = cityCanonicalByName.get(rawCity.name) || rawCity;
+      if (labeledNamesFrame.has(canonical.name)) continue;
+      const p = projection([canonical.lon, canonical.lat]);
+      if (!p) continue;
+      fxCtx.font = (exact ? "bold " : "") + "10px -apple-system, sans-serif";
+      const tw = fxCtx.measureText(canonical.name).width;
+      const rect = { x: p[0] + 3, y: p[1] - 6, w: tw + 4, h: 13 };
+      let collides = false;
+      for (const ex of staticLabelRects) { if (rectsOverlap(rect, ex)) { collides = true; break; } }
+      if (!collides) for (const ex of dynamicLabelRects) { if (rectsOverlap(rect, ex)) { collides = true; break; } }
+      if (collides) continue;
+      labeledNamesFrame.add(canonical.name);
+      dynamicLabelRects.push(rect);
+      fxCtx.fillStyle = `rgba(255,255,255,${(0.75 * a).toFixed(3)})`;
+      fxCtx.fillText(canonical.name, p[0] + 4, p[1] + 0.5);
+      fxCtx.fillStyle = `rgba(20,28,48,${(0.95 * a).toFixed(3)})`;
+      fxCtx.fillText(canonical.name, p[0] + 3, p[1]);
     }
   }
 
@@ -728,7 +754,8 @@ function buildTimeline(individuals, geocode, parentsOf) {
         const key = g.lat.toFixed(2) + "," + g.lon.toFixed(2);
         let ec = evCities.get(key);
         if (!ec) {
-          const name = (e.place.split(",")[0] || "").trim() || "?";
+          const parts = e.place.split(",").map(s => s.trim()).filter(Boolean);
+          const name = (parts.length >= 2 ? parts[0] + ", " + parts[1] : parts[0]) || "?";
           ec = { name, lat: g.lat, lon: g.lon, count: 0, pop: 0 };
           evCities.set(key, ec);
         }
@@ -833,11 +860,35 @@ function buildMajorCities(gz) {
     const ex = byKey.get(key);
     if (!ex || ex.pop < pop) byKey.set(key, { name: titleCase(s), cc, st, lat, lon, pop });
   }
-  majorCities = Array.from(byKey.values()).sort((a, b) => b.pop - a.pop);
+  let cities = Array.from(byKey.values()).sort((a, b) => b.pop - a.pop);
+  // Disambiguate names that occur multiple times: append state/country to all duplicates.
+  const nameCount = new Map();
+  for (const c of cities) nameCount.set(c.name, (nameCount.get(c.name) || 0) + 1);
+  for (const c of cities) {
+    if (nameCount.get(c.name) > 1) {
+      const suffix = c.cc === "US" ? c.st : c.cc;
+      c.name = c.name + ", " + suffix;
+    }
+  }
+  majorCities = cities;
   for (let i = 0; i < majorCities.length; i++) majorCities[i]._idx = i;
 }
 
 function currentCities() { return cityLayer === "events" && eventCities && eventCities.length ? eventCities : majorCities; }
+
+let cityCanonicalByName = new Map();
+function rebuildCityCanonical() {
+  cityCanonicalByName = new Map();
+  const list = currentCities();
+  if (!list) return;
+  for (const c of list) {
+    const ex = cityCanonicalByName.get(c.name);
+    const w = c.pop != null ? c.pop : c.count || 0;
+    if (!ex || (ex.pop != null ? ex.pop : ex.count || 0) < w) {
+      cityCanonicalByName.set(c.name, c);
+    }
+  }
+}
 
 let cityTree = null;
 function buildCityTree() {
@@ -851,6 +902,7 @@ function buildCityTree() {
 function precomputeDwellCities() {
   if (!dwellLat) return;
   buildCityTree();
+  rebuildCityCanonical();
   dwellCity = new Int32Array(dwellLat.length);
   if (!cityTree) { dwellCity.fill(-1); return; }
   for (let i = 0; i < dwellLat.length; i++) {
