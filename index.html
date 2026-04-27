@@ -77,6 +77,18 @@
         <option value="ancestors">ancestors only</option>
       </select>
     </label>
+    <label>cities
+      <select id="cityLayer" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
+        <option value="major" selected>major cities</option>
+        <option value="events">in events only</option>
+      </select>
+    </label>
+    <label>borders
+      <select id="borderLayer" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
+        <option value="modern" selected>modern</option>
+        <option value="historical">historical</option>
+      </select>
+    </label>
   </span>
   <span class="legend" id="legend" style="display:none;">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal ancestor of root</span>
@@ -138,7 +150,11 @@ let W = 0, H = 0;
 const projection = d3.geoNaturalEarth1();
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
-let world = null, usStates = null, majorCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
+let world = null, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
+let cityLayer = "major";
+let borderLayer = "modern";
+let historicalBasemaps = new Map(); // year -> { world, name } loaded snapshots
+let currentHistoricalWorld = null;
 
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellSx, dwellSy, dwellOrder;
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
@@ -200,20 +216,25 @@ function drawBase() {
     baseCtx.strokeStyle = `rgba(140,120,90,${Math.min(0.7, 0.2 + k * 0.08)})`;
     baseCtx.lineWidth = 0.35; baseCtx.stroke();
   }
-  if (majorCities) {
-    const popThresh = k >= 16 ? 50000 : k >= 8 ? 150000 : k >= 4 ? 400000 : k >= 2 ? 800000 : 1500000;
-    const labelThresh = k >= 16 ? 200000 : k >= 8 ? 500000 : k >= 4 ? 1500000 : k >= 2 ? 3000000 : 6000000;
+  const cities = currentCities();
+  if (cities && cities.length) {
+    const isEvents = cityLayer === "events" && eventCities && cities === eventCities;
+    const popThresh = isEvents ? 0 : k >= 16 ? 50000 : k >= 8 ? 150000 : k >= 4 ? 400000 : k >= 2 ? 800000 : 1500000;
+    const labelThresh = isEvents ? 0 : k >= 16 ? 200000 : k >= 8 ? 500000 : k >= 4 ? 1500000 : k >= 2 ? 3000000 : 6000000;
     baseCtx.font = "11px -apple-system, sans-serif";
     baseCtx.textAlign = "left"; baseCtx.textBaseline = "middle";
-    for (const c of majorCities) {
-      if (c.pop < popThresh) continue;
+    for (const c of cities) {
+      const w = isEvents ? c.count : c.pop;
+      if (w < popThresh) continue;
       const p = projection([c.lon, c.lat]); if (!p) continue;
       if (p[0] < -10 || p[0] > W + 10 || p[1] < -10 || p[1] > H + 10) continue;
-      const r = c.pop >= 5000000 ? 2.5 : c.pop >= 1000000 ? 2 : 1.5;
+      const r = isEvents
+        ? Math.min(3, 1 + Math.log2(c.count + 1) * 0.4)
+        : (c.pop >= 5000000 ? 2.5 : c.pop >= 1000000 ? 2 : 1.5);
       baseCtx.fillStyle = "rgba(60,60,70,0.85)";
       baseCtx.beginPath(); baseCtx.arc(p[0], p[1], r, 0, Math.PI * 2); baseCtx.fill();
       baseCtx.strokeStyle = "rgba(255,255,255,0.9)"; baseCtx.lineWidth = 0.7; baseCtx.stroke();
-      if (c.pop >= labelThresh) {
+      if (w >= labelThresh) {
         baseCtx.fillStyle = "rgba(255,255,255,0.85)";
         baseCtx.fillText(c.name, p[0] + r + 3, p[1] + 0.5);
         baseCtx.fillStyle = "rgba(40,40,55,0.95)";
@@ -295,8 +316,9 @@ function frame(activeTrailFade) {
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
     if (dwellCity && dwellCity[i] >= 0 && !labeledThisFrame.has(dwellCity[i]) && dy < 3) {
       labeledThisFrame.add(dwellCity[i]);
-      const city = majorCities[dwellCity[i]];
-      const p = projection([city.lon, city.lat]);
+      const cities = currentCities();
+      const city = cities && cities[dwellCity[i]];
+      const p = city && projection([city.lon, city.lat]);
       if (p) {
         fxCtx.font = (exact ? "bold " : "") + "10px -apple-system, sans-serif";
         fxCtx.fillStyle = `rgba(255,255,255,${(0.7 * a).toFixed(3)})`;
@@ -689,6 +711,7 @@ function buildTimeline(individuals, geocode, parentsOf) {
   const dwellExact = [], flowExact = [];
   let mn = 9999, mx = 0, geocoded = 0, missed = 0;
   const cache = new Map();
+  const evCities = new Map(); // key (lat3,lon3) -> {name, lat, lon, count}
   for (let idx = 0; idx < individuals.length; idx++) {
     const ind = individuals[idx];
     if (!ind.events.length) continue;
@@ -701,6 +724,16 @@ function buildTimeline(individuals, geocode, parentsOf) {
       geocoded++;
       const [lat, lon] = jitter(g.lat, g.lon);
       const exact = g.level === "city" ? 1 : 0;
+      if (exact) {
+        const key = g.lat.toFixed(2) + "," + g.lon.toFixed(2);
+        let ec = evCities.get(key);
+        if (!ec) {
+          const name = (e.place.split(",")[0] || "").trim() || "?";
+          ec = { name, lat: g.lat, lon: g.lon, count: 0, pop: 0 };
+          evCities.set(key, ec);
+        }
+        ec.count++;
+      }
       coded.push([e.year, lat, lon, exact]);
     }
     if (!coded.length) continue;
@@ -721,7 +754,9 @@ function buildTimeline(individuals, geocode, parentsOf) {
     }
   }
   if (mn > mx) { mn = 1700; mx = 2026; }
-  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, min_year: mn, max_year: mx, geocoded, missed };
+  const eventCitiesArr = Array.from(evCities.values()).sort((a, b) => b.count - a.count);
+  for (let i = 0; i < eventCitiesArr.length; i++) eventCitiesArr[i]._idx = i;
+  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, eventCities: eventCitiesArr, min_year: mn, max_year: mx, geocoded, missed };
 }
 
 function loadTimelineArrays(t, sideForIdx) {
@@ -802,17 +837,22 @@ function buildMajorCities(gz) {
   for (let i = 0; i < majorCities.length; i++) majorCities[i]._idx = i;
 }
 
+function currentCities() { return cityLayer === "events" && eventCities && eventCities.length ? eventCities : majorCities; }
+
 let cityTree = null;
 function buildCityTree() {
-  if (!majorCities) return null;
-  cityTree = d3.quadtree().x(c => c.lon).y(c => c.lat).addAll(majorCities);
+  const list = currentCities();
+  if (!list || !list.length) { cityTree = null; return null; }
+  for (let i = 0; i < list.length; i++) list[i]._idx = i;
+  cityTree = d3.quadtree().x(c => c.lon).y(c => c.lat).addAll(list);
   return cityTree;
 }
 
 function precomputeDwellCities() {
-  if (!majorCities || !dwellLat) return;
-  if (!cityTree) buildCityTree();
+  if (!dwellLat) return;
+  buildCityTree();
   dwellCity = new Int32Array(dwellLat.length);
+  if (!cityTree) { dwellCity.fill(-1); return; }
   for (let i = 0; i < dwellLat.length; i++) {
     const c = cityTree.find(dwellLon[i], dwellLat[i]);
     dwellCity[i] = c ? c._idx : -1;
@@ -871,6 +911,7 @@ async function processFile(file) {
   await new Promise(r => requestAnimationFrame(r));
   const tl = buildTimeline(individuals, geocoder, parentsOf);
   lastTimeline = tl;
+  eventCities = tl.eventCities || [];
   lastFileName = file.name.replace(/\.(ged|gedcom)$/i, "") || "genealogy";
 
   const candidates = rankRootCandidates(individuals, isParent, parentsOf, indiById);
@@ -922,6 +963,17 @@ $("rootSel").addEventListener("change", e => {
 $("filt").addEventListener("change", e => {
   curFilter = e.target.value;
   fxCtx.clearRect(0, 0, W, H);
+});
+$("cityLayer").addEventListener("change", e => {
+  cityLayer = e.target.value;
+  precomputeDwellCities();
+  drawBase();
+  fxCtx.clearRect(0, 0, W, H);
+});
+$("borderLayer").addEventListener("change", e => {
+  borderLayer = e.target.value;
+  // historical borders: see followup commit
+  drawBase();
 });
 
 $("pick").addEventListener("click", () => fileInp.click());
