@@ -136,6 +136,8 @@ const rootwrap = $("rootwrap"), legend = $("legend");
 
 let W = 0, H = 0;
 const projection = d3.geoNaturalEarth1();
+let baseScale = 1, baseTranslate = [0, 0];
+let zoomTransform = { k: 1, x: 0, y: 0 };
 let world = null, gazetteer = null, geocoder = null, timelineLoaded = false;
 
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellSx, dwellSy, dwellOrder;
@@ -157,10 +159,27 @@ function resize() {
     c.getContext("2d").setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   }
   projection.fitExtent([[10, 30], [W - 10, H - 80]], { type: "Sphere" });
-  drawBase();
-  if (timelineLoaded) projectAll();
+  baseScale = projection.scale();
+  baseTranslate = projection.translate().slice();
+  applyZoom();
 }
 window.addEventListener("resize", resize);
+
+function applyZoom() {
+  const t = zoomTransform;
+  projection.scale(baseScale * t.k);
+  projection.translate([baseTranslate[0] * t.k + t.x, baseTranslate[1] * t.k + t.y]);
+  drawBase();
+  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+}
+
+const zoomBehavior = d3.zoom()
+  .scaleExtent([1, 64])
+  .on("zoom", e => { zoomTransform = e.transform; applyZoom(); });
+d3.select(fxCanvas).call(zoomBehavior);
+d3.select(fxCanvas).on("dblclick.zoom", () => {
+  d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity);
+});
 
 function drawBase() {
   if (!world) return;
@@ -296,10 +315,8 @@ playBtn.addEventListener("click", () => {
 });
 range.addEventListener("input", () => { if (!playing) curYear = parseFloat(range.value); });
 $("rot").addEventListener("input", e => {
-  const lambda = parseFloat(e.target.value) || 0;
-  projection.rotate([lambda, 0, 0]);
-  drawBase();
-  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+  projection.rotate([parseFloat(e.target.value) || 0, 0, 0]);
+  applyZoom();
 });
 
 // ---------- GEDCOM parser ----------
@@ -908,6 +925,8 @@ const playBtn=document.getElementById("play"), range=document.getElementById("ra
 const speedSel=document.getElementById("speed"), trailSel=document.getElementById("trail");
 const rootSel=document.getElementById("rootSel"), filtSel=document.getElementById("filt");
 let W=0,H=0; const projection=d3.geoNaturalEarth1();
+let baseScale=1, baseTranslate=[0,0];
+let zoomTransform={k:1,x:0,y:0};
 const N=tl.dwells.length, F=tl.flows.length;
 const candidates = tl.candidates || [];
 let curCandidate = candidates[0] || null;
@@ -958,9 +977,21 @@ function resize(){
     c.getContext("2d").setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   }
   projection.fitExtent([[10,30],[W-10,H-80]],{type:"Sphere"});
-  drawBase(); projectAll();
+  baseScale=projection.scale(); baseTranslate=projection.translate().slice();
+  applyZoom();
 }
 window.addEventListener("resize",resize);
+function applyZoom(){
+  const t=zoomTransform;
+  projection.scale(baseScale*t.k);
+  projection.translate([baseTranslate[0]*t.k+t.x, baseTranslate[1]*t.k+t.y]);
+  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H);
+}
+const zoomBehavior=d3.zoom().scaleExtent([1,64]).on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
+d3.select(fxCanvas).call(zoomBehavior);
+d3.select(fxCanvas).on("dblclick.zoom",()=>{
+  d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform,d3.zoomIdentity);
+});
 function drawBase(){
   baseCtx.clearRect(0,0,W,H); baseCtx.fillStyle="#cfe2ec"; baseCtx.fillRect(0,0,W,H);
   const sphere={type:"Sphere"}; const land=topojson.feature(world,world.objects.countries); const borders=topojson.mesh(world,world.objects.countries,(a,b)=>a!==b);
@@ -1027,7 +1058,7 @@ playBtn.addEventListener("click",()=>{playing=!playing; playBtn.textContent=play
 range.addEventListener("input",()=>{if(!playing) curYear=parseFloat(range.value);});
 document.getElementById("rot").addEventListener("input",e=>{
   projection.rotate([parseFloat(e.target.value)||0,0,0]);
-  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H);
+  applyZoom();
 });
 resize(); requestAnimationFrame(tick);
 <\/script>
