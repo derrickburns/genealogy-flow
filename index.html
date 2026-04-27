@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Genealogy Particle Flow</title>
+<style>
+  html, body { margin:0; padding:0; background:#cfe2ec; color:#1c2433; font:13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; overflow:hidden; }
+  canvas { position:fixed; inset:0; display:block; image-rendering:pixelated; }
+  #base { z-index:1; } #fx { z-index:2; }
+  #yearBig {
+    position:fixed; inset:0; z-index:3; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+    font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight:700; font-size:42vh; line-height:0.85;
+    color:rgba(20,30,55,0.06); letter-spacing:-0.02em;
+    user-select:none; mix-blend-mode:multiply;
+  }
+  #ui {
+    position:fixed; left:14px; right:14px; bottom:14px; z-index:10;
+    background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
+    padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
+    display:grid; grid-template-columns: auto 1fr auto auto auto auto; gap:12px; align-items:center;
+  }
+  #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
+  #ui button:hover { background:#1c3669; }
+  #ui button[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
+  #year { font-variant-numeric:tabular-nums; font-weight:600; font-size:18px; min-width:60px; color:#1c2433; }
+  #range { width:100%; -webkit-appearance:none; appearance:none; height:4px; background:#c0ccd8; border-radius:2px; }
+  #range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
+  #stats { font-size:11px; color:#566480; }
+  #title { position:fixed; top:14px; left:18px; right:18px; z-index:11; font-size:14px; color:#1c2433; letter-spacing:0.04em; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #title b { color:#0a1426; }
+  #title input[type=text] { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:4px 6px; font:inherit; }
+  select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
+  label { color:#566480; font-size:11px; }
+  #pick, #export { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
+  #pick:hover, #export:hover { background:#1c3669; }
+  #export[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
+  #fileinp { display:none; }
+  #drop {
+    position:fixed; inset:0; z-index:20; background:rgba(20,40,80,0.55);
+    display:none; align-items:center; justify-content:center;
+    font-size:22px; color:#fff; pointer-events:none;
+  }
+  #drop.on { display:flex; }
+  #welcome {
+    position:fixed; left:50%; top:40%; transform:translate(-50%,-50%); z-index:11;
+    background:rgba(255,255,255,0.97); border:1px solid #c0ccd8; border-radius:12px;
+    padding:30px 36px; box-shadow:0 8px 32px rgba(0,0,0,0.16);
+    text-align:center; max-width:420px;
+  }
+  #welcome h1 { margin:0 0 8px; font-size:18px; }
+  #welcome p { margin:6px 0 14px; color:#566480; }
+  #welcome.hidden { display:none; }
+  .legend { font-size:11px; color:#566480; display:flex; gap:10px; align-items:center; }
+  .legend .swatch { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+  .legend .square { border-radius:0; }
+  .legend .diamond { width:12px; height:12px; border-radius:2px; transform:rotate(45deg); }
+</style>
+</head>
+<body>
+<div id="title">
+  <b>Genealogy Particle Flow</b>
+  <span id="stats">starting...</span>
+  <button id="pick">Open .ged</button>
+  <button id="export" disabled>Export HTML</button>
+  <input type="file" id="fileinp" accept=".ged,.gedcom,.GED">
+  <span id="rootwrap" style="display:none;">
+    <label style="margin-left:6px;">root
+      <select id="rootSel" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;max-width:360px;"></select>
+    </label>
+    <label>show
+      <select id="filt" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
+        <option value="all" selected>all people</option>
+        <option value="blood">blood relatives only</option>
+        <option value="ancestors">ancestors only</option>
+      </select>
+    </label>
+  </span>
+  <span class="legend" id="legend" style="display:none;">
+    <span><span class="swatch" style="background:#2864dc;"></span>paternal ancestor of root</span>
+    <span><span class="swatch" style="background:#dc3c5a;"></span>maternal ancestor of root</span>
+    <span><span class="swatch" style="background:#a03cc8;"></span>everyone else</span>
+    <span style="margin-left:10px;"><span class="swatch diamond" style="background:#6e6e73;"></span>1 parent missing</span>
+    <span><span class="swatch square" style="background:#000;"></span>both parents missing</span>
+  </span>
+</div>
+<canvas id="base"></canvas>
+<canvas id="fx"></canvas>
+<div id="yearBig">----</div>
+<div id="drop">Drop GEDCOM file to load</div>
+<div id="welcome" class="hidden">
+  <h1>Genealogy Particle Flow</h1>
+  <p>Drop a <code>.ged</code> file or click below to choose. Birth, death, residence, and marriage events plot as moving particles across the map.</p>
+  <button id="pick2">Choose GEDCOM file</button>
+  <p style="font-size:11px;margin-top:14px;">Geocoded entirely in your browser. Nothing uploaded.</p>
+</div>
+<div id="ui">
+  <button id="play" disabled>Play</button>
+  <input type="range" id="range" min="0" max="1" step="0.01" value="0">
+  <span id="year">----</span>
+  <label>speed
+    <select id="speed">
+      <option value="0.05">0.25x</option>
+      <option value="0.1">0.5x</option>
+      <option value="0.2" selected>1x</option>
+      <option value="0.5">2.5x</option>
+      <option value="1">5x</option>
+      <option value="2">10x</option>
+    </select>
+  </label>
+  <label>fade
+    <select id="trail">
+      <option value="0.06">short</option>
+      <option value="0.03" selected>medium</option>
+      <option value="0.012">long</option>
+      <option value="0.004">infinite</option>
+    </select>
+  </label>
+  <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
+</div>
+
+<script type="module">
+import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+import * as topojson from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
+
+const $ = id => document.getElementById(id);
+const baseCanvas = $("base"), fxCanvas = $("fx");
+const baseCtx = baseCanvas.getContext("2d"), fxCtx = fxCanvas.getContext("2d");
+const yearLabel = $("year"), yearBig = $("yearBig");
+const playBtn = $("play"), range = $("range");
+const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
+const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
+const rootwrap = $("rootwrap"), legend = $("legend");
+
+let W = 0, H = 0;
+const projection = d3.geoNaturalEarth1();
+let world = null, gazetteer = null, geocoder = null, timelineLoaded = false;
+
+let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellSx, dwellSy, dwellOrder;
+let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood;
+let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
+let curFilter = "all";
+let lastBloodSet = null;
+let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
+
+let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null;
+let lastSideById = null, lastRootId = null;
+let lastTimeline = null, lastFileName = "genealogy";
+
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  for (const c of [baseCanvas, fxCanvas]) {
+    c.width = Math.floor(W * devicePixelRatio); c.height = Math.floor(H * devicePixelRatio);
+    c.style.width = W + "px"; c.style.height = H + "px";
+    c.getContext("2d").setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  }
+  projection.fitExtent([[10, 30], [W - 10, H - 80]], { type: "Sphere" });
+  drawBase();
+  if (timelineLoaded) projectAll();
+}
+window.addEventListener("resize", resize);
+
+function drawBase() {
+  if (!world) return;
+  baseCtx.clearRect(0, 0, W, H);
+  baseCtx.fillStyle = "#cfe2ec"; baseCtx.fillRect(0, 0, W, H);
+  const sphere = { type: "Sphere" };
+  const land = topojson.feature(world, world.objects.countries);
+  const borders = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
+  const cp = d3.geoPath(projection, baseCtx);
+  baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
+  baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
+  baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+}
+
+const COLOR_PATERNAL   = [40, 100, 220];
+const COLOR_MATERNAL   = [220, 60, 90];
+const COLOR_OTHER      = [160, 60, 200];
+const COLOR_NO_PARENT  = [0, 0, 0];
+const COLOR_ONE_PARENT = [110, 110, 115];
+function colorFor(s) { return s === 0 ? COLOR_PATERNAL : s === 1 ? COLOR_MATERNAL : COLOR_OTHER; }
+function colorForFinal(side, parStat) {
+  if (parStat === 2) return COLOR_NO_PARENT;
+  if (parStat === 1) return COLOR_ONE_PARENT;
+  return colorFor(side);
+}
+function drawShape(ctx, x, y, r, ps) {
+  if (ps === 2) {
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  } else if (ps === 1) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r, y);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function lowerBound(arr, order, target) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const m = (lo + hi) >>> 1; if (arr[order[m]] < target) lo = m + 1; else hi = m; }
+  return lo;
+}
+
+function projectAll() {
+  for (let i = 0; i < dwellLat.length; i++) {
+    const p = projection([dwellLon[i], dwellLat[i]]);
+    if (p) { dwellSx[i] = p[0]; dwellSy[i] = p[1]; } else { dwellSx[i] = -9999; dwellSy[i] = -9999; }
+  }
+  for (let i = 0; i < flowFromLat.length; i++) {
+    const a = projection([flowFromLon[i], flowFromLat[i]]); const b = projection([flowToLon[i], flowToLat[i]]);
+    flowFromSx[i] = a ? a[0] : -9999; flowFromSy[i] = a ? a[1] : -9999;
+    flowToSx[i] = b ? b[0] : -9999; flowToSy[i] = b ? b[1] : -9999;
+  }
+}
+
+function frame(activeTrailFade) {
+  fxCtx.globalCompositeOperation = "destination-out";
+  fxCtx.fillStyle = `rgba(0,0,0,${activeTrailFade})`;
+  fxCtx.fillRect(0, 0, W, H);
+  fxCtx.globalCompositeOperation = "source-over";
+  if (!timelineLoaded) return;
+
+  const y = curYear, dw = 6;
+  const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
+  for (let k = lo; k < hi; k++) {
+    const i = dwellOrder[k];
+    const dy = y - dwellY[i]; if (dy < 0) continue;
+    const sd = dwellSide[i], ps = dwellSrc[i];
+    if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
+    if (curFilter === "blood" && !dwellBlood[i]) continue;
+    const a = Math.max(0, 1 - dy / dw) * 0.85;
+    const c = colorForFinal(sd, ps);
+    fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
+    const r = 1.7 + (1 - dy / dw) * 1.4;
+    drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
+  }
+
+  const fHi = lowerBound(flowFromY, flowFromOrder, y + 1);
+  for (let k = 0; k < fHi; k++) {
+    const i = flowFromOrder[k];
+    if (flowToY[i] < y - 1) continue;
+    const span = Math.max(1, flowToY[i] - flowFromY[i]);
+    const t = Math.max(0, Math.min(1, (y - flowFromY[i]) / span));
+    if (t <= 0 || t >= 1) continue;
+    const x0 = flowFromSx[i], y0 = flowFromSy[i], x1 = flowToSx[i], y1 = flowToSy[i];
+    if (x0 < -1000 || x1 < -1000) continue;
+    const mx = (x0 + x1) / 2 - (y1 - y0) * 0.18;
+    const my = (y0 + y1) / 2 + (x1 - x0) * 0.18;
+    const u = 1 - t;
+    const px = u * u * x0 + 2 * u * t * mx + t * t * x1;
+    const py = u * u * y0 + 2 * u * t * my + t * t * y1;
+    const fs = flowSide[i], fp = flowSrc[i];
+    if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
+    if (curFilter === "blood" && !flowBlood[i]) continue;
+    const c = colorForFinal(fs, fp);
+    fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.95)`;
+    const r = 1.9;
+    drawShape(fxCtx, px, py, r, fp);
+  }
+}
+
+let last = 0;
+function tick(now) {
+  const dt = last ? (now - last) / 1000 : 0;
+  last = now;
+  if (timelineLoaded) {
+    if (playing) {
+      const sp = parseFloat(speedSel.value);
+      curYear += sp * 60 * dt;
+      if (curYear > maxYear) curYear = minYear;
+      range.value = curYear;
+    } else {
+      curYear = parseFloat(range.value);
+    }
+    const yint = Math.floor(curYear);
+    yearLabel.textContent = yint;
+    yearBig.textContent = yint;
+  }
+  frame(parseFloat(trailSel.value));
+  requestAnimationFrame(tick);
+}
+
+playBtn.addEventListener("click", () => {
+  playing = !playing;
+  playBtn.textContent = playing ? "Pause" : "Play";
+});
+range.addEventListener("input", () => { if (!playing) curYear = parseFloat(range.value); });
+$("rot").addEventListener("input", e => {
+  const lambda = parseFloat(e.target.value) || 0;
+  projection.rotate([lambda, 0, 0]);
+  drawBase();
+  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+});
+
+// ---------- GEDCOM parser ----------
+const EVENT_TAGS = new Set(["BIRT","DEAT","RESI","MARR","EMIG","IMMI","CENS","BAPM","BURI","CHR"]);
+const DATE_RE = /(?:(?:ABT|BEF|AFT|EST|CAL|FROM|TO|BET|AND)\s+)?(?:\d{1,2}\s+)?(?:(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+)?(\d{3,4})/i;
+
+function parseYear(d) {
+  if (!d) return null;
+  const m = d.match(DATE_RE);
+  if (!m) return null;
+  const y = parseInt(m[2], 10);
+  return (y >= 1000 && y <= 2100) ? y : null;
+}
+
+function parseGedcom(text) {
+  const lines = text.split(/\r?\n/);
+  const individuals = [];
+  const families = new Map();
+  let mode = null;
+  let cur = null;
+  let curEvent = null, curDate = null, curPlace = null;
+  let curName = null, curSex = null, curBirth = null, curDeath = null, curFamc = null;
+
+  function flushEvent() {
+    if (cur && mode === "INDI" && curEvent) {
+      const y = parseYear(curDate);
+      if (y !== null && curPlace) cur.events.push({ type: curEvent, year: y, place: curPlace.trim() });
+      if (curEvent === "BIRT" && y !== null && curBirth === null) curBirth = y;
+      if (curEvent === "DEAT" && y !== null && curDeath === null) curDeath = y;
+    }
+    curEvent = null; curDate = null; curPlace = null;
+  }
+  function flushRecord() {
+    flushEvent();
+    if (cur && mode === "INDI") {
+      cur.name = curName || cur.id;
+      cur.sex = curSex || "U";
+      cur.birth_year = curBirth;
+      cur.death_year = curDeath;
+      cur.famc = curFamc;
+      cur.events.sort((a, b) => a.year - b.year);
+      individuals.push(cur);
+    } else if (cur && mode === "FAM") {
+      families.set(cur.id, cur);
+    }
+    cur = null; mode = null;
+    curName = null; curSex = null; curBirth = null; curDeath = null; curFamc = null;
+  }
+
+  for (const raw of lines) {
+    if (!raw) continue;
+    const sp = raw.indexOf(" "); if (sp < 0) continue;
+    const lvl = parseInt(raw.slice(0, sp), 10);
+    if (Number.isNaN(lvl)) continue;
+    const rest = raw.slice(sp + 1);
+    if (lvl === 0) {
+      flushRecord();
+      const mi = rest.match(/^(@[^@]+@)\s+INDI/);
+      const mf = rest.match(/^(@[^@]+@)\s+FAM/);
+      if (mi) { cur = { id: mi[1], events: [] }; mode = "INDI"; }
+      else if (mf) { cur = { id: mf[1], husb: null, wife: null, chil: [] }; mode = "FAM"; }
+      continue;
+    }
+    if (!cur) continue;
+    const sp2 = rest.indexOf(" ");
+    const tag = sp2 >= 0 ? rest.slice(0, sp2) : rest;
+    const value = sp2 >= 0 ? rest.slice(sp2 + 1) : "";
+    if (lvl === 1) {
+      flushEvent();
+      if (mode === "INDI") {
+        if (EVENT_TAGS.has(tag)) curEvent = tag;
+        else if (tag === "NAME" && curName === null) curName = value.replace(/\//g, "").trim();
+        else if (tag === "SEX" && curSex === null) curSex = (value.trim()[0] || "U").toUpperCase();
+        else if (tag === "FAMC" && curFamc === null) curFamc = value.trim();
+      } else if (mode === "FAM") {
+        if (tag === "HUSB") cur.husb = value.trim();
+        else if (tag === "WIFE") cur.wife = value.trim();
+        else if (tag === "CHIL") cur.chil.push(value.trim());
+      }
+    } else if (lvl === 2 && mode === "INDI" && curEvent) {
+      if (tag === "DATE") curDate = value;
+      else if (tag === "PLAC") curPlace = value;
+    }
+  }
+  flushRecord();
+  return { individuals, families };
+}
+
+function computeRelations(individuals, families) {
+  const indiById = new Map();
+  for (const ind of individuals) indiById.set(ind.id, ind);
+  const parentsOf = new Map();
+  for (const ind of individuals) {
+    if (ind.famc && families.has(ind.famc)) {
+      const f = families.get(ind.famc);
+      parentsOf.set(ind.id, [f.husb, f.wife]);
+    }
+  }
+  const isParent = new Set();
+  const childrenOf = new Map();
+  for (const f of families.values()) {
+    if (!f.chil || !f.chil.length) continue;
+    for (const parent of [f.husb, f.wife]) {
+      if (!parent) continue;
+      isParent.add(parent);
+      let arr = childrenOf.get(parent);
+      if (!arr) { arr = []; childrenOf.set(parent, arr); }
+      for (const c of f.chil) arr.push(c);
+    }
+  }
+  return { indiById, parentsOf, isParent, childrenOf };
+}
+
+function ancestorSet(rootId, parentsOf) {
+  const set = new Set();
+  if (!rootId) return set;
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (set.has(id)) continue;
+    set.add(id);
+    const p = parentsOf.get(id);
+    if (p) { if (p[0]) stack.push(p[0]); if (p[1]) stack.push(p[1]); }
+  }
+  return set;
+}
+
+function descendantSet(rootId, childrenOf) {
+  const set = new Set();
+  if (!rootId) return set;
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (set.has(id)) continue;
+    set.add(id);
+    const kids = childrenOf.get(id);
+    if (kids) for (const k of kids) stack.push(k);
+  }
+  return set;
+}
+
+function classifySides(rootId, parentsOf, childrenOf, individuals) {
+  // 0 = paternal ancestor of root, 1 = maternal ancestor of root, 2 = everyone else
+  const sideById = new Map();
+  for (const ind of individuals) sideById.set(ind.id, 2);
+  if (!rootId || !parentsOf.has(rootId)) return sideById;
+  const [fa, mo] = parentsOf.get(rootId);
+  const pat = ancestorSet(fa, parentsOf);
+  const mat = ancestorSet(mo, parentsOf);
+  for (const id of pat) sideById.set(id, 0);
+  for (const id of mat) if (!pat.has(id)) sideById.set(id, 1);
+  return sideById;
+}
+
+function bloodRelatives(rootId, parentsOf, childrenOf) {
+  const set = new Set();
+  if (!rootId) return set;
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (set.has(id)) continue;
+    set.add(id);
+    const p = parentsOf.get(id);
+    if (p) { if (p[0]) stack.push(p[0]); if (p[1]) stack.push(p[1]); }
+    const c = childrenOf.get(id);
+    if (c) for (const k of c) stack.push(k);
+  }
+  return set;
+}
+
+// ---------- Geocoder ----------
+const US_STATE_ABBR = {
+  AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",
+  CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",
+  HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",
+  LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",
+  MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",
+  NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",
+  OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",
+  SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",
+  VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming",
+};
+const CA_PROV = {AB:"Alberta",BC:"British Columbia",MB:"Manitoba",NB:"New Brunswick",NL:"Newfoundland and Labrador",NS:"Nova Scotia",NT:"Northwest Territories",NU:"Nunavut",ON:"Ontario",PE:"Prince Edward Island",QC:"Quebec",SK:"Saskatchewan",YT:"Yukon"};
+const COUNTRY_ALIASES = {
+  "usa":"US","u s a":"US","u s":"US","united states":"US","united states of america":"US","us":"US","america":"US",
+  "uk":"GB","u k":"GB","england":"GB","scotland":"GB","wales":"GB","great britain":"GB","britain":"GB","united kingdom":"GB","northern ireland":"GB",
+  "canada":"CA","ireland":"IE","germany":"DE","deutschland":"DE","prussia":"DE","france":"FR","italy":"IT","spain":"ES","portugal":"PT",
+  "netherlands":"NL","holland":"NL","belgium":"BE","switzerland":"CH","austria":"AT","poland":"PL","russia":"RU","ukraine":"UA",
+  "sweden":"SE","norway":"NO","denmark":"DK","finland":"FI","australia":"AU","new zealand":"NZ","south africa":"ZA",
+  "mexico":"MX","brazil":"BR","japan":"JP","china":"CN","india":"IN","czechoslovakia":"CZ","yugoslavia":"RS","bohemia":"CZ","moravia":"CZ",
+};
+function slug(s) {
+  return s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+const COUNTY_SUFFIX_RE = /\b(County|Parish|Co\.?|Borough|Census Area)\b/i;
+
+function buildGeocoder(gz) {
+  const countryByCC = new Map();
+  for (const c of gz.countries) { countryByCC.set(c.cc, c); COUNTRY_ALIASES[slug(c.name)] = c.cc; }
+  const adminByCC = new Map(), adminBySlug = new Map();
+  for (const a of gz.admin1) {
+    if (!adminByCC.has(a.cc)) adminByCC.set(a.cc, new Map());
+    adminByCC.get(a.cc).set(a.code, a);
+    if (!adminBySlug.has(a.cc)) adminBySlug.set(a.cc, new Map());
+    adminBySlug.get(a.cc).set(slug(a.name), a.code);
+  }
+  const countiesByState = new Map();
+  for (const c of gz.us_counties) {
+    if (!countiesByState.has(c.st)) countiesByState.set(c.st, new Map());
+    const m = countiesByState.get(c.st);
+    m.set(c.name, c); m.set(c.name + " county", c);
+  }
+  const cityByStateSlug = new Map(), cityByCountrySlug = new Map();
+  for (const row of gz.cities) {
+    const [s, cc, st, lat, lon, pop] = row;
+    const k1 = cc + "|" + st;
+    let m = cityByStateSlug.get(k1); if (!m) { m = new Map(); cityByStateSlug.set(k1, m); }
+    const ex = m.get(s); if (!ex || ex.pop < pop) m.set(s, {lat, lon, pop});
+    let m2 = cityByCountrySlug.get(cc); if (!m2) { m2 = new Map(); cityByCountrySlug.set(cc, m2); }
+    const ex2 = m2.get(s); if (!ex2 || ex2.pop < pop) m2.set(s, {lat, lon, pop});
+  }
+  function detectCountry(parts) {
+    if (!parts.length) return null;
+    const last = slug(parts[parts.length - 1]);
+    if (COUNTRY_ALIASES[last]) return COUNTRY_ALIASES[last];
+    if (parts.length >= 2) {
+      const last2 = slug(parts[parts.length - 1] + " " + parts[parts.length - 2]);
+      if (COUNTRY_ALIASES[last2]) return COUNTRY_ALIASES[last2];
+    }
+    return null;
+  }
+  function detectState(parts, cc) {
+    if (!parts.length) return [null, null];
+    if (cc === "US") {
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const tok = parts[i].trim(); const up = tok.toUpperCase().replace(/\.$/, "");
+        if (US_STATE_ABBR[up]) return [up, i];
+        const sl = slug(tok); const codes = adminBySlug.get("US");
+        if (codes && codes.has(sl)) return [codes.get(sl), i];
+      }
+      return [null, null];
+    }
+    if (cc === "CA") {
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const tok = parts[i].trim(); const up = tok.toUpperCase().replace(/\.$/, "");
+        if (CA_PROV[up]) return [up, i];
+        const sl = slug(tok); const codes = adminBySlug.get("CA");
+        if (codes && codes.has(sl)) return [codes.get(sl), i];
+      }
+      return [null, null];
+    }
+    if (cc) {
+      const codes = adminBySlug.get(cc); if (!codes) return [null, null];
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const sl = slug(parts[i]); if (codes.has(sl)) return [codes.get(sl), i];
+      }
+    }
+    return [null, null];
+  }
+  function findCounty(parts, st) {
+    const m = countiesByState.get(st); if (!m) return null;
+    for (const tok of parts) {
+      const s = slug(tok); const sClean = s.replace(/ county$/, "").replace(/ parish$/, "").trim();
+      const hit = m.get(s) || m.get(sClean); if (hit) return hit;
+    }
+    return null;
+  }
+  function geocode(place) {
+    const parts = place.split(",").map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return null;
+    const cc = detectCountry(parts) || "US";
+    const [st, stIdx] = detectState(parts, cc);
+    const hasCountyTok = parts.some(p => COUNTY_SUFFIX_RE.test(p));
+    if (cc === "US" && st && hasCountyTok) {
+      const cty = findCounty(parts, st);
+      if (cty) {
+        const upper = stIdx == null ? parts.length : stIdx;
+        const map = cityByStateSlug.get(cc + "|" + st);
+        if (map) for (let i = 0; i < upper; i++) {
+          if (COUNTY_SUFFIX_RE.test(parts[i])) continue;
+          const hit = map.get(slug(parts[i]));
+          if (hit) return { lat: hit.lat, lon: hit.lon, level: "city" };
+        }
+        return { lat: cty.lat, lon: cty.lon, level: "county" };
+      }
+    }
+    if (st) {
+      const upper = stIdx == null ? parts.length : stIdx;
+      const map = cityByStateSlug.get(cc + "|" + st);
+      if (map) for (let i = 0; i < upper; i++) {
+        if (COUNTY_SUFFIX_RE.test(parts[i])) continue;
+        const hit = map.get(slug(parts[i]));
+        if (hit) return { lat: hit.lat, lon: hit.lon, level: "city" };
+      }
+      if (cc === "US") { const cty = findCounty(parts, st); if (cty) return { lat: cty.lat, lon: cty.lon, level: "county" }; }
+      const ad = adminByCC.get(cc)?.get(st); if (ad) return { lat: ad.lat, lon: ad.lon, level: "admin1" };
+    }
+    if (cc) {
+      const map = cityByCountrySlug.get(cc);
+      if (map) for (const tok of parts) { const hit = map.get(slug(tok)); if (hit) return { lat: hit.lat, lon: hit.lon, level: "city" }; }
+      const c = countryByCC.get(cc); if (c) return { lat: c.lat, lon: c.lon, level: "country" };
+    }
+    return null;
+  }
+  return geocode;
+}
+
+// ---------- Pipeline ----------
+function jitter(lat, lon) { return [lat + (Math.random() - 0.5) * 0.6, lon + (Math.random() - 0.5) * 0.6]; }
+
+function hasRecordedParent(id, parentsOf) {
+  const p = parentsOf.get(id);
+  return !!(p && (p[0] || p[1]));
+}
+
+function parentStatus(id, parentsOf) {
+  // 0 = both parents recorded, 1 = exactly one missing, 2 = neither recorded
+  const p = parentsOf.get(id);
+  if (!p) return 2;
+  const c = (p[0] ? 1 : 0) + (p[1] ? 1 : 0);
+  return c === 2 ? 0 : c === 1 ? 1 : 2;
+}
+
+function buildTimeline(individuals, geocode, parentsOf) {
+  const dwells = [], flows = [];
+  const dwellIndi = [], flowIndi = [], dwellSrc = [], flowSrc = [];
+  let mn = 9999, mx = 0, geocoded = 0, missed = 0;
+  const cache = new Map();
+  for (let idx = 0; idx < individuals.length; idx++) {
+    const ind = individuals[idx];
+    if (!ind.events.length) continue;
+    const isSource = parentStatus(ind.id, parentsOf);
+    const coded = [];
+    for (const e of ind.events) {
+      let g = cache.get(e.place);
+      if (g === undefined) { g = geocode(e.place); cache.set(e.place, g); }
+      if (!g) { missed++; continue; }
+      geocoded++;
+      const [lat, lon] = jitter(g.lat, g.lon);
+      coded.push([e.year, lat, lon]);
+    }
+    if (!coded.length) continue;
+    coded.sort((a, b) => a[0] - b[0]);
+    let prev = null;
+    for (const [y, lat, lon] of coded) {
+      if (y < mn) mn = y; if (y > mx) mx = y;
+      dwells.push([y, lat, lon]); dwellIndi.push(idx); dwellSrc.push(isSource);
+      if (prev) {
+        const [py, plat, plon] = prev;
+        if ((plat !== lat || plon !== lon) && y > py) {
+          flows.push([py, y, plat, plon, lat, lon]);
+          flowIndi.push(idx); flowSrc.push(isSource);
+        }
+      }
+      prev = [y, lat, lon];
+    }
+  }
+  if (mn > mx) { mn = 1700; mx = 2026; }
+  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, min_year: mn, max_year: mx, geocoded, missed };
+}
+
+function loadTimelineArrays(t, sideForIdx) {
+  const N = t.dwells.length, F = t.flows.length;
+  dwellY = new Int16Array(N); dwellLat = new Float32Array(N); dwellLon = new Float32Array(N);
+  dwellSide = new Uint8Array(N); dwellSrc = new Uint8Array(N); dwellIndi = new Int32Array(N);
+  dwellBlood = new Uint8Array(N);
+  dwellSx = new Float32Array(N); dwellSy = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const d = t.dwells[i];
+    dwellY[i] = d[0]; dwellLat[i] = d[1]; dwellLon[i] = d[2];
+    dwellIndi[i] = t.dwellIndi[i]; dwellSrc[i] = t.dwellSrc[i];
+    dwellSide[i] = sideForIdx[t.dwellIndi[i]] ?? 3;
+  }
+  flowFromY = new Int16Array(F); flowToY = new Int16Array(F);
+  flowFromLat = new Float32Array(F); flowFromLon = new Float32Array(F);
+  flowToLat = new Float32Array(F); flowToLon = new Float32Array(F);
+  flowSide = new Uint8Array(F); flowSrc = new Uint8Array(F); flowIndi = new Int32Array(F);
+  flowBlood = new Uint8Array(F);
+  flowFromSx = new Float32Array(F); flowFromSy = new Float32Array(F);
+  flowToSx = new Float32Array(F); flowToSy = new Float32Array(F);
+  for (let i = 0; i < F; i++) {
+    const f = t.flows[i];
+    flowFromY[i] = f[0]; flowToY[i] = f[1];
+    flowFromLat[i] = f[2]; flowFromLon[i] = f[3];
+    flowToLat[i] = f[4]; flowToLon[i] = f[5];
+    flowIndi[i] = t.flowIndi[i]; flowSrc[i] = t.flowSrc[i];
+    flowSide[i] = sideForIdx[t.flowIndi[i]] ?? 3;
+  }
+  dwellOrder = new Int32Array(N); for (let i = 0; i < N; i++) dwellOrder[i] = i; dwellOrder.sort((a, b) => dwellY[a] - dwellY[b]);
+  flowFromOrder = new Int32Array(F); for (let i = 0; i < F; i++) flowFromOrder[i] = i; flowFromOrder.sort((a, b) => flowFromY[a] - flowFromY[b]);
+  minYear = t.min_year; maxYear = t.max_year;
+  range.min = minYear; range.max = maxYear; range.step = 0.1;
+  range.value = Math.max(minYear, 1700);
+  curYear = parseFloat(range.value);
+  timelineLoaded = true; projectAll();
+  fxCtx.clearRect(0, 0, W, H); playBtn.disabled = false;
+}
+
+function rebuildSideArrays() {
+  if (!lastTimeline || !lastSideById || !lastIndividuals) return;
+  for (let i = 0; i < dwellIndi.length; i++) {
+    const ind = lastIndividuals[dwellIndi[i]];
+    dwellSide[i] = lastSideById.get(ind.id) ?? 2;
+    dwellBlood[i] = lastBloodSet && lastBloodSet.has(ind.id) ? 1 : 0;
+  }
+  for (let i = 0; i < flowIndi.length; i++) {
+    const ind = lastIndividuals[flowIndi[i]];
+    flowSide[i] = lastSideById.get(ind.id) ?? 2;
+    flowBlood[i] = lastBloodSet && lastBloodSet.has(ind.id) ? 1 : 0;
+  }
+  fxCtx.clearRect(0, 0, W, H);
+}
+
+async function ensureGazetteer() {
+  if (gazetteer) return gazetteer;
+  stats.textContent = "loading gazetteer (7 MB)...";
+  const r = await fetch("gazetteer.json");
+  const j = await r.json();
+  gazetteer = j; geocoder = buildGeocoder(j);
+  return j;
+}
+
+function rankRootCandidates(individuals, isParent, parentsOf, indiById) {
+  // Top 3 individuals by ancestor count (regardless of leaf status), plus each one's parents.
+  const scored = [];
+  for (const ind of individuals) {
+    const count = ancestorSet(ind.id, parentsOf).size;
+    if (count <= 1) continue;
+    scored.push({ ind, count });
+  }
+  scored.sort((a, b) => b.count - a.count || (b.ind.birth_year ?? -1) - (a.ind.birth_year ?? -1));
+  const top3 = scored.slice(0, 3);
+  const seen = new Set();
+  const out = [];
+  function addById(id, label) {
+    if (!id || seen.has(id)) return;
+    const ind = indiById.get(id);
+    if (!ind) return;
+    seen.add(id);
+    const count = ancestorSet(id, parentsOf).size;
+    out.push({ ind, count, label });
+  }
+  for (let i = 0; i < top3.length; i++) {
+    const top = top3[i].ind;
+    const rank = i + 1;
+    addById(top.id, `#${rank}`);
+    const p = parentsOf.get(top.id);
+    if (p) {
+      addById(p[0], `#${rank} father`);
+      addById(p[1], `#${rank} mother`);
+    }
+  }
+  return out;
+}
+
+async function processFile(file) {
+  welcome.classList.add("hidden");
+  stats.textContent = `reading ${file.name}...`;
+  const text = await file.text();
+  await ensureGazetteer();
+  stats.textContent = "parsing GEDCOM...";
+  await new Promise(r => requestAnimationFrame(r));
+  const { individuals, families } = parseGedcom(text);
+  const { indiById, parentsOf, isParent, childrenOf } = computeRelations(individuals, families);
+  lastIndividuals = individuals; lastIndiById = indiById;
+  lastParentsOf = parentsOf; lastIsParent = isParent; lastChildrenOf = childrenOf;
+  stats.textContent = `geocoding ${individuals.length.toLocaleString()} people...`;
+  await new Promise(r => requestAnimationFrame(r));
+  const tl = buildTimeline(individuals, geocoder, parentsOf);
+  lastTimeline = tl;
+  lastFileName = file.name.replace(/\.(ged|gedcom)$/i, "") || "genealogy";
+
+  const candidates = rankRootCandidates(individuals, isParent, parentsOf, indiById);
+  populateRootSelect(candidates);
+  const rootId = candidates[0]?.ind.id ?? individuals[0]?.id ?? null;
+  applyRoot(rootId);
+
+  rootwrap.style.display = "";
+  legend.style.display = "";
+  $("export").disabled = false;
+}
+
+function populateRootSelect(candidates) {
+  const sel = $("rootSel");
+  sel.innerHTML = "";
+  for (const { ind, count, label } of candidates) {
+    const opt = document.createElement("option");
+    opt.value = ind.id;
+    const yrs = (ind.birth_year ?? "?") + "-" + (ind.death_year ?? "?");
+    const tag = label ? `${label}  ` : "";
+    opt.textContent = `${tag}${ind.name}  (${yrs})  - ${count} ancestors`;
+    sel.appendChild(opt);
+  }
+}
+
+function applyRoot(rootId) {
+  if (!rootId) return;
+  lastRootId = rootId;
+  lastSideById = classifySides(rootId, lastParentsOf, lastChildrenOf, lastIndividuals);
+  lastBloodSet = bloodRelatives(rootId, lastParentsOf, lastChildrenOf);
+  if (timelineLoaded) {
+    rebuildSideArrays();
+  } else {
+    const sideForIdx = new Int8Array(lastIndividuals.length);
+    for (let i = 0; i < lastIndividuals.length; i++) sideForIdx[i] = lastSideById.get(lastIndividuals[i].id) ?? 2;
+    loadTimelineArrays(lastTimeline, sideForIdx);
+    rebuildSideArrays();
+  }
+  const rootInd = lastIndiById.get(rootId);
+  const sel = $("rootSel");
+  for (const opt of sel.options) opt.selected = (opt.value === rootId);
+  stats.textContent = `${lastIndividuals.length.toLocaleString()} people  |  ${dwellY.length.toLocaleString()} events  |  ${flowFromY.length.toLocaleString()} migrations  |  ${minYear}-${maxYear}  |  root: ${rootInd?.name ?? "?"}`;
+}
+
+$("rootSel").addEventListener("change", e => {
+  if (e.target.value && e.target.value !== lastRootId) applyRoot(e.target.value);
+});
+$("filt").addEventListener("change", e => {
+  curFilter = e.target.value;
+  fxCtx.clearRect(0, 0, W, H);
+});
+
+$("pick").addEventListener("click", () => fileInp.click());
+const pick2 = $("pick2"); if (pick2) pick2.addEventListener("click", () => fileInp.click());
+fileInp.addEventListener("change", () => {
+  if (fileInp.files && fileInp.files[0]) processFile(fileInp.files[0]).catch(e => { stats.textContent = "error: " + e.message; console.error(e); });
+});
+window.addEventListener("dragover", e => { e.preventDefault(); dropEl.classList.add("on"); });
+window.addEventListener("dragleave", e => { if (!e.relatedTarget) dropEl.classList.remove("on"); });
+window.addEventListener("drop", e => {
+  e.preventDefault(); dropEl.classList.remove("on");
+  const f = e.dataTransfer?.files?.[0];
+  if (f) processFile(f).catch(err => { stats.textContent = "error: " + err.message; console.error(err); });
+});
+
+// ---------- Export shareable HTML ----------
+function buildExportHtml(tl, worldData, label, candidatesData) {
+  const exportTl = {
+    dwells: tl.dwells, flows: tl.flows,
+    dwellIndi: tl.dwellIndi, flowIndi: tl.flowIndi,
+    dwellSrc: tl.dwellSrc, flowSrc: tl.flowSrc,
+    candidates: candidatesData,
+    min_year: tl.min_year, max_year: tl.max_year,
+  };
+  const tlJson = JSON.stringify(exportTl).replace(/<\//g, "<\\/");
+  const worldJson = JSON.stringify(worldData).replace(/<\//g, "<\\/");
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${label} - Genealogy Particle Flow</title>
+<style>
+html, body { margin:0; padding:0; background:#cfe2ec; color:#1c2433; font:13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; overflow:hidden; }
+canvas { position:fixed; inset:0; display:block; image-rendering:pixelated; }
+#base { z-index:1; } #fx { z-index:2; }
+#yearBig { position:fixed; inset:0; z-index:3; pointer-events:none; display:flex; align-items:center; justify-content:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; font-weight:700; font-size:42vh; line-height:0.85; color:rgba(20,30,55,0.06); letter-spacing:-0.02em; user-select:none; mix-blend-mode:multiply; }
+#ui { position:fixed; left:14px; right:14px; bottom:14px; z-index:10; background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:grid; grid-template-columns:auto 1fr auto auto auto; gap:12px; align-items:center; }
+#ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
+#year { font-variant-numeric:tabular-nums; font-weight:600; font-size:18px; min-width:60px; }
+#range { width:100%; -webkit-appearance:none; appearance:none; height:4px; background:#c0ccd8; border-radius:2px; }
+#range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
+#title { position:fixed; top:14px; left:18px; right:18px; z-index:11; font-size:14px; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.legend { font-size:11px; color:#566480; display:flex; gap:10px; align-items:center; }
+.legend .swatch { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+.legend .square { border-radius:0; }
+.legend .diamond { width:12px; height:12px; border-radius:2px; transform:rotate(45deg); }
+select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
+label { color:#566480; font-size:11px; }
+</style>
+</head>
+<body>
+<div id="title">
+  <b>${label}</b>
+  <label>root <select id="rootSel"></select></label>
+  <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
+  <span class="legend">
+    <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
+    <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
+    <span><span class="swatch" style="background:#a03cc8;"></span>other</span>
+    <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 parent missing</span>
+    <span><span class="swatch square" style="background:#000;"></span>both missing</span>
+  </span>
+</div>
+<canvas id="base"></canvas>
+<canvas id="fx"></canvas>
+<div id="yearBig">----</div>
+<div id="ui">
+  <button id="play">Play</button>
+  <input type="range" id="range" min="0" max="1" step="0.1" value="0">
+  <span id="year">----</span>
+  <label>speed <select id="speed"><option value="0.05">0.25x</option><option value="0.1">0.5x</option><option value="0.2" selected>1x</option><option value="0.5">2.5x</option><option value="1">5x</option><option value="2">10x</option></select></label>
+  <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
+  <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
+</div>
+<script id="tl" type="application/json">${tlJson}<\/script>
+<script id="world" type="application/json">${worldJson}<\/script>
+<script type="module">
+import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+import * as topojson from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
+const tl = JSON.parse(document.getElementById("tl").textContent);
+const world = JSON.parse(document.getElementById("world").textContent);
+const baseCanvas=document.getElementById("base"), fxCanvas=document.getElementById("fx");
+const baseCtx=baseCanvas.getContext("2d"), fxCtx=fxCanvas.getContext("2d");
+const yearLabel=document.getElementById("year"), yearBig=document.getElementById("yearBig");
+const playBtn=document.getElementById("play"), range=document.getElementById("range");
+const speedSel=document.getElementById("speed"), trailSel=document.getElementById("trail");
+const rootSel=document.getElementById("rootSel"), filtSel=document.getElementById("filt");
+let W=0,H=0; const projection=d3.geoNaturalEarth1();
+const N=tl.dwells.length, F=tl.flows.length;
+const candidates = tl.candidates || [];
+let curCandidate = candidates[0] || null;
+let curFilter = "all";
+for (const c of candidates) {
+  const opt = document.createElement("option");
+  opt.value = c.id;
+  const yrs = (c.birth ?? "?") + "-" + (c.death ?? "?");
+  const tag = c.label ? c.label + "  " : "";
+  opt.textContent = tag + c.name + "  (" + yrs + ")  - " + c.count + " ancestors";
+  rootSel.appendChild(opt);
+}
+const dwellY=new Int16Array(N), dwellLat=new Float32Array(N), dwellLon=new Float32Array(N);
+const dwellSide=new Uint8Array(N), dwellSrc=new Uint8Array(N), dwellBlood=new Uint8Array(N);
+const dwellIndi=new Int32Array(N);
+const dwellSx=new Float32Array(N), dwellSy=new Float32Array(N);
+for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i];}
+const flowFromY=new Int16Array(F), flowToY=new Int16Array(F);
+const flowFromLat=new Float32Array(F), flowFromLon=new Float32Array(F), flowToLat=new Float32Array(F), flowToLon=new Float32Array(F);
+const flowSide=new Uint8Array(F), flowSrc=new Uint8Array(F), flowBlood=new Uint8Array(F);
+const flowIndi=new Int32Array(F);
+const flowFromSx=new Float32Array(F), flowFromSy=new Float32Array(F), flowToSx=new Float32Array(F), flowToSy=new Float32Array(F);
+for (let i=0;i<F;i++){const f=tl.flows[i]; flowFromY[i]=f[0]; flowToY[i]=f[1]; flowFromLat[i]=f[2]; flowFromLon[i]=f[3]; flowToLat[i]=f[4]; flowToLon[i]=f[5]; flowSrc[i]=tl.flowSrc[i]; flowIndi[i]=tl.flowIndi[i];}
+function applyCandidate(c){
+  curCandidate = c;
+  if (!c) return;
+  const sf = c.sideForIdx, bf = c.bloodForIdx;
+  for (let i=0;i<N;i++){ dwellSide[i] = sf[dwellIndi[i]] ?? 2; dwellBlood[i] = bf[dwellIndi[i]] || 0; }
+  for (let i=0;i<F;i++){ flowSide[i] = sf[flowIndi[i]] ?? 2; flowBlood[i] = bf[flowIndi[i]] || 0; }
+  fxCtx.clearRect(0,0,W,H);
+}
+applyCandidate(curCandidate);
+rootSel.addEventListener("change", e => {
+  const c = candidates.find(c => c.id === e.target.value);
+  if (c) applyCandidate(c);
+});
+filtSel.addEventListener("change", e => { curFilter = e.target.value; fxCtx.clearRect(0,0,W,H); });
+const dwellOrder=new Int32Array(N); for(let i=0;i<N;i++) dwellOrder[i]=i; dwellOrder.sort((a,b)=>dwellY[a]-dwellY[b]);
+const flowOrder=new Int32Array(F); for(let i=0;i<F;i++) flowOrder[i]=i; flowOrder.sort((a,b)=>flowFromY[a]-flowFromY[b]);
+const minYear=tl.min_year, maxYear=tl.max_year;
+range.min=minYear; range.max=maxYear; range.step=0.1; range.value=Math.max(minYear,1700);
+let curYear=parseFloat(range.value), playing=false;
+function resize(){
+  W=window.innerWidth; H=window.innerHeight;
+  for (const c of [baseCanvas,fxCanvas]){
+    c.width=Math.floor(W*devicePixelRatio); c.height=Math.floor(H*devicePixelRatio);
+    c.style.width=W+"px"; c.style.height=H+"px";
+    c.getContext("2d").setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  }
+  projection.fitExtent([[10,30],[W-10,H-80]],{type:"Sphere"});
+  drawBase(); projectAll();
+}
+window.addEventListener("resize",resize);
+function drawBase(){
+  baseCtx.clearRect(0,0,W,H); baseCtx.fillStyle="#cfe2ec"; baseCtx.fillRect(0,0,W,H);
+  const sphere={type:"Sphere"}; const land=topojson.feature(world,world.objects.countries); const borders=topojson.mesh(world,world.objects.countries,(a,b)=>a!==b);
+  const cp=d3.geoPath(projection,baseCtx);
+  baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
+  baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
+  baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+}
+function projectAll(){
+  for (let i=0;i<N;i++){const p=projection([dwellLon[i],dwellLat[i]]); if(p){dwellSx[i]=p[0]; dwellSy[i]=p[1];} else {dwellSx[i]=-9999; dwellSy[i]=-9999;}}
+  for (let i=0;i<F;i++){const a=projection([flowFromLon[i],flowFromLat[i]]); const b=projection([flowToLon[i],flowToLat[i]]);
+    flowFromSx[i]=a?a[0]:-9999; flowFromSy[i]=a?a[1]:-9999; flowToSx[i]=b?b[0]:-9999; flowToSy[i]=b?b[1]:-9999;}
+}
+const COLOR=[[40,100,220],[220,60,90],[160,60,200]];
+const COLOR_NO=[0,0,0], COLOR_ONE=[110,110,115];
+function colorForFinal(side, ps){ if(ps===2) return COLOR_NO; if(ps===1) return COLOR_ONE; return COLOR[side]||COLOR[2]; }
+function drawShape(ctx,x,y,r,ps){
+  if(ps===2){ ctx.fillRect(x-r,y-r,r*2,r*2); }
+  else if(ps===1){ ctx.beginPath(); ctx.moveTo(x,y-r); ctx.lineTo(x+r,y); ctx.lineTo(x,y+r); ctx.lineTo(x-r,y); ctx.closePath(); ctx.fill(); }
+  else { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
+}
+function lowerBound(arr,order,target){let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>>1; if(arr[order[m]]<target) lo=m+1; else hi=m;} return lo;}
+function frame(fade){
+  fxCtx.globalCompositeOperation="destination-out"; fxCtx.fillStyle="rgba(0,0,0,"+fade+")"; fxCtx.fillRect(0,0,W,H);
+  fxCtx.globalCompositeOperation="source-over";
+  const y=curYear, dw=6;
+  const lo=lowerBound(dwellY,dwellOrder,y-dw), hi=lowerBound(dwellY,dwellOrder,y+1);
+  for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const dy=y-dwellY[i]; if(dy<0) continue;
+    const sd=dwellSide[i], ps=dwellSrc[i];
+    if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
+    if (curFilter==="blood" && !dwellBlood[i]) continue;
+    const a=Math.max(0,1-dy/dw)*0.85; const c=colorForFinal(sd,ps);
+    fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+a.toFixed(3)+")";
+    const r=1.7+(1-dy/dw)*1.4;
+    drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
+  }
+  const fHi=lowerBound(flowFromY,flowOrder,y+1);
+  for (let k=0;k<fHi;k++){const i=flowOrder[k]; if(flowToY[i]<y-1) continue;
+    const span=Math.max(1,flowToY[i]-flowFromY[i]); const t=Math.max(0,Math.min(1,(y-flowFromY[i])/span));
+    if (t<=0||t>=1) continue;
+    const x0=flowFromSx[i],y0=flowFromSy[i],x1=flowToSx[i],y1=flowToSy[i]; if(x0<-1000||x1<-1000) continue;
+    const mx=(x0+x1)/2-(y1-y0)*0.18, my=(y0+y1)/2+(x1-x0)*0.18;
+    const u=1-t; const px=u*u*x0+2*u*t*mx+t*t*x1, py=u*u*y0+2*u*t*my+t*t*y1;
+    const fs=flowSide[i], fp=flowSrc[i];
+    if (curFilter==="ancestors" && fs!==0 && fs!==1) continue;
+    if (curFilter==="blood" && !flowBlood[i]) continue;
+    const c=colorForFinal(fs,fp);
+    fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+",0.95)";
+    drawShape(fxCtx, px, py, 1.9, fp);
+  }
+}
+let last=0;
+function tick(now){
+  const dt=last?(now-last)/1000:0; last=now;
+  if (playing){curYear+=parseFloat(speedSel.value)*60*dt; if(curYear>maxYear) curYear=minYear; range.value=curYear;}
+  else curYear=parseFloat(range.value);
+  const yint=Math.floor(curYear);
+  yearLabel.textContent=yint; yearBig.textContent=yint;
+  frame(parseFloat(trailSel.value));
+  requestAnimationFrame(tick);
+}
+playBtn.addEventListener("click",()=>{playing=!playing; playBtn.textContent=playing?"Pause":"Play";});
+range.addEventListener("input",()=>{if(!playing) curYear=parseFloat(range.value);});
+document.getElementById("rot").addEventListener("input",e=>{
+  projection.rotate([parseFloat(e.target.value)||0,0,0]);
+  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H);
+});
+resize(); requestAnimationFrame(tick);
+<\/script>
+</body>
+</html>`;
+}
+
+function exportHtml() {
+  if (!lastTimeline || !world || !lastIndividuals) return;
+  const candidates = rankRootCandidates(lastIndividuals, lastIsParent, lastParentsOf, lastIndiById);
+  const candidatesData = candidates.map(c => {
+    const sideMap = classifySides(c.ind.id, lastParentsOf, lastChildrenOf, lastIndividuals);
+    const bloodSet = bloodRelatives(c.ind.id, lastParentsOf, lastChildrenOf);
+    const sideForIdx = new Array(lastIndividuals.length);
+    const bloodForIdx = new Array(lastIndividuals.length);
+    for (let i = 0; i < lastIndividuals.length; i++) {
+      sideForIdx[i] = sideMap.get(lastIndividuals[i].id) ?? 2;
+      bloodForIdx[i] = bloodSet.has(lastIndividuals[i].id) ? 1 : 0;
+    }
+    return {
+      id: c.ind.id,
+      name: c.ind.name,
+      birth: c.ind.birth_year ?? null,
+      death: c.ind.death_year ?? null,
+      label: c.label || "",
+      count: c.count,
+      sideForIdx, bloodForIdx,
+    };
+  });
+  const html = buildExportHtml(lastTimeline, world, lastFileName, candidatesData);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = lastFileName + "-flow.html";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+}
+$("export").addEventListener("click", exportHtml);
+
+async function bootBasemap() {
+  stats.textContent = "loading basemap...";
+  const w = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(r => r.json());
+  world = w; resize();
+  stats.textContent = "ready - drop or open a .ged file";
+  welcome.classList.remove("hidden");
+  requestAnimationFrame(tick);
+}
+bootBasemap().catch(e => { stats.textContent = "boot error: " + e.message; });
+</script>
+</body>
+</html>

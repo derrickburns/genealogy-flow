@@ -1,0 +1,32 @@
+# GeoNames source data (reproducible via download_geonames.sh)
+US.zip
+cities500.zip
+cities15000.zip
+admin1.txt
+countryInfo.txt
+
+# Generated gazetteer (rebuilt with `python3 build_gazetteer.py`)
+gazetteer.json
+gazetteer.json.gz
+
+# Per-GEDCOM intermediate output (rebuilt by parse_gedcom.py / geocode.py / build_timeline.py)
+individuals.json
+places.json
+timeline.json
+misses.txt
+
+# Per-GEDCOM diagnostic output
+*-isolates.txt
+
+# Local server logs / pids
+/tmp/genflow.log
+/tmp/genflow.pid
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# OS
+.DS_Store
