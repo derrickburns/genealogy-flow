@@ -32,6 +32,16 @@
   #ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   #ui .uirow.primary { flex-wrap:nowrap; }
   #range { flex:1 1 auto; min-width:120px; }
+  .mapBtn { position:absolute; top:10px; right:10px; z-index:5; background:rgba(255,255,255,0.95); border:1px solid #c0ccd8; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; font-size:11px; color:#1c2433; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+  .mapBtn:hover:not(:disabled) { background:#fff; }
+  .mapBtn:disabled { color:#9aa6bc; cursor:default; background:rgba(255,255,255,0.7); }
+  .hoverTip { position:absolute; z-index:6; pointer-events:none; background:rgba(255,255,255,0.97); border:1px solid #c0ccd8; border-radius:6px; padding:6px 10px; font-size:11px; line-height:1.35; color:#1c2433; box-shadow:0 2px 8px rgba(0,0,0,0.12); display:none; max-width:280px; }
+  .hoverTip .tipName { font-weight:700; font-size:12px; color:#0a1426; }
+  .hoverTip .tipYrs { color:#566480; font-variant-numeric:tabular-nums; }
+  .hoverTip .tipChain { margin-top:4px; color:#566480; font-size:10.5px; }
+  .hoverTip .tipChain .step { display:flex; gap:4px; }
+  .hoverTip .tipChain .lbl { color:#888; font-style:italic; min-width:50px; }
+  .hoverTip .tipChain .nm { color:#1c2433; }
   .rangeWrap { position:relative; flex:1 1 auto; min-width:120px; padding-bottom:14px; display:flex; align-items:center; }
   .rangeWrap #range { flex:1 1 auto; min-width:0; }
   .rangeMark { position:absolute; bottom:0; transform:translateX(-50%); pointer-events:none; font-size:10px; color:#566480; line-height:1; white-space:nowrap; }
@@ -179,7 +189,7 @@
   </span>
 </div>
 <div id="middle">
-<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div></div>
+<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
 <aside id="panel">
   <div id="panelControls">
     <label title="show events from this many years prior">window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
@@ -425,6 +435,84 @@ fxCanvas.addEventListener("click", e => {
   applyExpansion();
 });
 
+function hitTestMap(x, y, hitR2 = 14 * 14) {
+  if (!timelineLoaded) return -1;
+  const dw = dwellWindow;
+  const yint = Math.floor(curYear);
+  const lo = lowerBound(dwellY, dwellOrder, yint - dw);
+  const hi = lowerBound(dwellY, dwellOrder, yint + 1);
+  let bestI = -1, bestDist = Infinity;
+  for (let k = lo; k < hi; k++) {
+    const i = dwellOrder[k];
+    if (curFilter === "ancestors" && dwellSide[i] !== 0 && dwellSide[i] !== 1) continue;
+    if (curFilter === "blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
+    const sx = dwellSx[i], sy = dwellSy[i];
+    if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
+    const ddx = sx - x, ddy = sy - y;
+    const dist = ddx * ddx + ddy * ddy;
+    if (dist < bestDist) { bestDist = dist; bestI = i; }
+  }
+  return bestDist <= hitR2 ? bestI : -1;
+}
+
+const hoverTip = $("hoverTip");
+fxCanvas.addEventListener("mousemove", e => {
+  const i = hitTestMap(e.offsetX, e.offsetY);
+  if (i < 0) { hoverTip.style.display = "none"; return; }
+  const ind = lastIndividuals[dwellIndi[i]];
+  if (!ind) { hoverTip.style.display = "none"; return; }
+  const by = ind.birth_year, dy = ind.death_year;
+  const yrs = by && dy ? `${by}–${dy}` : by ? `b. ${by}` : dy ? `d. ${dy}` : "";
+  let chainHtml = "";
+  if (lastRootId && ind.id !== lastRootId) {
+    const path = pathFromRoot(ind.id);
+    if (path && path.length) {
+      const rows = [];
+      for (const step of path) {
+        const stepInd = lastIndiById.get(step.id);
+        rows.push(`<div class="step"><span class="lbl">${escHtml(step.label)}</span><span class="nm">${escHtml(stepInd?.name || step.id)}</span></div>`);
+      }
+      chainHtml = `<div class="tipChain">${rows.join("")}</div>`;
+    } else {
+      chainHtml = `<div class="tipChain" style="font-style:italic;">no path to root</div>`;
+    }
+  }
+  hoverTip.innerHTML = `<div class="tipName">${escHtml(ind.name)}</div><div class="tipYrs">${yrs}</div>${chainHtml}`;
+  const wrapRect = $("mapWrap").getBoundingClientRect();
+  const tx = Math.min(e.offsetX + 14, W - 290);
+  const ty = Math.min(e.offsetY + 14, H - 200);
+  hoverTip.style.left = tx + "px";
+  hoverTip.style.top = ty + "px";
+  hoverTip.style.display = "block";
+});
+fxCanvas.addEventListener("mouseleave", () => { hoverTip.style.display = "none"; });
+
+function centerOnGeo(lon, lat) {
+  if (projectionName === "ortho") {
+    projection.rotate([-lon, -lat, 0]);
+    zoomTransform = { k: zoomTransform.k, x: 0, y: 0 };
+    d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.scale(zoomTransform.k));
+  } else {
+    applyProjectionFromZoom();
+    const p = projection([lon, lat]);
+    if (!p || !Number.isFinite(p[0])) return;
+    const dx = W / 2 - p[0];
+    const dy = H / 2 - p[1];
+    zoomTransform = { k: zoomTransform.k, x: zoomTransform.x + dx, y: zoomTransform.y + dy };
+    d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(zoomTransform.x, zoomTransform.y).scale(zoomTransform.k));
+  }
+  applyProjectionFromZoom();
+  drawBase();
+  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+}
+
+$("centerBtn").addEventListener("click", () => {
+  if (highlightedDwell < 0) return;
+  centerOnGeo(dwellLon[highlightedDwell], dwellLat[highlightedDwell]);
+});
+
 let staticLabelRects = [];
 function rectsOverlap(a, b) {
   return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
@@ -633,7 +721,7 @@ function frame(activeTrailFade) {
     const c = colorForFinal(sd, ps);
     fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
     const exact = dwellExact[i];
-    const r = (1.7 + (1 - dy / dw) * 1.4) * (exact ? 1.4 : 1);
+    const r = (2.6 + (1 - dy / dw) * 2.0) * (exact ? 1.4 : 1);
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
     if (dwellCity && dwellCity[i] >= 0 && dy < 3) {
       const cities = currentCities();
@@ -748,6 +836,7 @@ function tick(now) {
     yearBig.textContent = yint;
     updateStatusLabels(yint);
   }
+  $("centerBtn").disabled = highlightedDwell < 0;
   maybeUpdateHistoricalBasemap();
   if (_baseDirty) {
     _baseDirty = false;
@@ -2631,7 +2720,7 @@ function frame(fade){
     if (!passesStatus(dwellIndi[i])) continue;
     const a=Math.max(0,1-dy/dw)*0.85; const c=colorForFinal(sd,ps);
     fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+a.toFixed(3)+")";
-    const exact=dwellExact[i]; const r=(1.7+(1-dy/dw)*1.4)*(exact?1.4:1);
+    const exact=dwellExact[i]; const r=(2.6+(1-dy/dw)*2.0)*(exact?1.4:1);
     drawShape(fxCtx,dwellSx[i],dwellSy[i],r,ps);
     if (dwellCity[i]>=0 && dy<3){
       const rawCity=currentCities()[dwellCity[i]]; if (!rawCity) continue;
