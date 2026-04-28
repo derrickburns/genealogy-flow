@@ -740,6 +740,27 @@ function parseYear(d) {
   return (y >= 1000 && y <= 2100) ? y : null;
 }
 
+const SINGLETON_EVENT_TAGS = new Set(["BIRT", "DEAT", "BURI", "BAPM", "CHR"]);
+function placeSpecificity(place) {
+  if (!place) return 0;
+  return place.split(",").length * 1000 + place.length;
+}
+function dedupeSingletonEvents(events) {
+  const winners = new Map();
+  const others = [];
+  for (const e of events) {
+    if (SINGLETON_EVENT_TAGS.has(e.type)) {
+      const score = placeSpecificity(e.place);
+      const cur = winners.get(e.type);
+      if (!cur || score > cur.score) winners.set(e.type, { ev: e, score });
+    } else {
+      others.push(e);
+    }
+  }
+  for (const w of winners.values()) others.push(w.ev);
+  return others;
+}
+
 function parseGedcom(text) {
   const lines = text.split(/\r?\n/);
   const individuals = [];
@@ -762,13 +783,14 @@ function parseGedcom(text) {
   function flushRecord() {
     flushEvent();
     if (cur && mode === "INDI") {
+      cur.events = dedupeSingletonEvents(cur.events);
       cur.name = curName || cur.id;
       cur.sex = curSex || "U";
-      cur.birth_year = curBirth;
-      cur.death_year = curDeath;
       cur.famc = curFamc;
       cur.raw = curRaw.join("\n");
       cur.events.sort((a, b) => a.year - b.year);
+      cur.birth_year = (cur.events.find(e => e.type === "BIRT")?.year) ?? null;
+      cur.death_year = (cur.events.find(e => e.type === "DEAT")?.year) ?? null;
       individuals.push(cur);
     } else if (cur && mode === "FAM") {
       families.set(cur.id, cur);
