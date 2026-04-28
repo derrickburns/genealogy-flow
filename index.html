@@ -1675,45 +1675,114 @@ function updatePanel(force) {
     }
   }
 
-  const html = rows.map(r => {
-    if (r.kind === "real") {
-      const i = r.i;
-      const ind = lastIndividuals[dwellIndi[i]];
-      const t = dwellType[i];
-      const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
-      const sd = dwellSide[i], ps = dwellSrc[i];
-      const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
-      const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
-      const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
-      const expanded = highlightedDwell === i && highlightInferredYear < 0;
-      const cls = (expanded ? "expanded selected" : "");
-      const rel = relationCache.get(ind?.id);
-      const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
-      const head = `<div class="liHead"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></div>`;
-      const card = expanded && ind ? renderExpandedCard(ind, i, false) : "";
-      if (expanded) return `<li class="${cls}" data-idx="${i}">${head}${card}</li>`;
-      return `<li class="${cls}" data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
-    } else {
-      const ind = lastIndividuals[r.indi];
-      const sd = r.side;
-      const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
-      const swatch = `<span class="pm" style="background:rgb(${c[0]},${c[1]},${c[2]});opacity:0.6"></span>`;
-      const expanded = highlightedDwell === r.srcDwell && highlightInferredYear === r.year;
-      const cls = (expanded ? "inferred expanded selected" : "inferred");
-      const rel = relationCache.get(ind?.id);
-      const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
-      const head = `<div class="liHead"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></div>`;
-      const card = expanded && ind ? renderExpandedCard(ind, r.srcDwell, true) : "";
-      if (expanded) return `<li class="${cls}" data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}">${head}${card}</li>`;
-      return `<li class="${cls}" data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></li>`;
-    }
-  }).join("");
+  const html = rows.map(r => rowLiHtml(r, isRowExpanded(r))).join("");
   panelList.innerHTML = html || `<li style="color:#888;padding:14px;">No events visible.</li>`;
 
   if (highlightedDwell >= 0) {
     const expandedLi = panelList.querySelector("li.expanded");
     if (expandedLi) expandedLi.scrollIntoView({ block: "start" });
   }
+}
+
+function isRowExpanded(r) {
+  if (highlightedDwell < 0) return false;
+  if (r.kind === "real") return r.i === highlightedDwell && highlightInferredYear < 0;
+  return r.srcDwell === highlightedDwell && r.year === highlightInferredYear;
+}
+
+function rowInnerHtml(r) {
+  if (r.kind === "real") {
+    const i = r.i;
+    const ind = lastIndividuals[dwellIndi[i]];
+    const t = dwellType[i];
+    const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+    const sd = dwellSide[i], ps = dwellSrc[i];
+    const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
+    const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
+    const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
+    const rel = relationCache.get(ind?.id);
+    const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
+    return `<span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span>`;
+  }
+  const ind = lastIndividuals[r.indi];
+  const sd = r.side;
+  const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
+  const swatch = `<span class="pm" style="background:rgb(${c[0]},${c[1]},${c[2]});opacity:0.6"></span>`;
+  const rel = relationCache.get(ind?.id);
+  const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
+  return `<span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span>`;
+}
+
+function rowContentHtml(r, expanded) {
+  const inner = rowInnerHtml(r);
+  if (!expanded) return inner;
+  if (r.kind === "real") {
+    const ind = lastIndividuals[dwellIndi[r.i]];
+    if (!ind) return inner;
+    return `<div class="liHead">${inner}</div>${renderExpandedCard(ind, r.i, false)}`;
+  }
+  const ind = lastIndividuals[r.indi];
+  if (!ind) return inner;
+  return `<div class="liHead">${inner}</div>${renderExpandedCard(ind, r.srcDwell, true)}`;
+}
+
+function rowAttrsHtml(r) {
+  if (r.kind === "real") return `data-idx="${r.i}"`;
+  return `data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}"`;
+}
+
+function rowClass(r, expanded) {
+  if (r.kind === "real") return expanded ? "expanded selected" : "";
+  return expanded ? "inferred expanded selected" : "inferred";
+}
+
+function rowLiHtml(r, expanded) {
+  return `<li class="${rowClass(r, expanded)}" ${rowAttrsHtml(r)}>${rowContentHtml(r, expanded)}</li>`;
+}
+
+function liToRow(li) {
+  const i = parseInt(li.dataset.idx, 10);
+  if (Number.isNaN(i)) return null;
+  if (li.dataset.inferred) {
+    const year = parseInt(li.dataset.inferred, 10);
+    const basedOnYear = parseInt(li.dataset.basedon, 10);
+    const indi = dwellIndi[i];
+    const ind = lastIndividuals[indi];
+    if (!ind) return null;
+    const sd = lastSideById ? (lastSideById.get(ind.id) ?? 2) : 2;
+    const lastE = ind.events.find(e => e.year === basedOnYear);
+    return { kind: "inferred", indi, srcDwell: i, year, place: lastE?.place ?? "", side: sd, basedOnYear };
+  }
+  return { kind: "real", i, year: dwellY[i] };
+}
+
+function applyExpansion() {
+  const oldLi = panelList.querySelector("li.expanded");
+  if (oldLi) {
+    const oldRow = liToRow(oldLi);
+    if (oldRow) {
+      oldLi.className = rowClass(oldRow, false);
+      oldLi.innerHTML = rowContentHtml(oldRow, false);
+    }
+  }
+  if (highlightedDwell < 0) return;
+  const wantInferred = highlightInferredYear >= 0;
+  let newLi = null;
+  if (wantInferred) {
+    newLi = panelList.querySelector(`li[data-idx="${highlightedDwell}"][data-inferred="${highlightInferredYear}"]`);
+  } else {
+    const cands = panelList.querySelectorAll(`li[data-idx="${highlightedDwell}"]`);
+    for (const li of cands) { if (!li.hasAttribute("data-inferred")) { newLi = li; break; } }
+  }
+  if (!newLi) {
+    updatePanel(true);
+    return;
+  }
+  const newRow = liToRow(newLi);
+  if (!newRow) return;
+  newLi.className = rowClass(newRow, true);
+  newLi.innerHTML = rowContentHtml(newRow, true);
+  newLi.scrollIntoView({ block: "start" });
 }
 
 function renderExpandedCard(ind, dwellIdx, isInferred) {
@@ -1799,7 +1868,7 @@ panelList.addEventListener("click", e => {
     range.value = curYear;
     if (playing) { playing = false; playBtn.textContent = "Play"; }
     fxCtx.clearRect(0, 0, W, H);
-    updatePanel(true);
+    applyExpansion();
     return;
   }
   const li = e.target.closest("li[data-idx]"); if (!li) return;
@@ -1821,7 +1890,7 @@ panelList.addEventListener("click", e => {
     if (playing) { playing = false; playBtn.textContent = "Play"; }
   }
   fxCtx.clearRect(0, 0, W, H);
-  updatePanel(true);
+  applyExpansion();
 });
 
 async function handleFiles(files) {
