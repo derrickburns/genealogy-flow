@@ -13,7 +13,7 @@
     #app { grid-template-rows: auto 1fr auto; }
   }
   #mapWrap { position:relative; min-width:0; min-height:0; overflow:hidden; border-radius:10px; }
-  canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixelated; }
+  canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixelated; touch-action:none; }
   #base { z-index:1; } #fx { z-index:2; }
   #yearBig {
     position:absolute; left:0; top:0; right:0; bottom:0; z-index:3; pointer-events:none;
@@ -94,6 +94,7 @@
   #panelList li.inferred { background:#fafbfd; font-style:italic; }
   #panelList li.inferred .nm { color:#566480; }
   #panelList .tag { display:inline-block; background:#e0e6ee; color:#566480; font-size:10px; padding:0 4px; border-radius:3px; margin-left:4px; vertical-align:middle; font-style:normal; }
+  #panelList .tag.rel { background:#dde9ff; color:#1f3a78; }
   #panelList .yr { font-variant-numeric:tabular-nums; color:#888; margin-right:6px; font-size:11px; }
   #panelList .nm { font-weight:600; color:#1c2433; }
   #panelList .ev { color:#566480; font-size:11px; }
@@ -323,8 +324,10 @@ function applyZoom() {
 const zoomBehavior = d3.zoom()
   .scaleExtent([1, 64])
   .filter(e => {
-    if (projectionName === "ortho") return e.type === "wheel" || e.type === "dblclick";
-    return !e.ctrlKey && !e.button;
+    if (e.type === "wheel") { e.preventDefault(); return true; }
+    if (e.type === "dblclick") return true;
+    if (projectionName === "ortho") return false;
+    return !e.button;
   })
   .on("zoom", e => { zoomTransform = e.transform; applyZoom(); });
 d3.select(fxCanvas).call(zoomBehavior);
@@ -831,6 +834,60 @@ function ancestorSet(rootId, parentsOf) {
   return set;
 }
 
+function ancestorsWithDepth(id, parentsOf, maxDepth = 30) {
+  const out = new Map();
+  const stack = [[id, 0]];
+  while (stack.length) {
+    const [cur, d] = stack.pop();
+    if (d > maxDepth) continue;
+    if (out.has(cur) && out.get(cur) <= d) continue;
+    out.set(cur, d);
+    const p = parentsOf.get(cur);
+    if (p) { if (p[0]) stack.push([p[0], d + 1]); if (p[1]) stack.push([p[1], d + 1]); }
+  }
+  return out;
+}
+
+function formatRelation(m, n, rootId, otherId, parentsOf) {
+  if (m === 0 && n === 0) return "self";
+  if (m === 0) return n === 1 ? "Ch" : n === 2 ? "GC" : (n - 2) + "GGC";
+  if (n === 0) return m === 1 ? "P" : m === 2 ? "GP" : (m - 2) + "GGP";
+  if (m === 1 && n === 1) {
+    const rp = parentsOf.get(rootId), op = parentsOf.get(otherId);
+    if (rp && op) {
+      let shared = 0;
+      if (rp[0] && (rp[0] === op[0] || rp[0] === op[1])) shared++;
+      if (rp[1] && (rp[1] === op[0] || rp[1] === op[1])) shared++;
+      if (shared === 1) return "HSib";
+    }
+    return "Sib";
+  }
+  if (n === 1 && m > 1) return m === 2 ? "AU" : (m - 2) + "GAU";
+  if (m === 1 && n > 1) return n === 2 ? "Nb" : (n - 2) + "GNb";
+  const cn = Math.min(m, n) - 1;
+  const removed = Math.abs(m - n);
+  return cn + "C" + (removed ? removed + "R" : "");
+}
+
+let relationCache = new Map();
+function recomputeRelationships() {
+  relationCache = new Map();
+  if (!lastRootId || !lastIndividuals || !lastParentsOf) return;
+  const rootAncestors = ancestorsWithDepth(lastRootId, lastParentsOf);
+  for (const ind of lastIndividuals) {
+    if (ind.id === lastRootId) { relationCache.set(ind.id, "self"); continue; }
+    const otherAnc = ancestorsWithDepth(ind.id, lastParentsOf);
+    let bestSum = Infinity, bestM = -1, bestN = -1;
+    for (const [aid, dm] of rootAncestors) {
+      const dn = otherAnc.get(aid);
+      if (dn === undefined) continue;
+      if (dm + dn < bestSum) { bestSum = dm + dn; bestM = dm; bestN = dn; }
+    }
+    if (bestM < 0) { relationCache.set(ind.id, ""); continue; }
+    relationCache.set(ind.id, formatRelation(bestM, bestN, lastRootId, ind.id, lastParentsOf));
+  }
+}
+
 function descendantSet(rootId, childrenOf) {
   const set = new Set();
   if (!rootId) return set;
@@ -1305,6 +1362,7 @@ function applyRoot(rootId) {
   lastRootId = rootId;
   lastSideById = classifySides(rootId, lastParentsOf, lastChildrenOf, lastIndividuals);
   lastBloodSet = bloodRelatives(rootId, lastParentsOf, lastChildrenOf);
+  recomputeRelationships();
   if (timelineLoaded) {
     rebuildSideArrays();
   } else {
@@ -1462,14 +1520,18 @@ function updatePanel(force) {
       const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
       const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
       const sel = highlightedDwell === i ? " selected" : "";
-      return `<li class="${sel}" data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span> <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
+      const rel = relationCache.get(ind?.id);
+      const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
+      return `<li class="${sel}" data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
     } else {
       const ind = lastIndividuals[r.indi];
       const sd = r.side;
       const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
       const swatch = `<span class="pm" style="background:rgb(${c[0]},${c[1]},${c[2]});opacity:0.6"></span>`;
       const sel = highlightedDwell === r.srcDwell && highlightInferredYear === r.year ? " selected" : "";
-      return `<li class="inferred${sel}" data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span> <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></li>`;
+      const rel = relationCache.get(ind?.id);
+      const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
+      return `<li class="inferred${sel}" data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></li>`;
     }
   }).join("");
   panelList.innerHTML = html || `<li style="color:#888;padding:14px;">No events visible.</li>`;
@@ -1560,7 +1622,7 @@ html, body { margin:0; padding:0; background:#cfe2ec; color:#1c2433; font:13px/1
 @media (max-width: 900px) { #middle { grid-template-columns: 1fr 260px; } }
 @media (max-width: 700px) { #middle { grid-template-columns: 1fr; grid-template-rows: 1fr 320px; } }
 #mapWrap { position:relative; min-width:0; min-height:0; overflow:hidden; border-radius:10px; }
-canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixelated; }
+canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixelated; touch-action:none; }
 #base { z-index:1; } #fx { z-index:2; }
 #yearBig { position:absolute; left:0; top:0; right:0; bottom:0; z-index:3; pointer-events:none; display:flex; align-items:center; justify-content:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; font-weight:700; font-size:42vh; line-height:0.85; color:rgba(20,30,55,0.06); letter-spacing:-0.02em; user-select:none; mix-blend-mode:multiply; }
 #ui { background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; flex-direction:column; gap:8px; }
@@ -1787,7 +1849,7 @@ function applyZoom(){
   drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
 }
 const zoomBehavior=d3.zoom().scaleExtent([1,64])
-  .filter(e=>{ if (projectionName==="ortho") return e.type==="wheel"||e.type==="dblclick"; return !e.ctrlKey && !e.button; })
+  .filter(e=>{ if(e.type==="wheel"){e.preventDefault(); return true;} if(e.type==="dblclick") return true; if(projectionName==="ortho") return false; return !e.button; })
   .on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
 d3.select(fxCanvas).call(zoomBehavior);
 d3.select(fxCanvas).on("dblclick.zoom",()=>{ d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform,d3.zoomIdentity); });
