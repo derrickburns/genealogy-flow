@@ -438,7 +438,7 @@ function drawBase() {
     for (const c of ordered) {
       const w = isEvents ? c.count : c.pop;
       if (w < popThresh) continue;
-      const p = projection([c.lon, c.lat]); if (!p) continue;
+      const p = safeProject([c.lon, c.lat]); if (!p) continue;
       if (p[0] < -10 || p[0] > W + 10 || p[1] < -10 || p[1] > H + 10) continue;
       const r = isEvents
         ? Math.min(3, 1 + Math.log2(c.count + 1) * 0.4)
@@ -577,7 +577,7 @@ function frame(activeTrailFade) {
       if (!rawCity) continue;
       const canonical = cityCanonicalByName.get(rawCity.name) || rawCity;
       if (labeledNamesFrame.has(canonical.name)) continue;
-      const p = projection([canonical.lon, canonical.lat]);
+      const p = safeProject([canonical.lon, canonical.lat]);
       if (!p) continue;
       fxCtx.font = (exact ? "bold " : "") + "10px -apple-system, sans-serif";
       const tw = fxCtx.measureText(canonical.name).width;
@@ -1963,7 +1963,7 @@ function drawBase(){
     for (const c of ordered) {
       const w=isEvents?c.count:c.pop;
       if (w<popThresh) continue;
-      const p=projection([c.lon,c.lat]); if(!p) continue;
+      const p=safeProject([c.lon,c.lat]); if(!p) continue;
       if (p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10) continue;
       const r=isEvents?Math.min(3,1+Math.log2(c.count+1)*0.4):(c.pop>=5000000?2.5:c.pop>=1000000?2:1.5);
       baseCtx.fillStyle="rgba(60,60,70,0.85)";
@@ -1980,9 +1980,17 @@ function drawBase(){
     }
   }
 }
+function safeProject(lonlat){
+  const p=projection(lonlat); if(!p) return null;
+  if (projection.clipAngle && projection.clipAngle()<180){
+    const r=projection.rotate?projection.rotate():[0,0,0];
+    if (d3.geoDistance(lonlat,[-r[0],-r[1]])>Math.PI/2+0.001) return null;
+  }
+  return p;
+}
 function projectAll(){
-  for (let i=0;i<N;i++){const p=projection([dwellLon[i],dwellLat[i]]); if(p){dwellSx[i]=p[0]; dwellSy[i]=p[1];} else {dwellSx[i]=-9999; dwellSy[i]=-9999;}}
-  for (let i=0;i<F;i++){const a=projection([flowFromLon[i],flowFromLat[i]]); const b=projection([flowToLon[i],flowToLat[i]]);
+  for (let i=0;i<N;i++){const p=safeProject([dwellLon[i],dwellLat[i]]); if(p){dwellSx[i]=p[0]; dwellSy[i]=p[1];} else {dwellSx[i]=-9999; dwellSy[i]=-9999;}}
+  for (let i=0;i<F;i++){const a=safeProject([flowFromLon[i],flowFromLat[i]]); const b=safeProject([flowToLon[i],flowToLat[i]]);
     flowFromSx[i]=a?a[0]:-9999; flowFromSy[i]=a?a[1]:-9999; flowToSx[i]=b?b[0]:-9999; flowToSy[i]=b?b[1]:-9999;}
 }
 const COLOR=[[40,100,220],[220,60,90],[160,60,200]];
@@ -1999,11 +2007,11 @@ function drawGreatCircle(ctx,lon0,lat0,lon1,lat1){
   const interp=d3.geoInterpolate([lon0,lat0],[lon1,lat1]);
   const segs=Math.max(2,Math.min(40,Math.ceil(dist*30)));
   let started=false; ctx.beginPath();
-  for (let i=0;i<=segs;i++){ const p=projection(interp(i/segs)); if(!p){started=false; continue;}
+  for (let i=0;i<=segs;i++){ const p=safeProject(interp(i/segs)); if(!p){started=false; continue;}
     if(!started){ ctx.moveTo(p[0],p[1]); started=true; } else ctx.lineTo(p[0],p[1]); }
   ctx.stroke();
 }
-function positionOnGreatCircle(lon0,lat0,lon1,lat1,t){ return projection(d3.geoInterpolate([lon0,lat0],[lon1,lat1])(t)); }
+function positionOnGreatCircle(lon0,lat0,lon1,lat1,t){ return safeProject(d3.geoInterpolate([lon0,lat0],[lon1,lat1])(t)); }
 function passesStatus(indi){
   if (statusFilter==="all") return true;
   const ind=individuals[indi]; if (!ind) return true;
@@ -2054,7 +2062,7 @@ function frame(fade){
       const rawCity=currentCities()[dwellCity[i]]; if (!rawCity) continue;
       const canonical=cityCanonicalByName.get(rawCity.name)||rawCity;
       if (labeledNames.has(canonical.name)) continue;
-      const p=projection([canonical.lon,canonical.lat]); if (!p) continue;
+      const p=safeProject([canonical.lon,canonical.lat]); if (!p) continue;
       fxCtx.font=(exact?"bold ":"")+"10px -apple-system, sans-serif";
       const tw=fxCtx.measureText(canonical.name).width;
       const rect={x:p[0]+3,y:p[1]-6,w:tw+4,h:13};
