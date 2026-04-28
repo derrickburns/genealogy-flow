@@ -436,6 +436,13 @@ const zoomBehavior = d3.zoom()
     if (projectionName === "ortho") return false;
     return !e.button;
   })
+  .wheelDelta(e => {
+    // Trackpad pinch produces many small pixel-mode wheel events in quick
+    // succession; the d3 default (0.002 / pixel) accumulates too fast.
+    // Halve sensitivity for pixel-mode wheels (trackpads); leave line-mode
+    // (mouse wheels) untouched.
+    return -e.deltaY * (e.deltaMode === 1 ? 0.05 : e.deltaMode ? 1 : 0.001);
+  })
   .on("start", () => { _interacting = true; })
   .on("zoom", e => { zoomTransform = e.transform; applyZoom(); })
   .on("end", () => { _interacting = false; _baseDirty = true; });
@@ -452,7 +459,7 @@ const dragRotate = d3.drag()
     this._x = e.x; this._y = e.y;
   })
   .on("drag", function(e) {
-    const k = Math.max(2.0, 600 / projection.scale());
+    const k = Math.max(1.0, 400 / projection.scale());
     const r0 = this._r;
     projection.rotate([
       r0[0] + (e.x - this._x) * k,
@@ -2914,7 +2921,7 @@ const dragRotate=d3.drag()
   .filter(()=>projectionName==="ortho")
   .on("start", function(e){ this._r=projection.rotate(); this._x=e.x; this._y=e.y; })
   .on("drag", function(e){
-    const k=Math.max(2.0, 600/projection.scale()); const r0=this._r;
+    const k=Math.max(1.0, 400/projection.scale()); const r0=this._r;
     projection.rotate([r0[0]+(e.x-this._x)*k, Math.max(-90,Math.min(90,r0[1]-(e.y-this._y)*k)), r0[2]]);
     requestDraw();
   })
