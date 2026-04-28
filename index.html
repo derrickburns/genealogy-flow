@@ -441,7 +441,7 @@ const zoomBehavior = d3.zoom()
     // succession; the d3 default (0.002 / pixel) accumulates too fast.
     // Halve sensitivity for pixel-mode wheels (trackpads); leave line-mode
     // (mouse wheels) untouched.
-    return -e.deltaY * (e.deltaMode === 1 ? 0.08 : e.deltaMode ? 1.5 : 0.003);
+    return -e.deltaY * (e.deltaMode === 1 ? 0.05 : e.deltaMode ? 1 : 0.002);
   })
   .on("start", () => { _interacting = true; })
   .on("zoom", e => { zoomTransform = e.transform; applyZoom(); })
