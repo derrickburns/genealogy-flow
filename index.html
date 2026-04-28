@@ -32,6 +32,14 @@
   #ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   #ui .uirow.primary { flex-wrap:nowrap; }
   #range { flex:1 1 auto; min-width:120px; }
+  .rangeWrap { position:relative; flex:1 1 auto; min-width:120px; padding-bottom:14px; display:flex; align-items:center; }
+  .rangeWrap #range { flex:1 1 auto; min-width:0; }
+  .rangeMark { position:absolute; bottom:0; transform:translateX(-50%); pointer-events:none; font-size:10px; color:#566480; line-height:1; white-space:nowrap; }
+  .rangeMark::before { content:""; position:absolute; left:50%; bottom:100%; width:1px; height:8px; background:#566480; transform:translateX(-50%); margin-bottom:1px; }
+  .rangeMark.ancestor::before { background:#2a4a8c; }
+  .rangeMark.ancestor { color:#2a4a8c; font-weight:600; }
+  .bcard .yrlink { color:inherit; cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-decoration-color:rgba(70,70,90,0.45); }
+  .bcard .yrlink:hover { color:#2a4a8c; text-decoration-color:#2a4a8c; }
   #migBar { position:relative; height:36px; background:#f5f7fa; border:1px solid #e0e6ee; border-radius:6px; padding:18px 0 4px; box-sizing:border-box; }
   #migBar.empty { display:none; }
   #migBar .pat { position:absolute; height:12px; top:18px; border-radius:2px; opacity:0.55; transition:opacity 0.15s; cursor:help; }
@@ -193,7 +201,11 @@
 <div id="ui">
   <div class="uirow primary">
     <button id="play" disabled>Play</button>
-    <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
+    <div class="rangeWrap">
+      <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
+      <div class="rangeMark" id="markBlood" style="display:none;"></div>
+      <div class="rangeMark ancestor" id="markAncestor" style="display:none;"></div>
+    </div>
   </div>
   <div id="migBar" class="empty"></div>
   <div class="uirow">
@@ -1512,6 +1524,7 @@ function applyRoot(rootId) {
   const sel = $("rootSel");
   for (const opt of sel.options) opt.selected = (opt.value === rootId);
   stats.textContent = `${lastIndividuals.length.toLocaleString()} people  |  ${dwellY.length.toLocaleString()} events  |  ${flowFromY.length.toLocaleString()} migrations  |  ${minYear}-${maxYear}  |  root: ${rootInd?.name ?? "?"}`;
+  updateSliderMarkers();
 }
 
 $("rootSel").addEventListener("change", e => {
@@ -1756,6 +1769,88 @@ function liToRow(li) {
   return { kind: "real", i, year: dwellY[i] };
 }
 
+function findDwellForPersonYear(indId, year) {
+  const ind = lastIndiById?.get(indId);
+  if (!ind) return -1;
+  const indiIdx = lastIndividuals.indexOf(ind);
+  if (indiIdx < 0) return -1;
+  const dwells = indiDwells.get(indiIdx);
+  if (!dwells) return -1;
+  let exact = -1, nearest = -1, nearestDist = Infinity;
+  for (const di of dwells) {
+    const dy = dwellY[di];
+    if (dy === year) { exact = di; break; }
+    const dist = Math.abs(dy - year);
+    if (dist < nearestDist) { nearest = di; nearestDist = dist; }
+  }
+  return exact >= 0 ? exact : nearest;
+}
+
+function jumpToPersonYear(indId, year) {
+  const di = findDwellForPersonYear(indId, year);
+  highlightInferredYear = -1;
+  highlightInferredSrcYear = -1;
+  if (di >= 0) {
+    highlightedDwell = di;
+  } else {
+    highlightedDwell = -1;
+  }
+  curYear = year;
+  range.value = curYear;
+  if (playing) { playing = false; playBtn.textContent = "Play"; }
+  fxCtx.clearRect(0, 0, W, H);
+  if (highlightedDwell >= 0) {
+    applyExpansion();
+  } else {
+    updatePanel(true);
+  }
+}
+
+function updateSliderMarkers() {
+  const mb = $("markBlood"), ma = $("markAncestor");
+  if (!mb || !ma) return;
+  mb.classList.remove("ancestor");
+  if (!lastIndividuals || !lastRootId || !lastBloodSet) {
+    mb.style.display = "none"; ma.style.display = "none"; return;
+  }
+  const root = lastIndiById.get(lastRootId);
+  let bloodMin = Infinity, ancMin = Infinity;
+  const ancestors = lastSideById
+    ? new Set([...lastIndividuals].filter(p => {
+        const s = lastSideById.get(p.id);
+        return (s === 0 || s === 1) && p.id !== lastRootId;
+      }).map(p => p.id))
+    : new Set();
+  for (const ind of lastIndividuals) {
+    if (ind.id === lastRootId) continue;
+    const by = ind.birth_year;
+    if (by == null) continue;
+    if (lastBloodSet.has(ind.id) && by < bloodMin) bloodMin = by;
+    if (ancestors.has(ind.id) && by < ancMin) ancMin = by;
+  }
+  const lo = parseFloat(range.min), hi = parseFloat(range.max);
+  const span = hi - lo;
+  const pct = (y) => `${((y - lo) / span) * 100}%`;
+  if (bloodMin < Infinity) {
+    mb.textContent = `eldest blood ${bloodMin}`;
+    mb.style.left = pct(bloodMin);
+    mb.style.display = "";
+  } else {
+    mb.style.display = "none";
+  }
+  if (ancMin < Infinity && ancMin !== bloodMin) {
+    ma.textContent = `1st ancestor ${ancMin}`;
+    ma.style.left = pct(ancMin);
+    ma.style.display = "";
+  } else if (ancMin < Infinity && ancMin === bloodMin) {
+    mb.textContent = `eldest blood / 1st ancestor ${bloodMin}`;
+    mb.classList.add("ancestor");
+    ma.style.display = "none";
+  } else {
+    ma.style.display = "none";
+  }
+}
+
 function applyExpansion() {
   const oldLi = panelList.querySelector("li.expanded");
   if (oldLi) {
@@ -1808,9 +1903,10 @@ function renderExpandedCard(ind, dwellIdx, isInferred) {
       const fmtYears = (p) => {
         if (!p) return "";
         const b = p.birth_year, d = p.death_year;
-        if (b && d) return ` <span class="yrs">${b}–${d}</span>`;
-        if (b) return ` <span class="yrs">b. ${b}</span>`;
-        if (d) return ` <span class="yrs">d. ${d}</span>`;
+        const yl = (y) => `<a class="yrlink" data-id="${escHtml(p.id)}" data-y="${y}">${y}</a>`;
+        if (b && d) return ` <span class="yrs">${yl(b)}–${yl(d)}</span>`;
+        if (b) return ` <span class="yrs">b. ${yl(b)}</span>`;
+        if (d) return ` <span class="yrs">d. ${yl(d)}</span>`;
         return "";
       };
       const rows = [`<div class="step root"><span class="lbl">root</span><span class="nm">${escHtml(rootInd?.name || "")}${fmtYears(rootInd)}</span></div>`];
@@ -1859,6 +1955,14 @@ function renderMarkdown(text) {
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 panelList.addEventListener("click", e => {
+  const yrLink = e.target.closest(".yrlink[data-id][data-y]");
+  if (yrLink) {
+    e.preventDefault();
+    const id = yrLink.dataset.id;
+    const year = parseInt(yrLink.dataset.y, 10);
+    if (!Number.isNaN(year)) jumpToPersonYear(id, year);
+    return;
+  }
   const evRow = e.target.closest(".bEv[data-di]");
   if (evRow) {
     const di = parseInt(evRow.dataset.di, 10);
