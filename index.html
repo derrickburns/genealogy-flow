@@ -268,7 +268,23 @@ let projection = PROJECTIONS.ortho();
 let projectionName = "ortho";
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
-let world = null, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
+let world = null, worldHi = null, worldHiLoading = false, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
+const HI_RES_ZOOM_THRESHOLD = 8;
+function ensureHiResWorld() {
+  if (worldHi || worldHiLoading) return;
+  worldHiLoading = true;
+  fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json")
+    .then(r => r.json())
+    .then(w => { worldHi = w; worldHiLoading = false; requestDraw(); })
+    .catch(() => { worldHiLoading = false; });
+}
+function activeWorld() {
+  if (zoomTransform.k >= HI_RES_ZOOM_THRESHOLD) {
+    if (worldHi) return worldHi;
+    ensureHiResWorld();
+  }
+  return world;
+}
 let cityLayer = "major";
 let borderLayer = "historical";
 let historicalBasemaps = new Map(); // year -> { world, name } loaded snapshots
@@ -560,8 +576,9 @@ function drawBase() {
     baseCtx.beginPath(); cp(fc); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill();
     baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
   } else {
-    const land = topojson.feature(world, world.objects.countries);
-    const borders = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
+    const w = activeWorld();
+    const land = topojson.feature(w, w.objects.countries);
+    const borders = topojson.mesh(w, w.objects.countries, (a, b) => a !== b);
     countryFeatures = land.features;
     baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
     baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
