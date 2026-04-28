@@ -83,9 +83,6 @@
   #panelBanner .bnm { font-weight:700; color:#1c2433; font-size:13px; }
   #panelBanner .bev { color:#566480; font-size:11px; margin-top:2px; }
   #panelBanner .bcl { float:right; background:none; border:none; color:#888; cursor:pointer; font-size:14px; margin-top:-2px; }
-  #panelBanner details { margin-top:6px; font-size:11px; }
-  #panelBanner details summary { cursor:pointer; color:#566480; }
-  #panelBanner pre { margin:6px 0 0; padding:6px 8px; background:#fffbe9; border:1px solid #f0e6c0; border-radius:4px; font:11px ui-monospace, Menlo, monospace; max-height:280px; overflow:auto; white-space:pre-wrap; word-break:break-word; color:#1c2433; }
   #bannerSummary { margin-top:8px; padding:8px 10px; background:#fff; border:1px solid #e6decf; border-radius:5px; font-size:12px; line-height:1.45; color:#1c2433; }
   #bannerSummary a { color:#2a4a8c; text-decoration:underline; }
   #bannerSummary p { margin:0 0 6px; }
@@ -206,7 +203,7 @@
     <button data-t="9" class="pill on">christened</button>
     <button data-t="10" class="pill on">other</button>
   </div>
-  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><div id="bannerChain" style="display:none;"></div><div id="bannerSummary" style="display:none;"></div><details id="bannerRaw"><summary>GEDCOM record</summary><pre id="bannerRawPre"></pre></details></div>
+  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><div id="bannerChain" style="display:none;"></div><div id="bannerSummary" style="display:none;"></div></div>
   <ul id="panelList"></ul>
 </aside>
 </div>
@@ -1628,18 +1625,13 @@ function updateBanner() {
     }
   }
 
-  const rawPre = $("bannerRawPre");
-  const rawDetails = $("bannerRaw");
   const summaryEl = $("bannerSummary");
   const summary = summaryById.get(ind.id);
   if (summary && summaryEl) {
     summaryEl.innerHTML = renderMarkdown(summary);
     summaryEl.style.display = "block";
-    if (rawDetails) rawDetails.style.display = "none";
-  } else {
-    if (summaryEl) summaryEl.style.display = "none";
-    if (rawPre) rawPre.textContent = ind.raw || "(raw GEDCOM not captured)";
-    if (rawDetails) rawDetails.style.display = "";
+  } else if (summaryEl) {
+    summaryEl.style.display = "none";
   }
   banner.classList.add("shown");
 }
