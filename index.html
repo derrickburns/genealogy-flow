@@ -42,7 +42,6 @@
   #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
   #ui button:hover { background:#1c3669; }
   #ui button[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
-  #year { font-variant-numeric:tabular-nums; font-weight:600; font-size:18px; min-width:60px; color:#1c2433; }
   #range { -webkit-appearance:none; appearance:none; height:6px; background:#c0ccd8; border-radius:3px; outline:none; }
   #range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
   #range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
@@ -84,7 +83,6 @@
     box-shadow:0 2px 12px rgba(0,0,0,0.08);
     display:flex; flex-direction:column; overflow:hidden; min-height:0; min-width:0;
   }
-  #panelHead { padding:6px 12px; border-bottom:1px solid #e0e6ee; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; }
   #panelControls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:5px 10px; border-bottom:1px solid #e0e6ee; font-size:10.5px; color:#566480; line-height:1.1; }
   #panelControls label { display:flex; align-items:center; gap:3px; }
   #panelControls label > b { color:#2a4a8c; font-weight:600; min-width:14px; text-align:right; font-variant-numeric:tabular-nums; }
@@ -121,7 +119,6 @@
   #panelList li.expanded { padding:0; cursor:default; }
   #panelList li.expanded .liHead { padding:8px 12px; cursor:pointer; background:#fffbf2; }
   #panelList li.expanded.inferred .liHead { font-style:italic; }
-  #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
   #panelList { list-style:none; margin:0; padding:0; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
   #panelList li:hover { background:#f0f4f8; }
@@ -176,7 +173,6 @@
 <div id="middle">
 <div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig">----</div></div>
 <aside id="panel">
-  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span></div>
   <div id="panelControls">
     <label title="show events from this many years prior">window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
     <label title="infer residency for people last seen this many years ago">infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
@@ -198,7 +194,6 @@
   <div class="uirow primary">
     <button id="play" disabled>Play</button>
     <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
-    <span id="year">----</span>
   </div>
   <div id="migBar" class="empty"></div>
   <div class="uirow">
@@ -232,7 +227,7 @@ import * as topojson from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
 const $ = id => document.getElementById(id);
 const baseCanvas = $("base"), fxCanvas = $("fx");
 const baseCtx = baseCanvas.getContext("2d"), fxCtx = fxCanvas.getContext("2d");
-const yearLabel = $("year"), yearBig = $("yearBig");
+const yearBig = $("yearBig");
 const playBtn = $("play"), range = $("range");
 const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
 const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
@@ -698,7 +693,6 @@ function tick(now) {
       curYear = parseFloat(range.value);
     }
     const yint = Math.floor(curYear);
-    yearLabel.textContent = yint;
     yearBig.textContent = yint;
   }
   maybeUpdateHistoricalBasemap();
@@ -1538,7 +1532,7 @@ $("projSel").addEventListener("change", e => {
   }
 });
 
-const panelEl = $("panel"), panelList = $("panelList"), panelYear = $("panelYear");
+const panelEl = $("panel"), panelList = $("panelList");
 $("inferYrs").addEventListener("input", e => {
   inferenceYears = parseInt(e.target.value, 10) || 0;
   $("inferYrsLabel").textContent = inferenceYears;
@@ -1577,7 +1571,6 @@ function updatePanel(force) {
   const yint = Math.floor(curYear);
   if (!force && yint === lastPanelYear && now - lastPanelTime < 250) return;
   lastPanelYear = yint; lastPanelTime = now;
-  panelYear.textContent = yint;
   const dw = dwellWindow;
   const lo = lowerBound(dwellY, dwellOrder, yint - dw);
   const hi = lowerBound(dwellY, dwellOrder, yint + 1);
@@ -1943,7 +1936,6 @@ canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixela
 #ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 #ui .uirow.primary { flex-wrap:nowrap; }
 #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
-#year { font-variant-numeric:tabular-nums; font-weight:600; font-size:18px; min-width:60px; }
 #range { -webkit-appearance:none; appearance:none; height:6px; background:#c0ccd8; border-radius:3px; outline:none; flex:1 1 auto; min-width:120px; }
 #range::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
 #range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
@@ -1961,8 +1953,6 @@ select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius
 label { color:#566480; font-size:11px; }
 #panel { background:rgba(255,255,255,0.98); border:1px solid #c0ccd8; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,0.08); display:flex; flex-direction:column; overflow:hidden; min-height:0; min-width:0; }
 #panel.hidden { display:none; }
-#panelHead { padding:8px 12px; border-bottom:1px solid #e0e6ee; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:13px; }
-#panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
 #panelInferRow { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid #e0e6ee; font-size:11px; color:#566480; }
 #panelInferRow input[type=range] { flex:1; min-width:0; }
 #panelInferRow label { display:flex; align-items:center; gap:4px; min-width:70px; }
@@ -2018,7 +2008,6 @@ label { color:#566480; font-size:11px; }
 <div id="middle">
 <div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig">----</div></div>
 <aside id="panel">
-  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span></div>
   <div id="panelControls">
     <label>window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
     <label>infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
@@ -2042,7 +2031,6 @@ label { color:#566480; font-size:11px; }
   <div class="uirow primary">
     <button id="play">Play</button>
     <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
-    <span id="year">----</span>
   </div>
   <div class="uirow">
     <label>speed <select id="speed"><option value="0.05">0.25x</option><option value="0.1">0.5x</option><option value="0.2" selected>1x</option><option value="0.5">2.5x</option><option value="1">5x</option><option value="2">10x</option></select></label>
@@ -2066,10 +2054,10 @@ const individuals = tl.individuals || [];
 const places = tl.places || [];
 const $ = id => document.getElementById(id);
 const baseCanvas=$("base"), fxCanvas=$("fx"), baseCtx=baseCanvas.getContext("2d"), fxCtx=fxCanvas.getContext("2d");
-const yearLabel=$("year"), yearBig=$("yearBig"), playBtn=$("play"), range=$("range");
+const yearBig=$("yearBig"), playBtn=$("play"), range=$("range");
 const speedSel=$("speed"), trailSel=$("trail"), rootSel=$("rootSel"), filtSel=$("filt");
 const cityLayerSel=$("cityLayer"), borderSel=$("borderLayer"), migSel=$("migViz"), projSel=$("projSel");
-const panelEl=$("panel"), panelList=$("panelList"), panelYear=$("panelYear");
+const panelEl=$("panel"), panelList=$("panelList");
 const PROJECTIONS={natural:()=>d3.geoNaturalEarth1(),equal:()=>d3.geoEqualEarth(),equirect:()=>d3.geoEquirectangular(),mercator:()=>d3.geoMercator(),ortho:()=>d3.geoOrthographic().clipAngle(90)};
 let projection=PROJECTIONS.ortho();
 let projectionName="ortho";
@@ -2421,7 +2409,6 @@ function updatePanel(force){
   const now=performance.now(); const yint=Math.floor(curYear);
   if (!force && yint===lastPanelYear && now-lastPanelTime<250) return;
   lastPanelYear=yint; lastPanelTime=now;
-  panelYear.textContent=yint;
   const dw=dwellWindow;
   const lo=lowerBound(dwellY,dwellOrder,yint-dw); const hi=lowerBound(dwellY,dwellOrder,yint+1);
   const rows=[]; const visibleIndis=new Set();
@@ -2507,7 +2494,7 @@ function tick(now){
   else if (playing){ curYear+=parseFloat(speedSel.value)*60*dt; if(curYear>maxYear) curYear=minYear; range.value=curYear; }
   else curYear=parseFloat(range.value);
   const yint=Math.floor(curYear);
-  yearLabel.textContent=yint; yearBig.textContent=yint;
+  yearBig.textContent=yint;
   maybeUpdateHistoricalBasemap();
   if (_baseDirty){ _baseDirty=false; drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); }
   frame(parseFloat(trailSel.value));
