@@ -17,7 +17,7 @@
     user-select:none; mix-blend-mode:multiply;
   }
   #ui {
-    position:fixed; left:14px; right:14px; bottom:14px; z-index:10;
+    position:fixed; left:14px; right:var(--right-margin, 14px); bottom:14px; z-index:10;
     background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
     padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
     display:flex; flex-direction:column; gap:8px;
@@ -34,7 +34,7 @@
   #range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
   #range::-moz-range-track { height:6px; background:#c0ccd8; border-radius:3px; }
   #stats { font-size:11px; color:#566480; }
-  #title { position:fixed; top:14px; left:18px; right:18px; z-index:11; font-size:14px; color:#1c2433; letter-spacing:0.04em; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #title { position:fixed; top:14px; left:18px; right:var(--right-margin, 18px); z-index:11; font-size:14px; color:#1c2433; letter-spacing:0.04em; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   #title b { color:#0a1426; }
   #title input[type=text] { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:4px 6px; font:inherit; }
   select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
@@ -59,7 +59,7 @@
   #welcome p { margin:6px 0 14px; color:#566480; }
   #welcome.hidden { display:none; }
   #panel {
-    position:fixed; top:0; right:0; bottom:0; z-index:12;
+    position:fixed; top:var(--panel-top, 80px); right:0; bottom:var(--panel-bottom, 110px); z-index:12;
     width:320px; background:rgba(255,255,255,0.98); border-left:1px solid #c0ccd8;
     box-shadow:-4px 0 20px rgba(0,0,0,0.08);
     display:flex; flex-direction:column; overflow:hidden;
@@ -246,6 +246,7 @@ const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
 const rootwrap = $("rootwrap"), legend = $("legend");
 
 let W = 0, H = 0;
+let mapW = 0, mapTop = 0, mapBottom = 0;
 const PROJECTIONS = {
   natural: () => d3.geoNaturalEarth1(),
   equal: () => d3.geoEqualEarth(),
@@ -286,7 +287,8 @@ let lastTimeline = null, lastFileName = "genealogy";
 function resize() {
   const panelOpen = panelEl && !panelEl.classList.contains("hidden");
   const panelW = panelOpen ? 320 : 0;
-  W = window.innerWidth - panelW;
+  document.documentElement.style.setProperty("--right-margin", panelOpen ? (panelW + 14) + "px" : "14px");
+  W = window.innerWidth;
   H = window.innerHeight;
   for (const c of [baseCanvas, fxCanvas]) {
     c.width = Math.floor(W * devicePixelRatio); c.height = Math.floor(H * devicePixelRatio);
@@ -294,7 +296,13 @@ function resize() {
     c.getContext("2d").setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   }
   yearBig.style.width = W + "px";
-  projection.fitExtent([[10, 30], [W - 10, H - 80]], { type: "Sphere" });
+  const titleEl = $("title"), uiEl = $("ui");
+  const titleH = titleEl ? titleEl.offsetHeight + 24 : 80;
+  const uiH = uiEl ? uiEl.offsetHeight + 24 : 110;
+  document.documentElement.style.setProperty("--panel-top", titleH + "px");
+  document.documentElement.style.setProperty("--panel-bottom", uiH + "px");
+  mapW = W - panelW; mapTop = titleH; mapBottom = H - uiH;
+  projection.fitExtent([[10, titleH], [mapW - 10, H - uiH]], { type: "Sphere" });
   baseScale = projection.scale();
   baseTranslate = projection.translate().slice();
   applyZoom();
@@ -1372,7 +1380,7 @@ function updatePanel(force) {
     if (!typeFilter.has(dwellType[i])) continue;
     if (!passesStatus(dwellIndi[i])) continue;
     const sx = dwellSx[i], sy = dwellSy[i];
-    if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
+    if (sx < -10 || sx > mapW + 10 || sy < mapTop - 10 || sy > mapBottom + 10) continue;
     rows.push({ kind: "real", i, year: dwellY[i] });
     visibleIndis.add(dwellIndi[i]);
   }
@@ -1400,7 +1408,7 @@ function updatePanel(force) {
     }
     if (srcDwell < 0) continue;
     const sx = dwellSx[srcDwell], sy = dwellSy[srcDwell];
-    if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
+    if (sx < -10 || sx > mapW + 10 || sy < mapTop - 10 || sy > mapBottom + 10) continue;
     rows.push({ kind: "inferred", indi: idx, year: yint, place: lastE.place, side: sd, basedOnYear: lastE.year, srcDwell });
   }
 
