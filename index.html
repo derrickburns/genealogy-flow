@@ -176,7 +176,7 @@
   <div id="panelControls">
     <label title="show events from this many years prior">window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
     <label title="infer residency for people last seen this many years ago">infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
-    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">living</option><option value="dead">dead</option></select></label>
+    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">alive in YYYY</option><option value="dead">died by YYYY</option></select></label>
   </div>
   <div id="panelScroll">
   <ul id="panelList"></ul>
@@ -694,6 +694,7 @@ function tick(now) {
     }
     const yint = Math.floor(curYear);
     yearBig.textContent = yint;
+    updateStatusLabels(yint);
   }
   maybeUpdateHistoricalBasemap();
   if (_baseDirty) {
@@ -1550,6 +1551,18 @@ $("statusFilt").addEventListener("change", e => {
   updatePanel(true);
 });
 
+let lastStatusYear = -Infinity;
+function updateStatusLabels(yint) {
+  if (yint === lastStatusYear) return;
+  lastStatusYear = yint;
+  const sel = $("statusFilt");
+  if (!sel) return;
+  for (const opt of sel.options) {
+    if (opt.value === "living") opt.textContent = `alive in ${yint}`;
+    else if (opt.value === "dead") opt.textContent = `died by ${yint}`;
+  }
+}
+
 function passesStatus(indi) {
   if (statusFilter === "all") return true;
   const ind = lastIndividuals[indi];
@@ -2011,7 +2024,7 @@ label { color:#566480; font-size:11px; }
   <div id="panelControls">
     <label>window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
     <label>infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
-    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">living</option><option value="dead">dead</option></select></label>
+    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">alive in YYYY</option><option value="dead">died by YYYY</option></select></label>
   </div>
   <div id="panelScroll">
   <div id="panelTypeRow"><span>events:</span>
@@ -2306,6 +2319,16 @@ function drawGreatCircle(ctx,lon0,lat0,lon1,lat1){
   ctx.stroke();
 }
 function positionOnGreatCircle(lon0,lat0,lon1,lat1,t){ return safeProject(d3.geoInterpolate([lon0,lat0],[lon1,lat1])(t)); }
+let lastStatusYear=-Infinity;
+function updateStatusLabels(yint){
+  if (yint===lastStatusYear) return;
+  lastStatusYear=yint;
+  const sel=$("statusFilt"); if (!sel) return;
+  for (const opt of sel.options){
+    if (opt.value==="living") opt.textContent="alive in "+yint;
+    else if (opt.value==="dead") opt.textContent="died by "+yint;
+  }
+}
 function passesStatus(indi){
   if (statusFilter==="all") return true;
   const ind=individuals[indi]; if (!ind) return true;
@@ -2495,6 +2518,7 @@ function tick(now){
   else curYear=parseFloat(range.value);
   const yint=Math.floor(curYear);
   yearBig.textContent=yint;
+  updateStatusLabels(yint);
   maybeUpdateHistoricalBasemap();
   if (_baseDirty){ _baseDirty=false; drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); }
   frame(parseFloat(trailSel.value));
