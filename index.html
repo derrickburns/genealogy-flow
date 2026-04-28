@@ -397,7 +397,7 @@ let _baseDirty = false;
 function requestDraw() { _baseDirty = true; }
 
 const zoomBehavior = d3.zoom()
-  .scaleExtent([1, 64])
+  .scaleExtent([1, 16])
   .filter(e => {
     if (e.type === "wheel") { e.preventDefault(); return true; }
     if (e.type === "dblclick") return true;
@@ -2773,7 +2773,7 @@ function applyZoom(){
 }
 let _baseDirty=false;
 function requestDraw(){ _baseDirty=true; }
-const zoomBehavior=d3.zoom().scaleExtent([1,64])
+const zoomBehavior=d3.zoom().scaleExtent([1,16])
   .filter(e=>{ if(e.type==="wheel"){e.preventDefault(); return true;} if(e.type==="dblclick") return true; if(projectionName==="ortho") return false; return !e.button; })
   .on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
 d3.select(fxCanvas).call(zoomBehavior);
