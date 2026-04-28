@@ -1437,6 +1437,7 @@ function rankRootCandidates(individuals, isParent, parentsOf, indiById) {
   for (let d = 1; d <= ROOT_MAX_DEPTH; d++) expected += 1 << d;
   const scored = [];
   for (const ind of individuals) {
+    if (ind.death_year != null) continue;
     const { score, found } = ancestorScore(ind.id, parentsOf, indiById, ROOT_MAX_DEPTH);
     if (score <= 0 || found < 2) continue;
     const pci = expected > 0 ? found / expected : 0;
