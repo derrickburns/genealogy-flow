@@ -425,7 +425,7 @@ const dragRotate = d3.drag()
     this._x = e.x; this._y = e.y;
   })
   .on("drag", function(e) {
-    const k = Math.max(0.6, 300 / projection.scale());
+    const k = Math.max(2.0, 600 / projection.scale());
     const r0 = this._r;
     projection.rotate([
       r0[0] + (e.x - this._x) * k,
@@ -2880,7 +2880,7 @@ const dragRotate=d3.drag()
   .filter(()=>projectionName==="ortho")
   .on("start", function(e){ this._r=projection.rotate(); this._x=e.x; this._y=e.y; })
   .on("drag", function(e){
-    const k=Math.max(0.6, 300/projection.scale()); const r0=this._r;
+    const k=Math.max(2.0, 600/projection.scale()); const r0=this._r;
     projection.rotate([r0[0]+(e.x-this._x)*k, Math.max(-90,Math.min(90,r0[1]-(e.y-this._y)*k)), r0[2]]);
     requestDraw();
   })
