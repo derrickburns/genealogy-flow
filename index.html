@@ -884,18 +884,18 @@ function drawClusters(visible, radius, mode, year, dw) {
   if (visible.length === 0) return;
   const clusters = buildClusters(visible, radius);
   if (mode === "heatmap") {
+    const splat = radius * 1.5;
     fxCtx.save();
     fxCtx.globalCompositeOperation = "lighter";
     for (const cl of clusters) {
-      const intensity = Math.min(1, cl.members.length / 8);
-      const radius = 30 + cl.members.length * 2;
-      const grad = fxCtx.createRadialGradient(cl.cx, cl.cy, 0, cl.cx, cl.cy, radius);
+      const intensity = Math.min(1, cl.members.length / 5);
+      const grad = fxCtx.createRadialGradient(cl.cx, cl.cy, 0, cl.cx, cl.cy, splat);
       const c = clusterDominantColor(cl);
       grad.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${0.35 * intensity})`);
       grad.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
       fxCtx.fillStyle = grad;
       fxCtx.beginPath();
-      fxCtx.arc(cl.cx, cl.cy, radius, 0, Math.PI * 2);
+      fxCtx.arc(cl.cx, cl.cy, splat, 0, Math.PI * 2);
       fxCtx.fill();
     }
     fxCtx.restore();
