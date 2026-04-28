@@ -5,17 +5,40 @@ tooling for parsing, geocoding, biography generation, and migration analysis.
 
 ## Viewer
 
-`index.html` is a single-file browser app. No build step. Open it directly or
-serve it from any static host. The page parses your `.ged` in the browser,
-geocodes places against a bundled gazetteer, and animates events as particles
-flowing across a world map over time.
+`index.html` is a single-file browser app. No build step. Three ways to use it:
+
+1. **Hosted**: open https://derrickburns.github.io/genealogy-flow/. Drop your
+   GEDCOM. The file never leaves your browser.
+2. **Local**: clone the repo and open `index.html` directly.
+3. **Self-host**: copy `index.html` to any static host.
+
+GitHub Pages is wired up via `.github/workflows/pages.yml` and redeploys
+automatically on every push to `main` that touches `index.html`. Enable it
+once under repo Settings -> Pages -> Source: GitHub Actions.
 
 ## Tools
 
-Seven offline CLIs replace the previous Python scripts. They all run via `tsx`.
+Seven offline CLIs published as `@derrickburns/genealogy-flow`.
+
+### Use (no clone)
+
+```sh
+npx @derrickburns/genealogy-flow parse-gedcom my.ged individuals.json
+npx @derrickburns/genealogy-flow biographer my.ged --mode standard
+```
+
+Or install globally:
+
+```sh
+npm i -g @derrickburns/genealogy-flow
+parse-gedcom my.ged individuals.json
+```
+
+### Develop
 
 ```sh
 pnpm install
+pnpm parse-gedcom my.ged individuals.json
 ```
 
 | Command                                    | Purpose                                      |

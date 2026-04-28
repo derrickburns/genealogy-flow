@@ -1,4 +1,3 @@
-#!/usr/bin/env -S npx tsx
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { argv, exit } from "node:process";
 import Anthropic from "@anthropic-ai/sdk";

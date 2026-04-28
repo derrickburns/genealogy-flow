@@ -1,20 +1,32 @@
 {
-  "name": "genealogy-flow",
+  "name": "@derrickburns/genealogy-flow",
   "version": "0.1.0",
   "description": "GEDCOM particle-flow animation viewer plus offline tooling for parsing, geocoding, biography, and migration analysis.",
   "type": "module",
-  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/derrickburns/genealogy-flow",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/derrickburns/genealogy-flow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/derrickburns/genealogy-flow/issues"
+  },
   "engines": {
     "node": ">=20"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "bin": {
-    "parse-gedcom": "src/bin/parse-gedcom.ts",
-    "build-gazetteer": "src/bin/build-gazetteer.ts",
-    "geocode": "src/bin/geocode.ts",
-    "build-timeline": "src/bin/build-timeline.ts",
-    "migrations": "src/bin/migrations.ts",
-    "summarize-gedcom": "src/bin/summarize.ts",
-    "biographer": "src/bin/biographer.ts"
+    "parse-gedcom": "dist/bin/parse-gedcom.js",
+    "build-gazetteer": "dist/bin/build-gazetteer.js",
+    "geocode": "dist/bin/geocode.js",
+    "build-timeline": "dist/bin/build-timeline.js",
+    "migrations": "dist/bin/migrations.js",
+    "summarize-gedcom": "dist/bin/summarize.js",
+    "biographer": "dist/bin/biographer.js"
   },
   "scripts": {
     "parse-gedcom": "tsx src/bin/parse-gedcom.ts",
@@ -24,7 +36,9 @@
     "migrations": "tsx src/bin/migrations.ts",
     "summarize-gedcom": "tsx src/bin/summarize.ts",
     "biographer": "tsx src/bin/biographer.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/finalize-bins.mjs",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -35,5 +49,8 @@
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

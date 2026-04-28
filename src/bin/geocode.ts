@@ -1,4 +1,3 @@
-#!/usr/bin/env -S npx tsx
 import { readFileSync, writeFileSync } from "node:fs";
 import { argv, exit } from "node:process";
 import { dirname, join } from "node:path";
