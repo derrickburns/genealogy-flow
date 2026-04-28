@@ -350,6 +350,24 @@ function resize() {
   if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
 }
 window.addEventListener("resize", resize);
+window.kfDump = () => {
+  const i = highlightedDwell;
+  if (i < 0) return { error: "no selection" };
+  const ind = lastIndividuals[dwellIndi[i]];
+  return {
+    person: ind?.name,
+    dwellLatLon: [dwellLat[i], dwellLon[i]],
+    projectedXY: projection([dwellLon[i], dwellLat[i]]),
+    dwellSxSy: [dwellSx[i], dwellSy[i]],
+    rotation: projection.rotate(),
+    zoom: { ...zoomTransform },
+    baseTranslate: baseTranslate.slice(),
+    canvas: [W, H],
+    projectionName,
+    side: dwellSide[i],
+    place: dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : null,
+  };
+};
 const _ro = new ResizeObserver(() => { resize(); renderMigBar(); });
 queueMicrotask(() => { const wrap = $("mapWrap"); if (wrap) _ro.observe(wrap); });
 
