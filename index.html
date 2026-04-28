@@ -48,9 +48,16 @@
   #range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
   #range::-moz-range-track { height:6px; background:#c0ccd8; border-radius:3px; }
   #stats { font-size:11px; color:#566480; }
-  #title { font-size:14px; color:#1c2433; letter-spacing:0.04em; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  #title b { color:#0a1426; }
+  #title { font-size:14px; color:#1c2433; letter-spacing:0.02em; background:rgba(255,255,255,0.85); padding:6px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #title b { color:#0a1426; font-weight:700; letter-spacing:0; }
   #title input[type=text] { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:4px 6px; font:inherit; }
+  #optionsWrap { position:relative; }
+  #optionsBtn { background:#1a2238; color:#fff; border:1px solid #2a3654; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
+  #optionsBtn:hover { background:#243056; }
+  #optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:240px; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 12px; display:none; flex-direction:column; gap:8px; z-index:30; }
+  #optionsMenu.open { display:flex; }
+  #optionsMenu label { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; color:#566480; }
+  #optionsMenu select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:3px 6px; font:inherit; }
   select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
   label { color:#566480; font-size:11px; }
   #pick, #export { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
@@ -145,51 +152,25 @@
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
   <span id="rootwrap" style="display:none;">
     <label style="margin-left:6px;">root
-      <select id="rootSel" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;max-width:360px;"></select>
-    </label>
-    <label>show
-      <select id="filt" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
-        <option value="all" selected>all people</option>
-        <option value="blood">blood relatives only</option>
-        <option value="ancestors">ancestors only</option>
-      </select>
-    </label>
-    <label>cities
-      <select id="cityLayer" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
-        <option value="major" selected>major cities</option>
-        <option value="events">in events only</option>
-      </select>
-    </label>
-    <label>borders
-      <select id="borderLayer" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
-        <option value="modern" selected>modern</option>
-        <option value="historical">historical</option>
-      </select>
-    </label>
-    <label>migration
-      <select id="migViz" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
-        <option value="lines" selected>arrival arcs</option>
-        <option value="pulse">arrival pulse</option>
-        <option value="discrete">no transit</option>
-        <option value="continuous">continuous</option>
-      </select>
-    </label>
-    <label>projection
-      <select id="projSel" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
-        <option value="natural" selected>Natural Earth</option>
-        <option value="equal">Equal Earth</option>
-        <option value="equirect">Equirectangular</option>
-        <option value="mercator">Mercator</option>
-        <option value="ortho">Globe</option>
-      </select>
+      <select id="rootSel" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;max-width:300px;"></select>
     </label>
   </span>
-  <span class="legend" id="legend" style="display:none;">
-    <span><span class="swatch" style="background:#2864dc;"></span>paternal ancestor of root</span>
-    <span><span class="swatch" style="background:#dc3c5a;"></span>maternal ancestor of root</span>
-    <span><span class="swatch" style="background:#a03cc8;"></span>everyone else</span>
-    <span style="margin-left:10px;"><span class="swatch diamond" style="background:#6e6e73;"></span>1 parent missing</span>
-    <span><span class="swatch square" style="background:#000;"></span>both parents missing</span>
+  <span class="legend" id="legend" style="display:none; margin-left:auto;">
+    <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
+    <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
+    <span><span class="swatch" style="background:#a03cc8;"></span>other</span>
+    <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 missing</span>
+    <span><span class="swatch square" style="background:#000;"></span>both missing</span>
+  </span>
+  <span id="optionsWrap" style="display:none;">
+    <button id="optionsBtn">Options ▾</button>
+    <div id="optionsMenu">
+      <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
+      <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
+      <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
+      <label>migration <select id="migViz"><option value="lines">arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous" selected>continuous</option></select></label>
+      <label>projection <select id="projSel"><option value="natural">Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho" selected>Globe</option></select></label>
+    </div>
   </span>
 </div>
 <div id="middle">
@@ -286,13 +267,13 @@ const PROJECTIONS = {
   mercator: () => d3.geoMercator(),
   ortho: () => d3.geoOrthographic().clipAngle(90),
 };
-let projection = PROJECTIONS.natural();
-let projectionName = "natural";
+let projection = PROJECTIONS.ortho();
+let projectionName = "ortho";
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
 let world = null, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
 let cityLayer = "major";
-let borderLayer = "modern";
+let borderLayer = "historical";
 let historicalBasemaps = new Map(); // year -> { world, name } loaded snapshots
 let currentHistoricalWorld = null;
 
@@ -310,7 +291,7 @@ let statusFilter = "all";
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
-let migrationViz = "lines";
+let migrationViz = "continuous";
 let lastBloodSet = null;
 let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
 let isDraggingSlider = false;
@@ -1440,6 +1421,7 @@ async function processFile(file) {
 
   rootwrap.style.display = "";
   legend.style.display = "";
+  $("optionsWrap").style.display = "";
   $("export").disabled = false;
 }
 
@@ -1479,6 +1461,15 @@ function applyRoot(rootId) {
 
 $("rootSel").addEventListener("change", e => {
   if (e.target.value && e.target.value !== lastRootId) applyRoot(e.target.value);
+});
+$("optionsBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  $("optionsMenu").classList.toggle("open");
+});
+document.addEventListener("click", e => {
+  const menu = $("optionsMenu");
+  if (!menu.classList.contains("open")) return;
+  if (!$("optionsWrap").contains(e.target)) menu.classList.remove("open");
 });
 $("filt").addEventListener("change", e => {
   curFilter = e.target.value;
@@ -1917,7 +1908,12 @@ canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixela
 #range { -webkit-appearance:none; appearance:none; height:6px; background:#c0ccd8; border-radius:3px; outline:none; flex:1 1 auto; min-width:120px; }
 #range::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
 #range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
-#title { font-size:14px; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+#title { font-size:14px; background:rgba(255,255,255,0.85); padding:6px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+#optionsWrap { position:relative; }
+#optionsBtn { background:#1a2238; color:#fff; border:1px solid #2a3654; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
+#optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:240px; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 12px; display:none; flex-direction:column; gap:8px; z-index:30; }
+#optionsMenu.open { display:flex; }
+#optionsMenu label { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; color:#566480; }
 .legend { font-size:11px; color:#566480; display:flex; gap:10px; align-items:center; }
 .legend .swatch { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
 .legend .square { border-radius:0; }
@@ -1962,17 +1958,22 @@ label { color:#566480; font-size:11px; }
 <div id="title">
   <b>${label}</b>
   <label>root <select id="rootSel"></select></label>
-  <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
-  <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
-  <label>borders <select id="borderLayer"><option value="modern" selected>modern</option><option value="historical">historical</option></select></label>
-  <label>migration <select id="migViz"><option value="lines" selected>arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous">continuous</option></select></label>
-  <label>projection <select id="projSel"><option value="natural" selected>Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho">Globe</option></select></label>
-  <span class="legend">
+  <span class="legend" style="margin-left:auto;">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
     <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
     <span><span class="swatch" style="background:#a03cc8;"></span>other</span>
     <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 missing</span>
     <span><span class="swatch square" style="background:#000;"></span>both missing</span>
+  </span>
+  <span id="optionsWrap">
+    <button id="optionsBtn">Options ▾</button>
+    <div id="optionsMenu">
+      <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
+      <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
+      <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
+      <label>migration <select id="migViz"><option value="lines">arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous" selected>continuous</option></select></label>
+      <label>projection <select id="projSel"><option value="natural">Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho" selected>Globe</option></select></label>
+    </div>
   </span>
 </div>
 <div id="middle">
@@ -2031,10 +2032,10 @@ const speedSel=$("speed"), trailSel=$("trail"), rootSel=$("rootSel"), filtSel=$(
 const cityLayerSel=$("cityLayer"), borderSel=$("borderLayer"), migSel=$("migViz"), projSel=$("projSel");
 const panelEl=$("panel"), panelList=$("panelList"), panelYear=$("panelYear");
 const PROJECTIONS={natural:()=>d3.geoNaturalEarth1(),equal:()=>d3.geoEqualEarth(),equirect:()=>d3.geoEquirectangular(),mercator:()=>d3.geoMercator(),ortho:()=>d3.geoOrthographic().clipAngle(90)};
-let projection=PROJECTIONS.natural();
-let projectionName="natural";
+let projection=PROJECTIONS.ortho();
+let projectionName="ortho";
 let W=0,H=0,mapW=0,mapTop=0,mapBottom=0; let baseScale=1, baseTranslate=[0,0]; let zoomTransform={k:1,x:0,y:0};
-let cityLayer="major", borderLayer="modern", migrationViz="lines", curFilter="all", isDraggingSlider=false;
+let cityLayer="major", borderLayer="historical", migrationViz="continuous", curFilter="all", isDraggingSlider=false;
 let dwellWindow=6, inferenceYears=0, statusFilter="all";
 let typeFilter=new Set([0,1,2,3,4,5,6,7,8,9,10]);
 let highlightedDwell=-1, highlightInferredYear=-1, highlightInferredSrcYear=-1;
@@ -2490,6 +2491,9 @@ cityLayerSel.addEventListener("change",e=>{ cityLayer=e.target.value; precompute
 borderSel.addEventListener("change",e=>{ borderLayer=e.target.value; drawBase(); });
 migSel.addEventListener("change",e=>{ migrationViz=e.target.value; fxCtx.clearRect(0,0,W,H); });
 projSel.addEventListener("change",e=>{ const k=e.target.value; if (PROJECTIONS[k]){ projection=PROJECTIONS[k](); projectionName=k; zoomTransform={k:1,x:0,y:0}; d3.select(fxCanvas).call(zoomBehavior.transform,d3.zoomIdentity); resize(); } });
+const optBtn=document.getElementById("optionsBtn"), optMenu=document.getElementById("optionsMenu"), optWrap=document.getElementById("optionsWrap");
+if (optBtn) optBtn.addEventListener("click", e=>{ e.stopPropagation(); optMenu.classList.toggle("open"); });
+document.addEventListener("click", e=>{ if (!optMenu) return; if (!optMenu.classList.contains("open")) return; if (!optWrap.contains(e.target)) optMenu.classList.remove("open"); });
 resize(); requestAnimationFrame(tick);
 <\/script>
 </body>
