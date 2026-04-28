@@ -292,6 +292,29 @@ function activeWorld() {
   }
   return world;
 }
+
+// Topojson feature/mesh extraction is expensive (rebuilds the GeoJSON tree
+// from topology each call). Cache results keyed by the source topology object
+// so drawBase doesn't pay this cost every drag frame.
+const _featCache = new WeakMap();
+function cachedLand(w) {
+  let c = _featCache.get(w);
+  if (!c) { c = {}; _featCache.set(w, c); }
+  if (!c.land) c.land = topojson.feature(w, w.objects.countries);
+  return c.land;
+}
+function cachedBordersMesh(w) {
+  let c = _featCache.get(w);
+  if (!c) { c = {}; _featCache.set(w, c); }
+  if (!c.borders) c.borders = topojson.mesh(w, w.objects.countries, (a, b) => a !== b);
+  return c.borders;
+}
+function cachedStatesMesh(us) {
+  let c = _featCache.get(us);
+  if (!c) { c = {}; _featCache.set(us, c); }
+  if (!c.states) c.states = topojson.mesh(us, us.objects.states, (a, b) => a !== b);
+  return c.states;
+}
 let cityLayer = "major";
 let borderLayer = "historical";
 let historicalBasemaps = new Map(); // year -> { world, name } loaded snapshots
@@ -402,6 +425,7 @@ function applyZoom() {
 }
 
 let _baseDirty = false;
+let _interacting = false;
 function requestDraw() { _baseDirty = true; }
 
 const zoomBehavior = d3.zoom()
@@ -412,7 +436,9 @@ const zoomBehavior = d3.zoom()
     if (projectionName === "ortho") return false;
     return !e.button;
   })
-  .on("zoom", e => { zoomTransform = e.transform; applyZoom(); });
+  .on("start", () => { _interacting = true; })
+  .on("zoom", e => { zoomTransform = e.transform; applyZoom(); })
+  .on("end", () => { _interacting = false; _baseDirty = true; });
 d3.select(fxCanvas).call(zoomBehavior);
 d3.select(fxCanvas).on("dblclick.zoom", () => {
   d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity);
@@ -421,6 +447,7 @@ d3.select(fxCanvas).on("dblclick.zoom", () => {
 const dragRotate = d3.drag()
   .filter(() => projectionName === "ortho")
   .on("start", function(e) {
+    _interacting = true;
     this._r = projection.rotate();
     this._x = e.x; this._y = e.y;
   })
@@ -435,6 +462,8 @@ const dragRotate = d3.drag()
     requestDraw();
   })
   .on("end", function() {
+    _interacting = false;
+    _baseDirty = true;
     updatePanel(true);
   });
 d3.select(fxCanvas).call(dragRotate);
@@ -580,7 +609,7 @@ function drawBase() {
 
   const useHistorical = borderLayer === "historical" && currentHistoricalWorld;
   const w = activeWorld();
-  const land = topojson.feature(w, w.objects.countries);
+  const land = cachedLand(w);
   // Always: paint modern land parchment (so ocean reliably stays blue)
   baseCtx.beginPath(); cp(land); baseCtx.fillStyle = "#f3ecd8"; baseCtx.fill();
   baseCtx.strokeStyle = "rgba(80,100,120,0.55)"; baseCtx.lineWidth = 0.6; baseCtx.stroke();
@@ -595,19 +624,19 @@ function drawBase() {
     baseCtx.strokeStyle = "rgba(80,100,120,0.7)"; baseCtx.lineWidth = 0.7; baseCtx.stroke();
     baseCtx.restore();
   } else {
-    const borders = topojson.mesh(w, w.objects.countries, (a, b) => a !== b);
+    const borders = cachedBordersMesh(w);
     countryFeatures = land.features;
     baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle = "rgba(120,100,80,0.55)"; baseCtx.lineWidth = 0.5; baseCtx.stroke();
   }
-  if (usStates && (!useHistorical)) {
-    const stateBorders = topojson.mesh(usStates, usStates.objects.states, (a, b) => a !== b);
+  if (usStates) {
+    const stateBorders = cachedStatesMesh(usStates);
     baseCtx.beginPath(); cp(stateBorders);
     baseCtx.strokeStyle = `rgba(140,120,90,${Math.min(0.7, 0.2 + k * 0.08)})`;
     baseCtx.lineWidth = 0.35; baseCtx.stroke();
   }
 
-  // Country labels
-  if (countryFeatures && k <= 8) {
+  // Country labels (skip while interacting for snappier drag/zoom)
+  if (countryFeatures && k <= 8 && !_interacting) {
     const areaCutoff = k >= 4 ? 30 : k >= 2 ? 150 : 500;
     baseCtx.font = "bold 12px -apple-system, sans-serif";
     baseCtx.textAlign = "center"; baseCtx.textBaseline = "middle";
@@ -634,7 +663,7 @@ function drawBase() {
     }
   }
   const cities = currentCities();
-  if (cities && cities.length) {
+  if (cities && cities.length && !_interacting) {
     const isEvents = cityLayer === "events" && eventCities && cities === eventCities;
     const popThresh = isEvents ? 0 : k >= 16 ? 50000 : k >= 8 ? 150000 : k >= 4 ? 400000 : k >= 2 ? 800000 : 1500000;
     const labelThresh = isEvents ? 0 : k >= 16 ? 200000 : k >= 8 ? 500000 : k >= 4 ? 1500000 : k >= 2 ? 3000000 : 6000000;
