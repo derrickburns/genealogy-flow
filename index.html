@@ -420,8 +420,11 @@ queueMicrotask(() => { const wrap = $("mapWrap"); if (wrap) _ro.observe(wrap); }
 
 function applyZoom() {
   applyProjectionFromZoom();
-  drawBase();
-  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
+  // Defer the actual canvas redraw + dwell reprojection to the next rAF
+  // tick. tick() coalesces all dirty zoom/pan/rotate events into one
+  // drawBase + projectAll per frame, so a flurry of wheel events at
+  // 100-200 Hz collapses to ~60 redraws/sec instead of one per event.
+  _baseDirty = true;
 }
 
 let _baseDirty = false;
@@ -437,10 +440,6 @@ const zoomBehavior = d3.zoom()
     return !e.button;
   })
   .wheelDelta(e => {
-    // Trackpad pinch produces many small pixel-mode wheel events in quick
-    // succession; the d3 default (0.002 / pixel) accumulates too fast.
-    // Halve sensitivity for pixel-mode wheels (trackpads); leave line-mode
-    // (mouse wheels) untouched.
     return -e.deltaY * (e.deltaMode === 1 ? 0.2 : e.deltaMode ? 4 : 0.008);
   })
   .on("start", () => { _interacting = true; if (!_restoringView) pushHistory(); })
