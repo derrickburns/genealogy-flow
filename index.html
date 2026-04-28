@@ -360,16 +360,8 @@ function applyZoom() {
   if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
 }
 
-let _drawPending = false;
-function requestDraw() {
-  if (_drawPending) return;
-  _drawPending = true;
-  requestAnimationFrame(() => {
-    _drawPending = false;
-    drawBase();
-    if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
-  });
-}
+let _baseDirty = false;
+function requestDraw() { _baseDirty = true; }
 
 const zoomBehavior = d3.zoom()
   .scaleExtent([1, 64])
@@ -730,6 +722,11 @@ function tick(now) {
     yearBig.textContent = yint;
   }
   maybeUpdateHistoricalBasemap();
+  if (_baseDirty) {
+    _baseDirty = false;
+    drawBase();
+    if (timelineLoaded) projectAll();
+  }
   frame(parseFloat(trailSel.value));
   updatePanel(false);
   updateNowMarker();
@@ -2196,12 +2193,8 @@ function applyZoom(){
   applyProjectionFromZoom();
   drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
 }
-let _drawPending=false;
-function requestDraw(){
-  if (_drawPending) return;
-  _drawPending=true;
-  requestAnimationFrame(()=>{ _drawPending=false; drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); });
-}
+let _baseDirty=false;
+function requestDraw(){ _baseDirty=true; }
 const zoomBehavior=d3.zoom().scaleExtent([1,64])
   .filter(e=>{ if(e.type==="wheel"){e.preventDefault(); return true;} if(e.type==="dblclick") return true; if(projectionName==="ortho") return false; return !e.button; })
   .on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
@@ -2516,6 +2509,7 @@ function tick(now){
   const yint=Math.floor(curYear);
   yearLabel.textContent=yint; yearBig.textContent=yint;
   maybeUpdateHistoricalBasemap();
+  if (_baseDirty){ _baseDirty=false; drawBase(); projectAll(); }
   frame(parseFloat(trailSel.value));
   updatePanel(false);
   requestAnimationFrame(tick);
