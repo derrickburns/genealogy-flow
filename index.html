@@ -413,6 +413,26 @@ function lowerBound(arr, order, target) {
   return lo;
 }
 
+function drawGreatCircle(ctx, lon0, lat0, lon1, lat1) {
+  const dist = d3.geoDistance([lon0, lat0], [lon1, lat1]);
+  if (dist < 1e-6) return;
+  const interp = d3.geoInterpolate([lon0, lat0], [lon1, lat1]);
+  const segs = Math.max(2, Math.min(40, Math.ceil(dist * 30)));
+  let started = false;
+  ctx.beginPath();
+  for (let i = 0; i <= segs; i++) {
+    const p = projection(interp(i / segs));
+    if (!p) { started = false; continue; }
+    if (!started) { ctx.moveTo(p[0], p[1]); started = true; }
+    else ctx.lineTo(p[0], p[1]);
+  }
+  ctx.stroke();
+}
+
+function positionOnGreatCircle(lon0, lat0, lon1, lat1, t) {
+  return projection(d3.geoInterpolate([lon0, lat0], [lon1, lat1])(t));
+}
+
 function projectAll() {
   for (let i = 0; i < dwellLat.length; i++) {
     const p = projection([dwellLon[i], dwellLat[i]]);
@@ -487,19 +507,13 @@ function frame(activeTrailFade) {
       const fs = flowSide[i], fp = flowSrc[i];
       if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
       if (curFilter === "blood" && !flowBlood[i]) continue;
-      const x0 = flowFromSx[i], y0 = flowFromSy[i], x1 = flowToSx[i], y1 = flowToSy[i];
-      if (x0 < -1000 || x1 < -1000) continue;
-      if ((x1 - x0) === 0 && (y1 - y0) === 0) continue;
-      const mx = (x0 + x1) / 2 - (y1 - y0) * 0.18;
-      const my = (y0 + y1) / 2 + (x1 - x0) * 0.18;
+      const lon0 = flowFromLon[i], lat0 = flowFromLat[i], lon1 = flowToLon[i], lat1 = flowToLat[i];
+      if (lon0 === lon1 && lat0 === lat1) continue;
       const c = colorForFinal(fs, fp);
       const alpha = Math.max(0.08, 1 - age / 80) * 0.55;
-      fxCtx.beginPath();
-      fxCtx.moveTo(x0, y0);
-      fxCtx.quadraticCurveTo(mx, my, x1, y1);
       fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(3)})`;
       fxCtx.lineWidth = age < 3 ? 1.2 : 0.5;
-      fxCtx.stroke();
+      drawGreatCircle(fxCtx, lon0, lat0, lon1, lat1);
     }
   } else if (migrationViz !== "discrete") {
     const fHi = lowerBound(flowFromY, flowFromOrder, y + 1);
@@ -516,20 +530,15 @@ function frame(activeTrailFade) {
         t = Math.max(0, Math.min(1, (y - flowFromY[i]) / span));
       }
       if (t <= 0 || t >= 1) continue;
-      const x0 = flowFromSx[i], y0 = flowFromSy[i], x1 = flowToSx[i], y1 = flowToSy[i];
-      if (x0 < -1000 || x1 < -1000) continue;
-      const mx = (x0 + x1) / 2 - (y1 - y0) * 0.18;
-      const my = (y0 + y1) / 2 + (x1 - x0) * 0.18;
-      const u = 1 - t;
-      const px = u * u * x0 + 2 * u * t * mx + t * t * x1;
-      const py = u * u * y0 + 2 * u * t * my + t * t * y1;
       const fs = flowSide[i], fp = flowSrc[i];
       if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
       if (curFilter === "blood" && !flowBlood[i]) continue;
+      const p = positionOnGreatCircle(flowFromLon[i], flowFromLat[i], flowToLon[i], flowToLat[i], t);
+      if (!p) continue;
       const c = colorForFinal(fs, fp);
       fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.95)`;
       const r = flowExact[i] ? 2.6 : 1.9;
-      drawShape(fxCtx, px, py, r, fp);
+      drawShape(fxCtx, p[0], p[1], r, fp);
     }
   }
 
