@@ -943,21 +943,48 @@ function pathFromRoot(otherId) {
 
 let relationCache = new Map();
 function recomputeRelationships() {
+  // Single BFS through the consanguinity DAG from root, recording (m, n)
+  // — generations up to MRCA, then generations down — for every reachable
+  // individual. m = up-steps, n = down-steps. Going up is only allowed
+  // before any down step (you can't be your own grandparent's nephew).
+  // O(N + E) time, vs the prior O(N * A) ancestorsWithDepth-per-individual.
   relationCache = new Map();
-  if (!lastRootId || !lastIndividuals || !lastParentsOf) return;
-  const rootAncestors = ancestorsWithDepth(lastRootId, lastParentsOf);
-  for (const ind of lastIndividuals) {
-    if (ind.id === lastRootId) { relationCache.set(ind.id, "self"); continue; }
-    const otherAnc = ancestorsWithDepth(ind.id, lastParentsOf);
-    let bestSum = Infinity, bestM = -1, bestN = -1;
-    for (const [aid, dm] of rootAncestors) {
-      const dn = otherAnc.get(aid);
-      if (dn === undefined) continue;
-      if (dm + dn < bestSum) { bestSum = dm + dn; bestM = dm; bestN = dn; }
+  if (!lastRootId || !lastIndividuals || !lastParentsOf || !lastChildrenOf) return;
+  const t0 = performance.now();
+  const mn = new Map(); // id -> [m, n]
+  mn.set(lastRootId, [0, 0]);
+  const queue = [[lastRootId, 0, 0]];
+  let head = 0;
+  while (head < queue.length) {
+    const [cur, m, n] = queue[head++];
+    if (n === 0) {
+      const par = lastParentsOf.get(cur);
+      if (par) {
+        for (let i = 0; i < 2; i++) {
+          const p = par[i];
+          if (!p || mn.has(p)) continue;
+          mn.set(p, [m + 1, 0]);
+          queue.push([p, m + 1, 0]);
+        }
+      }
     }
-    if (bestM < 0) { relationCache.set(ind.id, ""); continue; }
-    relationCache.set(ind.id, formatRelation(bestM, bestN, lastRootId, ind.id, lastParentsOf));
+    const kids = lastChildrenOf.get(cur);
+    if (kids) {
+      for (const ch of kids) {
+        if (mn.has(ch)) continue;
+        mn.set(ch, [m, n + 1]);
+        queue.push([ch, m, n + 1]);
+      }
+    }
   }
+  for (const ind of lastIndividuals) {
+    const r = mn.get(ind.id);
+    if (!r) { relationCache.set(ind.id, ""); continue; }
+    if (ind.id === lastRootId) { relationCache.set(ind.id, "self"); continue; }
+    relationCache.set(ind.id, formatRelation(r[0], r[1], lastRootId, ind.id, lastParentsOf));
+  }
+  const elapsed = performance.now() - t0;
+  if (elapsed > 50) console.log(`recomputeRelationships: ${mn.size} reachable, ${elapsed.toFixed(1)}ms`);
 }
 
 function descendantSet(rootId, childrenOf) {
