@@ -185,6 +185,8 @@
       <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
       <label>migration <select id="migViz"><option value="lines">arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous" selected>continuous</option></select></label>
       <label>projection <select id="projSel"><option value="natural">Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho" selected>Globe</option></select></label>
+      <label>cluster <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="hull">region rings</option><option value="heatmap">heatmap</option><option value="dispersion">on zoom</option></select></label>
+      <label>cluster radius <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"> <b id="clusterRadiusLabel">30</b>px</label>
     </div>
   </span>
 </div>
@@ -289,6 +291,8 @@ let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
 let migrationViz = "continuous";
+let clusterMode = "none";
+let clusterRadius = 30;
 let lastBloodSet = null;
 let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
 let isDraggingSlider = false;
@@ -711,6 +715,32 @@ function frame(activeTrailFade) {
   const labeledNamesFrame = new Set();
   const dynamicLabelRects = [];
   fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
+  const renderClusters = clusterMode !== "none" && clusterMode !== "dispersion";
+  const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
+  const useClusterReplace = renderClusters && clusterMode !== "hull";
+  if (renderClusters || useDispersion) {
+    const visible = [];
+    for (let k = lo; k < hi; k++) {
+      const i = dwellOrder[k];
+      const dyy = y - dwellY[i]; if (dyy < 0) continue;
+      const sd = dwellSide[i];
+      if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
+      if (curFilter === "blood" && !dwellBlood[i]) continue;
+      if (!typeFilter.has(dwellType[i])) continue;
+      if (!passesStatus(dwellIndi[i])) continue;
+      const sx = dwellSx[i], sy = dwellSy[i];
+      if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
+      visible.push(i);
+    }
+    const mode = useDispersion ? "aggregate" : clusterMode;
+    drawClusters(visible, clusterRadius, mode, y, dw);
+    if (mode === "hull") {
+      // hull mode: also draw individual dots below
+    } else {
+      if (highlightedDwell >= 0) drawHighlight();
+      return;
+    }
+  }
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
     const dy = y - dwellY[i]; if (dy < 0) continue;
@@ -794,6 +824,155 @@ function frame(activeTrailFade) {
   }
 
   if (highlightedDwell >= 0) drawHighlight();
+}
+
+function buildClusters(visible, radius) {
+  const r2 = radius * radius;
+  const clusters = [];
+  for (const i of visible) {
+    const x = dwellSx[i], y = dwellSy[i];
+    let chosen = null;
+    let bestDist = Infinity;
+    for (const cl of clusters) {
+      const dx = cl.cx - x, dy = cl.cy - y;
+      const d = dx * dx + dy * dy;
+      if (d <= r2 && d < bestDist) { chosen = cl; bestDist = d; }
+    }
+    if (chosen) {
+      const n = chosen.members.length;
+      chosen.cx = (chosen.cx * n + x) / (n + 1);
+      chosen.cy = (chosen.cy * n + y) / (n + 1);
+      chosen.members.push(i);
+      const sd = dwellSide[i];
+      if (sd === 0 || sd === 1 || sd === 2) chosen.sides[sd] += 1;
+    } else {
+      const cl = { cx: x, cy: y, members: [i], sides: [0, 0, 0] };
+      const sd = dwellSide[i];
+      if (sd === 0 || sd === 1 || sd === 2) cl.sides[sd] += 1;
+      clusters.push(cl);
+    }
+  }
+  return clusters;
+}
+
+function clusterDominantColor(cl) {
+  let best = 2, bestN = -1;
+  for (let s = 0; s < 3; s++) if (cl.sides[s] > bestN) { best = s; bestN = cl.sides[s]; }
+  return colorFor(best);
+}
+
+function convexHull(pts) {
+  if (pts.length < 3) return pts.slice();
+  const sorted = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+}
+
+function drawClusters(visible, radius, mode, year, dw) {
+  if (visible.length === 0) return;
+  const clusters = buildClusters(visible, radius);
+  if (mode === "heatmap") {
+    fxCtx.save();
+    fxCtx.globalCompositeOperation = "lighter";
+    for (const cl of clusters) {
+      const intensity = Math.min(1, cl.members.length / 8);
+      const radius = 30 + cl.members.length * 2;
+      const grad = fxCtx.createRadialGradient(cl.cx, cl.cy, 0, cl.cx, cl.cy, radius);
+      const c = clusterDominantColor(cl);
+      grad.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${0.35 * intensity})`);
+      grad.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+      fxCtx.fillStyle = grad;
+      fxCtx.beginPath();
+      fxCtx.arc(cl.cx, cl.cy, radius, 0, Math.PI * 2);
+      fxCtx.fill();
+    }
+    fxCtx.restore();
+    return;
+  }
+  if (mode === "hull") {
+    for (const cl of clusters) {
+      if (cl.members.length < 3) continue;
+      const pts = cl.members.map(i => [dwellSx[i], dwellSy[i]]);
+      const hull = convexHull(pts);
+      if (hull.length < 3) continue;
+      const c = clusterDominantColor(cl);
+      fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.10)`;
+      fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.55)`;
+      fxCtx.lineWidth = 1.5;
+      fxCtx.beginPath();
+      fxCtx.moveTo(hull[0][0], hull[0][1]);
+      for (let h = 1; h < hull.length; h++) fxCtx.lineTo(hull[h][0], hull[h][1]);
+      fxCtx.closePath();
+      fxCtx.fill();
+      fxCtx.stroke();
+    }
+    return;
+  }
+  if (mode === "pie") {
+    for (const cl of clusters) {
+      const total = cl.sides[0] + cl.sides[1] + cl.sides[2];
+      if (total === 0) continue;
+      const r = Math.max(8, Math.min(28, 5 + Math.sqrt(total) * 4));
+      let start = -Math.PI / 2;
+      for (let s = 0; s < 3; s++) {
+        if (cl.sides[s] === 0) continue;
+        const slice = (cl.sides[s] / total) * Math.PI * 2;
+        const c = colorFor(s);
+        fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.85)`;
+        fxCtx.beginPath();
+        fxCtx.moveTo(cl.cx, cl.cy);
+        fxCtx.arc(cl.cx, cl.cy, r, start, start + slice);
+        fxCtx.closePath();
+        fxCtx.fill();
+        start += slice;
+      }
+      fxCtx.strokeStyle = "rgba(255,255,255,0.9)";
+      fxCtx.lineWidth = 1.2;
+      fxCtx.beginPath();
+      fxCtx.arc(cl.cx, cl.cy, r, 0, Math.PI * 2);
+      fxCtx.stroke();
+      if (total > 1) {
+        fxCtx.fillStyle = "rgba(20,28,48,0.95)";
+        fxCtx.font = "bold 10px -apple-system, sans-serif";
+        fxCtx.textAlign = "center"; fxCtx.textBaseline = "middle";
+        fxCtx.fillText(String(total), cl.cx, cl.cy);
+        fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
+      }
+    }
+    return;
+  }
+  // aggregate (default)
+  for (const cl of clusters) {
+    const n = cl.members.length;
+    const r = Math.max(5, Math.min(28, 4 + Math.sqrt(n) * 4));
+    const c = clusterDominantColor(cl);
+    fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.8)`;
+    fxCtx.beginPath();
+    fxCtx.arc(cl.cx, cl.cy, r, 0, Math.PI * 2);
+    fxCtx.fill();
+    fxCtx.strokeStyle = "rgba(255,255,255,0.9)";
+    fxCtx.lineWidth = 1.4;
+    fxCtx.stroke();
+    if (n > 1) {
+      fxCtx.fillStyle = "rgba(20,28,48,0.95)";
+      fxCtx.font = "bold 10px -apple-system, sans-serif";
+      fxCtx.textAlign = "center"; fxCtx.textBaseline = "middle";
+      fxCtx.fillText(String(n), cl.cx, cl.cy);
+      fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
+    }
+  }
 }
 
 function drawHighlight() {
@@ -1689,6 +1868,15 @@ $("migViz").addEventListener("change", e => {
   migrationViz = e.target.value;
   fxCtx.clearRect(0, 0, W, H);
 });
+$("clusterMode").addEventListener("change", e => {
+  clusterMode = e.target.value;
+  fxCtx.clearRect(0, 0, W, H);
+});
+$("clusterRadius").addEventListener("input", e => {
+  clusterRadius = parseInt(e.target.value, 10) || 30;
+  $("clusterRadiusLabel").textContent = clusterRadius;
+  fxCtx.clearRect(0, 0, W, H);
+});
 $("projSel").addEventListener("change", e => {
   const key = e.target.value;
   if (PROJECTIONS[key]) {
@@ -2339,6 +2527,8 @@ label { color:#566480; font-size:11px; }
       <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
       <label>migration <select id="migViz"><option value="lines">arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous" selected>continuous</option></select></label>
       <label>projection <select id="projSel"><option value="natural">Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho" selected>Globe</option></select></label>
+      <label>cluster <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="hull">region rings</option><option value="heatmap">heatmap</option><option value="dispersion">on zoom</option></select></label>
+      <label>cluster radius <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"> <b id="clusterRadiusLabel">30</b>px</label>
     </div>
   </span>
 </div>
