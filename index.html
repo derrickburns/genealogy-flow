@@ -470,12 +470,15 @@ const zoomBehavior = d3.zoom()
     return !e.button;
   })
   .wheelDelta(e => {
-    // Damp pinch sensitivity as zoom level increases so each pinch event
-    // covers a similar visual change at any zoom level. Without this, the
-    // multiplicative nature of zoom makes a single pinch tick feel
-    // proportionally larger at high zoom.
-    const damp = 1 / Math.pow(Math.max(1, zoomTransform.k), 0.4);
-    return -e.deltaY * damp * (e.deltaMode === 1 ? 0.2 : e.deltaMode ? 4 : 0.008);
+    // Two dampening factors:
+    // - Zoom-level damp: each pinch tick produces a similar visual step
+    //   regardless of current zoom (1/k^0.5).
+    // - Pinch-vs-mouse damp: trackpad pinch (ctrlKey=true) is half as
+    //   sensitive as mouse-wheel (ctrlKey=false), since pinch fires many
+    //   small events in a sustained gesture.
+    const zoomDamp = 1 / Math.pow(Math.max(1, zoomTransform.k), 0.5);
+    const pinchScale = e.ctrlKey ? 0.5 : 1.0;
+    return -e.deltaY * zoomDamp * pinchScale * (e.deltaMode === 1 ? 0.2 : e.deltaMode ? 4 : 0.008);
   })
   .on("start", () => { _interacting = true; if (!_restoringView) pushHistory(); })
   .on("zoom", e => { zoomTransform = e.transform; applyZoom(); })
