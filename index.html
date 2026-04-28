@@ -1690,11 +1690,6 @@ function updatePanel(force) {
 
   const html = rows.map(r => rowLiHtml(r, isRowExpanded(r))).join("");
   panelList.innerHTML = html || `<li style="color:#888;padding:14px;">No events visible.</li>`;
-
-  if (highlightedDwell >= 0) {
-    const expandedLi = panelList.querySelector("li.expanded");
-    if (expandedLi) expandedLi.scrollIntoView({ block: "start" });
-  }
 }
 
 function isRowExpanded(r) {
