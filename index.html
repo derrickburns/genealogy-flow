@@ -1942,8 +1942,9 @@ async function processFile(file) {
   $("clusterSection").classList.remove("hidden");
   $("export").disabled = false;
 
-  // Jump the slider to today (clamped to the data range) and center the
-  // map on the root person's most recent recorded location.
+  // Jump the slider to today (clamped to the data range), center the
+  // map on the root person's most recent recorded location, and
+  // auto-select that dwell so the panel opens to the root's card.
   const today = new Date().getFullYear();
   curYear = Math.min(maxYear, Math.max(minYear, today));
   range.value = curYear;
@@ -1954,6 +1955,10 @@ async function processFile(file) {
       let latest = dwells[0];
       for (const di of dwells) if (dwellY[di] > dwellY[latest]) latest = di;
       centerOnGeo(dwellLon[latest], dwellLat[latest]);
+      highlightedDwell = latest;
+      highlightInferredYear = -1;
+      highlightInferredSrcYear = -1;
+      updatePanel(true);
     }
   }
 }
