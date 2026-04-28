@@ -203,7 +203,7 @@
       </div>
       <div class="section">
         <h4>Animation</h4>
-        <label>speed <select id="speed"><option value="0.05">0.25x</option><option value="0.1">0.5x</option><option value="0.2" selected>1x</option><option value="0.5">2.5x</option><option value="1">5x</option><option value="2">10x</option></select></label>
+        <label>speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1" selected>1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10">10y/s</option><option value="25">25y/s</option></select></label>
         <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
         <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0"></label>
       </div>
@@ -698,10 +698,12 @@ function drawBase() {
   const k = zoomTransform.k;
   const sphere = { type: "Sphere" };
   const cp = d3.geoPath(projection, baseCtx);
-  baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  if (!_interacting) {
+    baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  }
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
 
-  const useHistorical = borderLayer === "historical" && currentHistoricalWorld;
+  const useHistorical = borderLayer === "historical" && currentHistoricalWorld && !_interacting;
   const w = activeWorld();
   const land = cachedLand(w);
   // Always: paint modern land parchment (so ocean reliably stays blue)
@@ -722,7 +724,7 @@ function drawBase() {
     countryFeatures = land.features;
     baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle = "rgba(120,100,80,0.55)"; baseCtx.lineWidth = 0.5; baseCtx.stroke();
   }
-  if (usStates) {
+  if (usStates && !_interacting) {
     const stateBorders = cachedStatesMesh(usStates);
     baseCtx.beginPath(); cp(stateBorders);
     baseCtx.strokeStyle = `rgba(140,120,90,${Math.min(0.7, 0.2 + k * 0.08)})`;
@@ -1218,7 +1220,7 @@ function tick(now) {
       curYear = parseFloat(range.value);
     } else if (playing) {
       const sp = parseFloat(speedSel.value);
-      curYear += sp * 60 * dt;
+      curYear += sp * dt;
       if (curYear > maxYear) curYear = minYear;
       range.value = curYear;
     } else {
@@ -2856,7 +2858,7 @@ label { color:#566480; font-size:11px; }
     <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
   </div>
   <div class="uirow">
-    <label>speed <select id="speed"><option value="0.05">0.25x</option><option value="0.1">0.5x</option><option value="0.2" selected>1x</option><option value="0.5">2.5x</option><option value="1">5x</option><option value="2">10x</option></select></label>
+    <label>speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1" selected>1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10">10y/s</option><option value="25">25y/s</option></select></label>
     <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
     <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
   </div>
