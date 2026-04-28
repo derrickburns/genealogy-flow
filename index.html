@@ -275,6 +275,29 @@ let projection = PROJECTIONS.ortho();
 let projectionName = "ortho";
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
+// displayTransform lerps toward zoomTransform each frame, so a single big
+// pinch event animates over ~5-10 frames instead of jumping the view in
+// one step. Game-style smoothing.
+let displayTransform = { k: 1, x: 0, y: 0 };
+const LERP_RATE = 0.25;
+function lerpDisplayTransform() {
+  const dk = zoomTransform.k - displayTransform.k;
+  const dx = zoomTransform.x - displayTransform.x;
+  const dy = zoomTransform.y - displayTransform.y;
+  if (Math.abs(dk) < 0.001 && Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3) {
+    if (dk !== 0 || dx !== 0 || dy !== 0) {
+      displayTransform.k = zoomTransform.k;
+      displayTransform.x = zoomTransform.x;
+      displayTransform.y = zoomTransform.y;
+      return true;
+    }
+    return false;
+  }
+  displayTransform.k += dk * LERP_RATE;
+  displayTransform.x += dx * LERP_RATE;
+  displayTransform.y += dy * LERP_RATE;
+  return true;
+}
 let world = null, worldHi = null, worldHiLoading = false, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
 const HI_RES_ZOOM_THRESHOLD = 8;
 function ensureHiResWorld() {
@@ -351,7 +374,7 @@ let lastSideById = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
 
 function applyProjectionFromZoom() {
-  const t = zoomTransform;
+  const t = displayTransform;
   projection.scale(baseScale * t.k);
   projection.translate([baseTranslate[0] * t.k + t.x, baseTranslate[1] * t.k + t.y]);
 }
@@ -392,6 +415,9 @@ function resize() {
       const dx = W / 2 - np[0];
       const dy = H / 2 - np[1];
       zoomTransform = { k: zoomTransform.k, x: zoomTransform.x + dx, y: zoomTransform.y + dy };
+      // Resize is not a user-initiated animation; sync display so the next
+      // frame doesn't lerp the just-anchored transform off-center.
+      displayTransform = { ...zoomTransform };
       d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(zoomTransform.x, zoomTransform.y).scale(zoomTransform.k));
       applyProjectionFromZoom();
     }
@@ -1197,8 +1223,10 @@ function tick(now) {
   }
   $("centerBtn").disabled = highlightedDwell < 0;
   maybeUpdateHistoricalBasemap();
-  if (_baseDirty) {
+  const stillLerping = lerpDisplayTransform();
+  if (_baseDirty || stillLerping) {
     _baseDirty = false;
+    applyProjectionFromZoom();
     drawBase();
     if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
   }
