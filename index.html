@@ -702,7 +702,6 @@ function frame(activeTrailFade) {
     fxCtx.globalCompositeOperation = "source-over";
   }
   if (!timelineLoaded) return;
-  if (highlightedDwell >= 0) { drawHighlight(); return; }
 
   const y = curYear, dw = dwellWindow;
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
@@ -791,6 +790,7 @@ function frame(activeTrailFade) {
     }
   }
 
+  if (highlightedDwell >= 0) drawHighlight();
 }
 
 function drawHighlight() {
@@ -2707,7 +2707,6 @@ function drawHighlight(){
 function frame(fade){
   if (migrationViz==="lines"||highlightedDwell>=0) fxCtx.clearRect(0,0,W,H);
   else { fxCtx.globalCompositeOperation="destination-out"; fxCtx.fillStyle="rgba(0,0,0,"+fade+")"; fxCtx.fillRect(0,0,W,H); fxCtx.globalCompositeOperation="source-over"; }
-  if (highlightedDwell>=0){ drawHighlight(); return; }
   const y=curYear, dw=dwellWindow;
   const lo=lowerBound(dwellY,dwellOrder,y-dw), hi=lowerBound(dwellY,dwellOrder,y+1);
   const labeledNames=new Set(); const dynRects=[];
@@ -2771,6 +2770,7 @@ function frame(fade){
       drawShape(fxCtx,p[0],p[1],flowExact[i]?2.6:1.9,fp);
     }
   }
+  if (highlightedDwell>=0) drawHighlight();
 }
 function escHtml(s){ const map={"&":"&amp;","<":"&lt;",">":"&gt;"}; map['"']="&quot;"; map["'"]="&#39;"; return String(s).replace(/[&<>"']/g, c => map[c]); }
 let lastPanelYear=-9999, lastPanelTime=0;
