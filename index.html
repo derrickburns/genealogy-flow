@@ -385,6 +385,46 @@ const dragRotate = d3.drag()
   });
 d3.select(fxCanvas).call(dragRotate);
 
+fxCanvas.addEventListener("click", e => {
+  if (!timelineLoaded) return;
+  const x = e.offsetX, y = e.offsetY;
+  const HIT_RADIUS = 14;
+  const HIT_R2 = HIT_RADIUS * HIT_RADIUS;
+  const dw = dwellWindow;
+  const yint = Math.floor(curYear);
+  const lo = lowerBound(dwellY, dwellOrder, yint - dw);
+  const hi = lowerBound(dwellY, dwellOrder, yint + 1);
+  let bestI = -1, bestDist = Infinity;
+  for (let k = lo; k < hi; k++) {
+    const i = dwellOrder[k];
+    if (curFilter === "ancestors" && dwellSide[i] !== 0 && dwellSide[i] !== 1) continue;
+    if (curFilter === "blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
+    const sx = dwellSx[i], sy = dwellSy[i];
+    if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
+    const ddx = sx - x, ddy = sy - y;
+    const dist = ddx * ddx + ddy * ddy;
+    if (dist < bestDist) { bestDist = dist; bestI = i; }
+  }
+  if (bestI < 0 || bestDist > HIT_R2) return;
+  const sameAsSelected = highlightedDwell === bestI && highlightInferredYear < 0;
+  if (sameAsSelected) {
+    highlightedDwell = -1;
+    highlightInferredYear = -1;
+    highlightInferredSrcYear = -1;
+  } else {
+    highlightedDwell = bestI;
+    highlightInferredYear = -1;
+    highlightInferredSrcYear = -1;
+    curYear = dwellY[bestI];
+    range.value = curYear;
+    if (playing) { playing = false; playBtn.textContent = "Play"; }
+  }
+  fxCtx.clearRect(0, 0, W, H);
+  applyExpansion();
+});
+
 let staticLabelRects = [];
 function rectsOverlap(a, b) {
   return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
@@ -2403,6 +2443,32 @@ const dragRotate=d3.drag()
   })
   .on("end", function(){ updatePanel(true); });
 d3.select(fxCanvas).call(dragRotate);
+fxCanvas.addEventListener("click", e => {
+  const x=e.offsetX, y=e.offsetY;
+  const HIT_R2=14*14;
+  const dw=dwellWindow;
+  const yint=Math.floor(curYear);
+  const lo=lowerBound(dwellY,dwellOrder,yint-dw);
+  const hi=lowerBound(dwellY,dwellOrder,yint+1);
+  let bestI=-1, bestDist=Infinity;
+  for (let k=lo;k<hi;k++){
+    const i=dwellOrder[k];
+    if (curFilter==="ancestors" && dwellSide[i]!==0 && dwellSide[i]!==1) continue;
+    if (curFilter==="blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
+    const sx=dwellSx[i], sy=dwellSy[i];
+    if (sx<0||sx>W||sy<0||sy>H) continue;
+    const ddx=sx-x, ddy=sy-y; const d=ddx*ddx+ddy*ddy;
+    if (d<bestDist){ bestDist=d; bestI=i; }
+  }
+  if (bestI<0||bestDist>HIT_R2) return;
+  if (highlightedDwell===bestI && highlightInferredYear<0){ clearHighlight(); return; }
+  highlightedDwell=bestI; highlightInferredYear=-1; highlightInferredSrcYear=-1;
+  curYear=dwellY[bestI]; range.value=curYear;
+  if (playing){ playing=false; playBtn.textContent="Play"; }
+  fxCtx.clearRect(0,0,W,H); updatePanel(true);
+});
 function drawBase(){
   if (!world) return;
   staticLabelRects=[];
