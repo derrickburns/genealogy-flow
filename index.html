@@ -65,6 +65,10 @@
   #panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
   #panelList li:hover { background:#f0f4f8; }
+  #panelList li.selected { background:#fff3d4; box-shadow:inset 3px 0 0 #ffb930; }
+  #panelList li.inferred { background:#fafbfd; font-style:italic; }
+  #panelList li.inferred .nm { color:#566480; }
+  #panelList .tag { display:inline-block; background:#e0e6ee; color:#566480; font-size:10px; padding:0 4px; border-radius:3px; margin-left:4px; vertical-align:middle; font-style:normal; }
   #panelList .yr { font-variant-numeric:tabular-nums; color:#888; margin-right:6px; font-size:11px; }
   #panelList .nm { font-weight:600; color:#1c2433; }
   #panelList .ev { color:#566480; font-size:11px; }
@@ -189,7 +193,7 @@ let currentHistoricalWorld = null;
 
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;
 let placesList = [];
-let highlightedDwell = -1, highlightUntil = 0;
+let highlightedDwell = -1;
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
@@ -382,7 +386,7 @@ function projectAll() {
 }
 
 function frame(activeTrailFade) {
-  if (migrationViz === "lines") {
+  if (migrationViz === "lines" || highlightedDwell >= 0) {
     fxCtx.clearRect(0, 0, W, H);
   } else {
     fxCtx.globalCompositeOperation = "destination-out";
@@ -391,6 +395,7 @@ function frame(activeTrailFade) {
     fxCtx.globalCompositeOperation = "source-over";
   }
   if (!timelineLoaded) return;
+  if (highlightedDwell >= 0) { drawHighlight(); return; }
 
   const y = curYear, dw = 6;
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
@@ -433,10 +438,7 @@ function frame(activeTrailFade) {
     }
   }
 
-  if (migrationViz === "discrete") return;
-
   if (migrationViz === "lines") {
-    // Persistent arcs for completed migrations, fade with age
     const fLen = flowFromY.length;
     for (let i = 0; i < fLen; i++) {
       if (flowToY[i] > y) continue;
@@ -459,80 +461,77 @@ function frame(activeTrailFade) {
       fxCtx.lineWidth = age < 3 ? 1.2 : 0.5;
       fxCtx.stroke();
     }
-    return;
+  } else if (migrationViz !== "discrete") {
+    const fHi = lowerBound(flowFromY, flowFromOrder, y + 1);
+    for (let k = 0; k < fHi; k++) {
+      const i = flowFromOrder[k];
+      if (flowToY[i] < y - 1) continue;
+      let t;
+      if (migrationViz === "pulse") {
+        const win = 1.0;
+        if (y < flowToY[i] - win || y > flowToY[i] + 0.1) continue;
+        t = Math.max(0, Math.min(1, (y - (flowToY[i] - win)) / win));
+      } else {
+        const span = Math.max(1, flowToY[i] - flowFromY[i]);
+        t = Math.max(0, Math.min(1, (y - flowFromY[i]) / span));
+      }
+      if (t <= 0 || t >= 1) continue;
+      const x0 = flowFromSx[i], y0 = flowFromSy[i], x1 = flowToSx[i], y1 = flowToSy[i];
+      if (x0 < -1000 || x1 < -1000) continue;
+      const mx = (x0 + x1) / 2 - (y1 - y0) * 0.18;
+      const my = (y0 + y1) / 2 + (x1 - x0) * 0.18;
+      const u = 1 - t;
+      const px = u * u * x0 + 2 * u * t * mx + t * t * x1;
+      const py = u * u * y0 + 2 * u * t * my + t * t * y1;
+      const fs = flowSide[i], fp = flowSrc[i];
+      if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
+      if (curFilter === "blood" && !flowBlood[i]) continue;
+      const c = colorForFinal(fs, fp);
+      fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.95)`;
+      const r = flowExact[i] ? 2.6 : 1.9;
+      drawShape(fxCtx, px, py, r, fp);
+    }
   }
 
-  // pulse and continuous both render moving particles
-  const fHi = lowerBound(flowFromY, flowFromOrder, y + 1);
-  for (let k = 0; k < fHi; k++) {
-    const i = flowFromOrder[k];
-    if (flowToY[i] < y - 1) continue;
-    let t;
-    if (migrationViz === "pulse") {
-      // active only in the last year before destination
-      const win = 1.0;
-      if (y < flowToY[i] - win || y > flowToY[i] + 0.1) continue;
-      t = Math.max(0, Math.min(1, (y - (flowToY[i] - win)) / win));
-    } else {
-      const span = Math.max(1, flowToY[i] - flowFromY[i]);
-      t = Math.max(0, Math.min(1, (y - flowFromY[i]) / span));
-    }
-    if (t <= 0 || t >= 1) continue;
-    const x0 = flowFromSx[i], y0 = flowFromSy[i], x1 = flowToSx[i], y1 = flowToSy[i];
-    if (x0 < -1000 || x1 < -1000) continue;
-    const mx = (x0 + x1) / 2 - (y1 - y0) * 0.18;
-    const my = (y0 + y1) / 2 + (x1 - x0) * 0.18;
-    const u = 1 - t;
-    const px = u * u * x0 + 2 * u * t * mx + t * t * x1;
-    const py = u * u * y0 + 2 * u * t * my + t * t * y1;
-    const fs = flowSide[i], fp = flowSrc[i];
-    if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
-    if (curFilter === "blood" && !flowBlood[i]) continue;
-    const c = colorForFinal(fs, fp);
-    fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.95)`;
-    const r = flowExact[i] ? 2.6 : 1.9;
-    drawShape(fxCtx, px, py, r, fp);
-  }
+}
 
-  if (highlightedDwell >= 0 && performance.now() < highlightUntil) {
-    const i = highlightedDwell;
-    const sx = dwellSx[i], sy = dwellSy[i];
-    if (sx > -1000) {
-      const remaining = Math.max(0, (highlightUntil - performance.now()) / HIGHLIGHT_DURATION_MS);
-      const sd = dwellSide[i], ps = dwellSrc[i];
-      const dotColor = colorForFinal(sd, ps);
-      fxCtx.fillStyle = `rgba(${dotColor[0]},${dotColor[1]},${dotColor[2]},1)`;
-      drawShape(fxCtx, sx, sy, 7, ps);
-      fxCtx.strokeStyle = "rgba(255,255,255,0.9)";
-      fxCtx.lineWidth = 2;
-      if (ps === 2) fxCtx.strokeRect(sx - 7, sy - 7, 14, 14);
-      else if (ps === 1) { fxCtx.beginPath(); fxCtx.moveTo(sx, sy - 7); fxCtx.lineTo(sx + 7, sy); fxCtx.lineTo(sx, sy + 7); fxCtx.lineTo(sx - 7, sy); fxCtx.closePath(); fxCtx.stroke(); }
-      else { fxCtx.beginPath(); fxCtx.arc(sx, sy, 7, 0, Math.PI * 2); fxCtx.stroke(); }
-      const t = performance.now() / 1000;
-      for (let rr = 0; rr < 3; rr++) {
-        const phase = ((t + rr * 0.45) % 1.4) / 1.4;
-        const radius = 10 + phase * 60;
-        fxCtx.strokeStyle = `rgba(255,180,30,${(0.7 * (1 - phase) * remaining).toFixed(3)})`;
-        fxCtx.lineWidth = 2.5;
-        fxCtx.beginPath(); fxCtx.arc(sx, sy, radius, 0, Math.PI * 2); fxCtx.stroke();
-      }
-      const ind = lastIndividuals[dwellIndi[i]];
-      if (ind) {
-        const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
-        const verb = EVENT_TYPE_LABEL[dwellType[i]] || "event";
-        const line1 = ind.name;
-        const line2 = `${dwellY[i]} - ${verb}${placeStr ? " " + placeStr : ""}`;
-        fxCtx.font = "bold 13px -apple-system, sans-serif";
-        fxCtx.textAlign = "center"; fxCtx.textBaseline = "bottom";
-        fxCtx.lineWidth = 3.5; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
-        fxCtx.strokeText(line1, sx, sy - 28);
-        fxCtx.fillStyle = "rgba(20,28,48,1)"; fxCtx.fillText(line1, sx, sy - 28);
-        fxCtx.font = "11px -apple-system, sans-serif";
-        fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
-        fxCtx.strokeText(line2, sx, sy - 14);
-        fxCtx.fillStyle = "rgba(60,70,90,1)"; fxCtx.fillText(line2, sx, sy - 14);
-      }
-    }
+function drawHighlight() {
+  const i = highlightedDwell;
+  if (i < 0) return;
+  const sx = dwellSx[i], sy = dwellSy[i];
+  if (sx <= -1000) return;
+  const sd = dwellSide[i], ps = dwellSrc[i];
+  const dotColor = colorForFinal(sd, ps);
+  fxCtx.fillStyle = `rgba(${dotColor[0]},${dotColor[1]},${dotColor[2]},1)`;
+  drawShape(fxCtx, sx, sy, 9, ps);
+  fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
+  fxCtx.lineWidth = 2.5;
+  if (ps === 2) fxCtx.strokeRect(sx - 9, sy - 9, 18, 18);
+  else if (ps === 1) { fxCtx.beginPath(); fxCtx.moveTo(sx, sy - 9); fxCtx.lineTo(sx + 9, sy); fxCtx.lineTo(sx, sy + 9); fxCtx.lineTo(sx - 9, sy); fxCtx.closePath(); fxCtx.stroke(); }
+  else { fxCtx.beginPath(); fxCtx.arc(sx, sy, 9, 0, Math.PI * 2); fxCtx.stroke(); }
+  const t = performance.now() / 1000;
+  for (let rr = 0; rr < 3; rr++) {
+    const phase = ((t + rr * 0.45) % 1.4) / 1.4;
+    const radius = 12 + phase * 70;
+    fxCtx.strokeStyle = `rgba(255,180,30,${(0.7 * (1 - phase)).toFixed(3)})`;
+    fxCtx.lineWidth = 3;
+    fxCtx.beginPath(); fxCtx.arc(sx, sy, radius, 0, Math.PI * 2); fxCtx.stroke();
+  }
+  const ind = lastIndividuals[dwellIndi[i]];
+  if (ind) {
+    const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+    const verb = EVENT_TYPE_LABEL[dwellType[i]] || "event";
+    const line1 = ind.name;
+    const line2 = `${dwellY[i]} - ${verb}${placeStr ? " " + placeStr : ""}`;
+    fxCtx.font = "bold 14px -apple-system, sans-serif";
+    fxCtx.textAlign = "center"; fxCtx.textBaseline = "bottom";
+    fxCtx.lineWidth = 4; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
+    fxCtx.strokeText(line1, sx, sy - 32);
+    fxCtx.fillStyle = "rgba(20,28,48,1)"; fxCtx.fillText(line1, sx, sy - 32);
+    fxCtx.font = "12px -apple-system, sans-serif";
+    fxCtx.lineWidth = 3.5; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
+    fxCtx.strokeText(line2, sx, sy - 16);
+    fxCtx.fillStyle = "rgba(60,70,90,1)"; fxCtx.fillText(line2, sx, sy - 16);
   }
 }
 
@@ -1225,6 +1224,7 @@ function updatePanel(force) {
   const lo = lowerBound(dwellY, dwellOrder, yint - dw);
   const hi = lowerBound(dwellY, dwellOrder, yint + 1);
   const rows = [];
+  const visibleIndis = new Set();
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
     const sd = dwellSide[i];
@@ -1232,34 +1232,71 @@ function updatePanel(force) {
     if (curFilter === "blood" && !dwellBlood[i]) continue;
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
-    rows.push(i);
+    rows.push({ kind: "real", i, year: dwellY[i] });
+    visibleIndis.add(dwellIndi[i]);
   }
-  rows.sort((a, b) => dwellY[b] - dwellY[a] || dwellSide[a] - dwellSide[b]);
-  if (rows.length > 400) rows.length = 400;
-  const html = rows.map(i => {
-    const ind = lastIndividuals[dwellIndi[i]];
-    const t = dwellType[i];
-    const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
-    const sd = dwellSide[i], ps = dwellSrc[i];
-    const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
-    const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
-    const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
-    return `<li data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span> <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
+
+  const MAX_LIFESPAN = 100;
+  for (let idx = 0; idx < lastIndividuals.length; idx++) {
+    if (visibleIndis.has(idx)) continue;
+    const ind = lastIndividuals[idx];
+    if (!ind.events.length) continue;
+    const sd = lastSideById ? (lastSideById.get(ind.id) ?? 2) : 2;
+    if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
+    if (curFilter === "blood" && lastBloodSet && !lastBloodSet.has(ind.id)) continue;
+    const by = ind.birth_year, dy_ = ind.death_year;
+    if (by != null && by > yint) continue;
+    if (dy_ != null && dy_ < yint) continue;
+    if (by != null && (yint - by) > MAX_LIFESPAN) continue;
+    let lastE = null;
+    for (const e of ind.events) { if (e.year > yint) break; lastE = e; }
+    if (!lastE) continue;
+    const g = geocoder ? geocoder(lastE.place) : null;
+    if (!g) continue;
+    const p = projection([g.lon, g.lat]); if (!p) continue;
+    if (p[0] < -10 || p[0] > W + 10 || p[1] < -10 || p[1] > H + 10) continue;
+    rows.push({ kind: "inferred", indi: idx, year: yint, place: lastE.place, side: sd, basedOnYear: lastE.year, sx: p[0], sy: p[1] });
+  }
+
+  rows.sort((a, b) => b.year - a.year);
+  if (rows.length > 600) rows.length = 600;
+  const html = rows.map(r => {
+    if (r.kind === "real") {
+      const i = r.i;
+      const ind = lastIndividuals[dwellIndi[i]];
+      const t = dwellType[i];
+      const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+      const sd = dwellSide[i], ps = dwellSrc[i];
+      const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
+      const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
+      const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
+      const sel = highlightedDwell === i ? " selected" : "";
+      return `<li class="${sel}" data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span> <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
+    } else {
+      const ind = lastIndividuals[r.indi];
+      const sd = r.side;
+      const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
+      const swatch = `<span class="pm" style="background:rgb(${c[0]},${c[1]},${c[2]});opacity:0.6"></span>`;
+      return `<li class="inferred"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span> <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></li>`;
+    }
   }).join("");
   panelList.innerHTML = html || `<li style="color:#888;padding:14px;">No events visible.</li>`;
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
-const HIGHLIGHT_DURATION_MS = 8000;
 panelList.addEventListener("click", e => {
   const li = e.target.closest("li[data-idx]"); if (!li) return;
   const i = parseInt(li.dataset.idx, 10);
-  highlightedDwell = i;
-  highlightUntil = performance.now() + HIGHLIGHT_DURATION_MS;
-  curYear = dwellY[i];
-  range.value = curYear;
-  if (playing) { playing = false; playBtn.textContent = "Play"; }
+  if (highlightedDwell === i) {
+    highlightedDwell = -1;
+  } else {
+    highlightedDwell = i;
+    curYear = dwellY[i];
+    range.value = curYear;
+    if (playing) { playing = false; playBtn.textContent = "Play"; }
+  }
   fxCtx.clearRect(0, 0, W, H);
+  updatePanel(true);
 });
 
 $("pick").addEventListener("click", () => fileInp.click());
