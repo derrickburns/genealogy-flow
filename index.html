@@ -1402,37 +1402,54 @@ function titleCase(s) {
   return s.replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function rankRootCandidates(individuals, isParent, parentsOf, indiById) {
-  // Top 3 individuals by ancestor count (regardless of leaf status), plus each one's parents.
-  const scored = [];
-  for (const ind of individuals) {
-    const count = ancestorSet(ind.id, parentsOf).size;
-    if (count <= 1) continue;
-    scored.push({ ind, count });
-  }
-  scored.sort((a, b) => b.count - a.count || (b.ind.birth_year ?? -1) - (a.ind.birth_year ?? -1));
-  const top3 = scored.slice(0, 3);
-  const seen = new Set();
-  const out = [];
-  function addById(id, label) {
-    if (!id || seen.has(id)) return;
+const ROOT_MAX_DEPTH = 6;
+const ROOT_TOP_N = 10;
+
+function ancestorScore(rootId, parentsOf, indiById, maxDepth) {
+  const root = indiById.get(rootId);
+  if (!root) return { score: 0, found: 0 };
+  const queue = [[rootId, 0]];
+  const visited = new Set([rootId]);
+  let total = 0;
+  let found = 0;
+  while (queue.length) {
+    const [id, gen] = queue.shift();
+    if (gen > maxDepth) continue;
     const ind = indiById.get(id);
-    if (!ind) return;
-    seen.add(id);
-    const count = ancestorSet(id, parentsOf).size;
-    out.push({ ind, count, label });
-  }
-  for (let i = 0; i < top3.length; i++) {
-    const top = top3[i].ind;
-    const rank = i + 1;
-    addById(top.id, `#${rank}`);
-    const p = parentsOf.get(top.id);
-    if (p) {
-      addById(p[0], `#${rank} father`);
-      addById(p[1], `#${rank} mother`);
+    if (!ind) continue;
+    if (gen > 0) found++;
+    const richness = (ind.events?.length ?? 0);
+    total += richness / (1 << gen);
+    const pars = parentsOf.get(id);
+    if (!pars) continue;
+    for (const pid of pars) {
+      if (pid && !visited.has(pid)) {
+        visited.add(pid);
+        queue.push([pid, gen + 1]);
+      }
     }
   }
-  return out;
+  return { score: total, found };
+}
+
+function rankRootCandidates(individuals, isParent, parentsOf, indiById) {
+  let expected = 0;
+  for (let d = 1; d <= ROOT_MAX_DEPTH; d++) expected += 1 << d;
+  const scored = [];
+  for (const ind of individuals) {
+    const { score, found } = ancestorScore(ind.id, parentsOf, indiById, ROOT_MAX_DEPTH);
+    if (score <= 0 || found < 2) continue;
+    const pci = expected > 0 ? found / expected : 0;
+    scored.push({ ind, score, count: found, pci });
+  }
+  scored.sort((a, b) =>
+    b.score - a.score
+    || (b.ind.birth_year ?? -1) - (a.ind.birth_year ?? -1),
+  );
+  return scored.slice(0, ROOT_TOP_N).map(({ ind, score, count, pci }) => ({
+    ind, count, score, pci,
+    label: `PCI ${(pci * 100).toFixed(0)}%`,
+  }));
 }
 
 async function processFile(file) {
@@ -1467,7 +1484,8 @@ async function processFile(file) {
 function populateRootSelect(candidates) {
   const sel = $("rootSel");
   sel.innerHTML = "";
-  for (const { ind, count, label } of candidates) {
+  for (const c of candidates) {
+    const { ind, count, label } = c;
     const opt = document.createElement("option");
     opt.value = ind.id;
     const yrs = (ind.birth_year ?? "?") + "-" + (ind.death_year ?? "?");
