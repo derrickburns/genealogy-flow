@@ -1941,6 +1941,21 @@ async function processFile(file) {
   $("optionsWrap").style.display = "";
   $("clusterSection").classList.remove("hidden");
   $("export").disabled = false;
+
+  // Jump the slider to today (clamped to the data range) and center the
+  // map on the root person's most recent recorded location.
+  const today = new Date().getFullYear();
+  curYear = Math.min(maxYear, Math.max(minYear, today));
+  range.value = curYear;
+  const rootIdx = lastIndiIdxById?.get(rootId);
+  if (rootIdx !== undefined) {
+    const dwells = indiDwells.get(rootIdx);
+    if (dwells && dwells.length) {
+      let latest = dwells[0];
+      for (const di of dwells) if (dwellY[di] > dwellY[latest]) latest = di;
+      centerOnGeo(dwellLon[latest], dwellLat[latest]);
+    }
+  }
 }
 
 function populateRootSelect(candidates) {
