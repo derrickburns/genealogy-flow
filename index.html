@@ -15,15 +15,12 @@
   #mapWrap { position:relative; min-width:0; min-height:0; overflow:hidden; border-radius:10px; }
   canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixelated; touch-action:none; }
   #base { z-index:1; } #fx { z-index:2; }
-  #yearBig {
-    position:absolute; left:0; top:0; right:0; bottom:0; z-index:3; pointer-events:none;
-    display:flex; align-items:center; justify-content:center;
-    font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
-    font-variant-numeric: tabular-nums;
-    font-weight:700; font-size:42vh; line-height:0.85;
-    color:rgba(20,30,55,0.06); letter-spacing:-0.02em;
-    user-select:none; mix-blend-mode:multiply;
-  }
+  .yearCorner { position:absolute; z-index:3; pointer-events:none; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric:tabular-nums; font-weight:700; font-size:20px; line-height:1; color:rgba(20,30,55,0.55); padding:6px 10px; background:rgba(255,255,255,0.7); border-radius:6px; user-select:none; }
+  #yearTL { top:10px; left:10px; }
+  #yearTR { top:10px; right:10px; }
+  #yearBL { bottom:10px; left:10px; }
+  #yearBR { bottom:10px; right:10px; }
+  #yearBig { display:none; }
   #ui {
     background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
     padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
@@ -32,7 +29,7 @@
   #ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   #ui .uirow.primary { flex-wrap:nowrap; }
   #range { flex:1 1 auto; min-width:120px; }
-  .mapBtn { position:absolute; top:10px; right:10px; z-index:5; background:rgba(255,255,255,0.95); border:1px solid #c0ccd8; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; font-size:11px; color:#1c2433; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+  .mapBtn { position:absolute; top:50px; right:10px; z-index:5; background:rgba(255,255,255,0.95); border:1px solid #c0ccd8; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; font-size:11px; color:#1c2433; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
   .mapBtn:hover:not(:disabled) { background:#fff; }
   .mapBtn:disabled { color:#9aa6bc; cursor:default; background:rgba(255,255,255,0.7); }
   .hoverTip { position:absolute; z-index:6; pointer-events:none; background:rgba(255,255,255,0.97); border:1px solid #c0ccd8; border-radius:6px; padding:6px 10px; font-size:11px; line-height:1.35; color:#1c2433; box-shadow:0 2px 8px rgba(0,0,0,0.12); display:none; max-width:280px; }
@@ -191,7 +188,7 @@
   </span>
 </div>
 <div id="middle">
-<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
+<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
 <aside id="panel">
   <div id="panelControls">
     <label title="show events from this many years prior">window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
@@ -252,6 +249,7 @@ const $ = id => document.getElementById(id);
 const baseCanvas = $("base"), fxCanvas = $("fx");
 const baseCtx = baseCanvas.getContext("2d"), fxCtx = fxCanvas.getContext("2d");
 const yearBig = $("yearBig");
+const yearCorners = ["yearTL", "yearTR", "yearBL", "yearBR"].map($);
 const playBtn = $("play"), range = $("range");
 const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
 const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
@@ -1013,7 +1011,8 @@ function tick(now) {
       curYear = parseFloat(range.value);
     }
     const yint = Math.floor(curYear);
-    yearBig.textContent = yint;
+    const ystr = String(yint);
+    for (const el of yearCorners) if (el) el.textContent = ystr;
     updateStatusLabels(yint);
   }
   $("centerBtn").disabled = highlightedDwell < 0;
