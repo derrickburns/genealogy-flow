@@ -1,0 +1,39 @@
+{
+  "name": "genealogy-flow",
+  "version": "0.1.0",
+  "description": "GEDCOM particle-flow animation viewer plus offline tooling for parsing, geocoding, biography, and migration analysis.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "parse-gedcom": "src/bin/parse-gedcom.ts",
+    "build-gazetteer": "src/bin/build-gazetteer.ts",
+    "geocode": "src/bin/geocode.ts",
+    "build-timeline": "src/bin/build-timeline.ts",
+    "migrations": "src/bin/migrations.ts",
+    "summarize-gedcom": "src/bin/summarize.ts",
+    "biographer": "src/bin/biographer.ts"
+  },
+  "scripts": {
+    "parse-gedcom": "tsx src/bin/parse-gedcom.ts",
+    "build-gazetteer": "tsx src/bin/build-gazetteer.ts",
+    "geocode": "tsx src/bin/geocode.ts",
+    "build-timeline": "tsx src/bin/build-timeline.ts",
+    "migrations": "tsx src/bin/migrations.ts",
+    "summarize-gedcom": "tsx src/bin/summarize.ts",
+    "biographer": "tsx src/bin/biographer.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "adm-zip": "^0.5.16"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
