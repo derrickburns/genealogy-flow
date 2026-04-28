@@ -32,6 +32,13 @@
   #ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   #ui .uirow.primary { flex-wrap:nowrap; }
   #range { flex:1 1 auto; min-width:120px; }
+  #migBar { position:relative; height:36px; background:#f5f7fa; border:1px solid #e0e6ee; border-radius:6px; padding:18px 0 4px; box-sizing:border-box; }
+  #migBar.empty { display:none; }
+  #migBar .pat { position:absolute; height:12px; top:18px; border-radius:2px; opacity:0.55; transition:opacity 0.15s; cursor:help; }
+  #migBar .pat:hover { opacity:0.95; }
+  #migBar .lbl { position:absolute; top:1px; font-size:9px; color:#566480; white-space:nowrap; pointer-events:none; padding:0 4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; }
+  #migBar .now { position:absolute; top:14px; height:20px; width:2px; background:#1c2433; pointer-events:none; }
+  #migBar .now::after { content:""; position:absolute; left:-3px; top:-4px; border:4px solid transparent; border-top-color:#1c2433; }
   #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
   #ui button:hover { background:#1c3669; }
   #ui button[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
