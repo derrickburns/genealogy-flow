@@ -75,19 +75,33 @@
   #panelInferRow input[type=range] { flex:1; min-width:0; }
   #panelInferRow label { display:flex; align-items:center; gap:4px; min-width:70px; }
   #panelInferRow label > span { font-weight:600; color:#2a4a8c; min-width:18px; text-align:right; }
-  #panelBanner { display:none; padding:10px 12px; border-bottom:1px solid #e0e6ee; background:#fff8e0; }
+  #panelBanner { display:none; padding:0; border-bottom:1px solid #e0e6ee; background:#fffbf2; }
   #panelBanner.shown { display:block; }
-  #panelBanner .bnm { font-weight:700; color:#1c2433; font-size:13px; }
-  #panelBanner .bev { color:#566480; font-size:11px; margin-top:2px; }
-  #panelBanner .bcl { float:right; background:none; border:none; color:#888; cursor:pointer; font-size:14px; margin-top:-2px; }
-  #bannerSummary { margin-top:8px; padding:8px 10px; background:#fff; border:1px solid #e6decf; border-radius:5px; font-size:12px; line-height:1.45; color:#1c2433; }
+  #panelBanner .bcardHead { padding:12px 14px 8px; position:relative; border-bottom:1px solid #f0e9d6; }
+  #panelBanner .bcardHead .bcl { position:absolute; top:8px; right:10px; background:none; border:none; color:#888; cursor:pointer; font-size:18px; padding:0; line-height:1; }
+  #panelBanner .bnm { font-weight:700; color:#0a1426; font-size:15px; margin-right:24px; line-height:1.2; }
+  #panelBanner .bsub { color:#566480; font-size:11px; margin-top:2px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  #panelBanner .bsub .reltag { background:#dde9ff; color:#1f3a78; padding:1px 6px; border-radius:3px; font-weight:600; }
+  #panelBanner .bev { color:#566480; font-size:11px; margin-top:6px; font-style:italic; }
+  #panelBanner .bcardSection { padding:8px 14px; border-bottom:1px solid #f0e9d6; }
+  #panelBanner .bcardSection:last-child { border-bottom:none; }
+  #panelBanner .bcardSection h4 { margin:0 0 6px; font-size:10px; font-weight:600; color:#888; letter-spacing:0.06em; text-transform:uppercase; }
+  #bannerSummary { font-size:12px; line-height:1.5; color:#1c2433; }
   #bannerSummary a { color:#2a4a8c; text-decoration:underline; }
   #bannerSummary p { margin:0 0 6px; }
   #bannerSummary p:last-child { margin-bottom:0; }
-  #bannerChain { margin-top:6px; padding:5px 8px; background:#f4f6fb; border:1px solid #e0e6ee; border-radius:4px; font-size:11px; color:#566480; line-height:1.4; word-break:break-word; }
-  #bannerChain b { color:#1c2433; }
-  #bannerChain .rel { color:#888; font-style:italic; }
-  #bannerChain .arrow { color:#aab; margin:0 4px; }
+  #bannerChain { font-size:11px; color:#566480; line-height:1.5; }
+  #bannerChain .step { display:flex; gap:6px; align-items:baseline; padding:1px 0; }
+  #bannerChain .step .nm { color:#1c2433; font-weight:600; }
+  #bannerChain .step .lbl { color:#888; font-style:italic; min-width:60px; }
+  #bannerChain .step.root .lbl { color:#1f3a78; font-weight:600; font-style:normal; }
+  #bannerEvents { font-size:11px; }
+  #bannerEvents .ev { display:flex; gap:8px; align-items:baseline; padding:3px 6px; border-radius:3px; cursor:pointer; line-height:1.4; }
+  #bannerEvents .ev:hover { background:#fff; }
+  #bannerEvents .ev.cur { background:#fff3d4; box-shadow:inset 2px 0 0 #ffb930; }
+  #bannerEvents .ev .yr { font-variant-numeric:tabular-nums; color:#888; min-width:36px; font-weight:600; }
+  #bannerEvents .ev .verb { color:#566480; min-width:60px; }
+  #bannerEvents .ev .pl { color:#1c2433; flex:1; }
   #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
   #panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
@@ -186,7 +200,26 @@
       <option value="dead">dead only</option>
     </select>
   </div>
-  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><div id="bannerChain" style="display:none;"></div><div id="bannerSummary" style="display:none;"></div></div>
+  <div id="panelBanner">
+    <div class="bcardHead">
+      <button class="bcl" id="bannerClear" title="Clear selection">&times;</button>
+      <div class="bnm" id="bannerName"></div>
+      <div class="bsub" id="bannerSub"></div>
+      <div class="bev" id="bannerEvent"></div>
+    </div>
+    <div class="bcardSection" id="bannerChainSection" style="display:none;">
+      <h4>Lineage from root</h4>
+      <div id="bannerChain"></div>
+    </div>
+    <div class="bcardSection" id="bannerSummarySection" style="display:none;">
+      <h4>Biography</h4>
+      <div id="bannerSummary"></div>
+    </div>
+    <div class="bcardSection" id="bannerEventsSection" style="display:none;">
+      <h4>All recorded events</h4>
+      <div id="bannerEvents"></div>
+    </div>
+  </div>
   <ul id="panelList"></ul>
 </aside>
 </div>
@@ -1447,6 +1480,19 @@ $("bannerClear").addEventListener("click", () => {
   highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
   fxCtx.clearRect(0, 0, W, H); updatePanel(true);
 });
+$("bannerEvents").addEventListener("click", e => {
+  const row = e.target.closest(".ev[data-di]"); if (!row) return;
+  const di = parseInt(row.dataset.di, 10);
+  if (Number.isNaN(di)) return;
+  highlightedDwell = di;
+  highlightInferredYear = -1;
+  highlightInferredSrcYear = -1;
+  curYear = dwellY[di];
+  range.value = curYear;
+  if (playing) { playing = false; playBtn.textContent = "Play"; }
+  fxCtx.clearRect(0, 0, W, H);
+  updatePanel(true);
+});
 $("inferYrs").addEventListener("input", e => {
   inferenceYears = parseInt(e.target.value, 10) || 0;
   $("inferYrsLabel").textContent = inferenceYears;
@@ -1563,51 +1609,84 @@ function updatePanel(force) {
 }
 
 function updateBanner() {
-  const banner = $("panelBanner"), bnm = $("bannerName"), bev = $("bannerEvent");
+  const banner = $("panelBanner"), bnm = $("bannerName");
   if (highlightedDwell < 0) { banner.classList.remove("shown"); return; }
   const i = highlightedDwell;
   const ind = lastIndividuals[dwellIndi[i]];
   if (!ind) { banner.classList.remove("shown"); return; }
+
+  bnm.textContent = ind.name;
+
+  // Sub-line: lifespan, sex, kinship tag
+  const sub = $("bannerSub");
+  const by = ind.birth_year, dy = ind.death_year;
+  const lifespan = by && dy ? `${by} – ${dy}` : by ? `b. ${by}` : dy ? `d. ${dy}` : "no dates";
+  const sex = ind.sex === "M" ? "male" : ind.sex === "F" ? "female" : "";
+  const rel = relationCache.get(ind.id) || "";
+  let subHtml = `<span>${escHtml(lifespan)}</span>`;
+  if (sex) subHtml += `<span>· ${sex}</span>`;
+  if (rel) subHtml += `<span class="reltag">${escHtml(rel)}</span>`;
+  sub.innerHTML = subHtml;
+
+  // Current event line
   const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
   const isInferred = highlightInferredYear >= 0;
   const verb = isInferred ? "lived in (inferred)" : (EVENT_TYPE_LABEL[dwellType[i]] || "event");
   const yearShown = isInferred ? highlightInferredYear : dwellY[i];
-  const inferTag = isInferred ? `  (based on ${highlightInferredSrcYear})` : "";
-  bnm.textContent = ind.name;
-  bev.textContent = `${yearShown} - ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
+  const inferTag = isInferred ? ` (based on ${highlightInferredSrcYear})` : "";
+  $("bannerEvent").textContent = `currently viewing: ${yearShown} — ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
 
-  // Relationship chain from root to selected person
+  // Lineage chain (vertical, indented)
+  const chainSection = $("bannerChainSection");
   const chainEl = $("bannerChain");
-  if (chainEl) {
-    if (lastRootId && ind.id !== lastRootId) {
-      const path = pathFromRoot(ind.id);
-      if (path && path.length) {
-        const rootInd = lastIndiById.get(lastRootId);
-        const rel = relationCache.get(ind.id) || "";
-        const parts = [`<b>${escHtml(rootInd?.name || "root")}</b>`];
-        for (const step of path) {
-          const stepInd = lastIndiById.get(step.id);
-          parts.push(`<span class="arrow">→</span><span class="rel">${escHtml(step.label)}</span> <b>${escHtml(stepInd?.name || step.id)}</b>`);
-        }
-        const relTag = rel ? ` &nbsp;<span style="background:#dde9ff;color:#1f3a78;padding:1px 5px;border-radius:3px;font-style:normal;">${escHtml(rel)}</span>` : "";
-        chainEl.innerHTML = parts.join(" ") + relTag;
-        chainEl.style.display = "block";
-      } else {
-        chainEl.style.display = "none";
+  if (lastRootId && ind.id !== lastRootId) {
+    const path = pathFromRoot(ind.id);
+    if (path && path.length) {
+      const rootInd = lastIndiById.get(lastRootId);
+      const rows = [`<div class="step root"><span class="lbl">root</span><span class="nm">${escHtml(rootInd?.name || "")}</span></div>`];
+      for (const step of path) {
+        const stepInd = lastIndiById.get(step.id);
+        rows.push(`<div class="step"><span class="lbl">${escHtml(step.label)}</span><span class="nm">${escHtml(stepInd?.name || step.id)}</span></div>`);
       }
+      chainEl.innerHTML = rows.join("");
+      chainSection.style.display = "block";
     } else {
-      chainEl.style.display = "none";
+      chainSection.style.display = "none";
     }
+  } else {
+    chainSection.style.display = "none";
   }
 
+  // Biography summary
   const summaryEl = $("bannerSummary");
+  const summarySection = $("bannerSummarySection");
   const summary = summaryById.get(ind.id);
-  if (summary && summaryEl) {
+  if (summary) {
     summaryEl.innerHTML = renderMarkdown(summary);
-    summaryEl.style.display = "block";
-  } else if (summaryEl) {
-    summaryEl.style.display = "none";
+    summarySection.style.display = "block";
+  } else {
+    summarySection.style.display = "none";
   }
+
+  // Mini-timeline: every dwell of this person, chronological
+  const indiIdx = dwellIndi[i];
+  const eventsEl = $("bannerEvents");
+  const eventsSection = $("bannerEventsSection");
+  const indiDwellList = (indiDwells.get(indiIdx) || []).slice().sort((a, b) => dwellY[a] - dwellY[b]);
+  if (indiDwellList.length) {
+    const rows = indiDwellList.map(di => {
+      const yr = dwellY[di];
+      const t = dwellType[di];
+      const place = dwellPlace[di] >= 0 ? placesList[dwellPlace[di]] : "";
+      const cur = di === highlightedDwell && !isInferred;
+      return `<div class="ev${cur ? " cur" : ""}" data-di="${di}"><span class="yr">${yr}</span><span class="verb">${EVENT_TYPE_LABEL[t] || "event"}</span><span class="pl">${escHtml(place)}</span></div>`;
+    });
+    eventsEl.innerHTML = rows.join("");
+    eventsSection.style.display = "block";
+  } else {
+    eventsSection.style.display = "none";
+  }
+
   banner.classList.add("shown");
 }
 
