@@ -53,6 +53,24 @@
   #welcome h1 { margin:0 0 8px; font-size:18px; }
   #welcome p { margin:6px 0 14px; color:#566480; }
   #welcome.hidden { display:none; }
+  #panel {
+    position:fixed; top:80px; right:14px; bottom:80px; z-index:12;
+    width:300px; background:rgba(255,255,255,0.97); border:1px solid #c0ccd8;
+    border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.12);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  #panel.hidden { display:none; }
+  #panelHead { padding:8px 12px; border-bottom:1px solid #e0e6ee; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:13px; }
+  #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
+  #panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
+  #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
+  #panelList li:hover { background:#f0f4f8; }
+  #panelList .yr { font-variant-numeric:tabular-nums; color:#888; margin-right:6px; font-size:11px; }
+  #panelList .nm { font-weight:600; color:#1c2433; }
+  #panelList .ev { color:#566480; font-size:11px; }
+  #panelList .pm { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+  #panelList .sq { border-radius:0; }
+  #panelList .di { border-radius:1px; transform:rotate(45deg); width:8px; height:8px; }
   .legend { font-size:11px; color:#566480; display:flex; gap:10px; align-items:center; }
   .legend .swatch { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
   .legend .square { border-radius:0; }
@@ -65,6 +83,7 @@
   <span id="stats">starting...</span>
   <button id="pick">Open .ged</button>
   <button id="export" disabled>Export HTML</button>
+  <button id="panelToggle">List</button>
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED">
   <span id="rootwrap" style="display:none;">
     <label style="margin-left:6px;">root
@@ -109,6 +128,10 @@
 <canvas id="base"></canvas>
 <canvas id="fx"></canvas>
 <div id="yearBig">----</div>
+<aside id="panel" class="hidden">
+  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span><button id="panelClose">&times;</button></div>
+  <ul id="panelList"></ul>
+</aside>
 <div id="drop">Drop GEDCOM file to load</div>
 <div id="welcome" class="hidden">
   <h1>Genealogy Particle Flow</h1>
@@ -164,7 +187,9 @@ let borderLayer = "modern";
 let historicalBasemaps = new Map(); // year -> { world, name } loaded snapshots
 let currentHistoricalWorld = null;
 
-let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellSx, dwellSy, dwellOrder;
+let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;
+let placesList = [];
+let highlightedDwell = -1, highlightUntil = 0;
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
@@ -468,6 +493,20 @@ function frame(activeTrailFade) {
     const r = flowExact[i] ? 2.6 : 1.9;
     drawShape(fxCtx, px, py, r, fp);
   }
+
+  if (highlightedDwell >= 0 && performance.now() < highlightUntil) {
+    const i = highlightedDwell;
+    const sx = dwellSx[i], sy = dwellSy[i];
+    if (sx > -1000) {
+      const phase = (performance.now() % 1200) / 1200;
+      const rr = 8 + phase * 18;
+      fxCtx.strokeStyle = `rgba(255,180,30,${(0.85 * (1 - phase)).toFixed(3)})`;
+      fxCtx.lineWidth = 2;
+      fxCtx.beginPath(); fxCtx.arc(sx, sy, rr, 0, Math.PI * 2); fxCtx.stroke();
+      fxCtx.strokeStyle = `rgba(255,180,30,${(0.4 * (1 - phase)).toFixed(3)})`;
+      fxCtx.beginPath(); fxCtx.arc(sx, sy, rr + 6, 0, Math.PI * 2); fxCtx.stroke();
+    }
+  }
 }
 
 let last = 0;
@@ -491,6 +530,7 @@ function tick(now) {
   }
   maybeUpdateHistoricalBasemap();
   frame(parseFloat(trailSel.value));
+  updatePanel(false);
   requestAnimationFrame(tick);
 }
 
@@ -828,10 +868,16 @@ function parentStatus(id, parentsOf) {
   return c === 2 ? 0 : c === 1 ? 1 : 2;
 }
 
+const EVENT_TYPE_CODE = {BIRT:0, DEAT:1, RESI:2, MARR:3, EMIG:4, IMMI:5, CENS:6, BAPM:7, BURI:8, CHR:9};
+const EVENT_TYPE_LABEL = ["born", "died", "lived in", "married in", "emigrated from", "immigrated to", "census in", "baptized in", "buried in", "christened in", "event in"];
+
 function buildTimeline(individuals, geocode, parentsOf) {
   const dwells = [], flows = [];
   const dwellIndi = [], flowIndi = [], dwellSrc = [], flowSrc = [];
   const dwellExact = [], flowExact = [];
+  const dwellType = [], dwellPlace = [];
+  const placeMap = new Map(); const placesList = [];
+  function placeIdx(p) { let i = placeMap.get(p); if (i == null) { i = placesList.length; placesList.push(p); placeMap.set(p, i); } return i; }
   let mn = 9999, mx = 0, geocoded = 0, missed = 0;
   const cache = new Map();
   const evCities = new Map(); // key (lat3,lon3) -> {name, lat, lon, count}
@@ -858,14 +904,17 @@ function buildTimeline(individuals, geocode, parentsOf) {
         }
         ec.count++;
       }
-      coded.push([e.year, lat, lon, exact]);
+      const tcode = EVENT_TYPE_CODE[e.type] ?? 10;
+      coded.push([e.year, lat, lon, exact, tcode, placeIdx(e.place)]);
     }
     if (!coded.length) continue;
     coded.sort((a, b) => a[0] - b[0]);
     let prev = null;
-    for (const [y, lat, lon, exact] of coded) {
+    for (const c of coded) {
+      const [y, lat, lon, exact, tcode, pidx] = c;
       if (y < mn) mn = y; if (y > mx) mx = y;
       dwells.push([y, lat, lon]); dwellIndi.push(idx); dwellSrc.push(isSource); dwellExact.push(exact);
+      dwellType.push(tcode); dwellPlace.push(pidx);
       if (prev) {
         const [py, plat, plon, pex] = prev;
         if ((plat !== lat || plon !== lon) && y > py) {
@@ -880,7 +929,7 @@ function buildTimeline(individuals, geocode, parentsOf) {
   if (mn > mx) { mn = 1700; mx = 2026; }
   const eventCitiesArr = Array.from(evCities.values()).sort((a, b) => b.count - a.count);
   for (let i = 0; i < eventCitiesArr.length; i++) eventCitiesArr[i]._idx = i;
-  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, eventCities: eventCitiesArr, min_year: mn, max_year: mx, geocoded, missed };
+  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, dwellType, dwellPlace, places: placesList, eventCities: eventCitiesArr, min_year: mn, max_year: mx, geocoded, missed };
 }
 
 function loadTimelineArrays(t, sideForIdx) {
@@ -888,14 +937,18 @@ function loadTimelineArrays(t, sideForIdx) {
   dwellY = new Int16Array(N); dwellLat = new Float32Array(N); dwellLon = new Float32Array(N);
   dwellSide = new Uint8Array(N); dwellSrc = new Uint8Array(N); dwellIndi = new Int32Array(N);
   dwellBlood = new Uint8Array(N); dwellExact = new Uint8Array(N);
+  dwellType = new Uint8Array(N); dwellPlace = new Int32Array(N);
   dwellSx = new Float32Array(N); dwellSy = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const d = t.dwells[i];
     dwellY[i] = d[0]; dwellLat[i] = d[1]; dwellLon[i] = d[2];
     dwellIndi[i] = t.dwellIndi[i]; dwellSrc[i] = t.dwellSrc[i];
     dwellExact[i] = t.dwellExact ? t.dwellExact[i] : 0;
+    dwellType[i] = t.dwellType ? t.dwellType[i] : 10;
+    dwellPlace[i] = t.dwellPlace ? t.dwellPlace[i] : -1;
     dwellSide[i] = sideForIdx[t.dwellIndi[i]] ?? 3;
   }
+  placesList = t.places || [];
   flowFromY = new Int16Array(F); flowToY = new Int16Array(F);
   flowFromLat = new Float32Array(F); flowFromLon = new Float32Array(F);
   flowToLat = new Float32Array(F); flowToLon = new Float32Array(F);
@@ -1126,6 +1179,52 @@ $("borderLayer").addEventListener("change", e => {
 $("migViz").addEventListener("change", e => {
   migrationViz = e.target.value;
   fxCtx.clearRect(0, 0, W, H);
+});
+
+const panelEl = $("panel"), panelList = $("panelList"), panelYear = $("panelYear");
+$("panelToggle").addEventListener("click", () => { panelEl.classList.toggle("hidden"); if (!panelEl.classList.contains("hidden")) updatePanel(true); });
+$("panelClose").addEventListener("click", () => panelEl.classList.add("hidden"));
+
+let lastPanelYear = -9999, lastPanelTime = 0;
+function updatePanel(force) {
+  if (panelEl.classList.contains("hidden")) return;
+  if (!timelineLoaded) return;
+  const now = performance.now();
+  const yint = Math.floor(curYear);
+  if (!force && yint === lastPanelYear && now - lastPanelTime < 250) return;
+  lastPanelYear = yint; lastPanelTime = now;
+  panelYear.textContent = yint;
+  const dw = 6;
+  const lo = lowerBound(dwellY, dwellOrder, yint - dw);
+  const hi = lowerBound(dwellY, dwellOrder, yint + 1);
+  const rows = [];
+  for (let k = lo; k < hi; k++) {
+    const i = dwellOrder[k];
+    const sd = dwellSide[i];
+    if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
+    if (curFilter === "blood" && !dwellBlood[i]) continue;
+    rows.push(i);
+  }
+  rows.sort((a, b) => dwellY[b] - dwellY[a] || dwellSide[a] - dwellSide[b]);
+  if (rows.length > 400) rows.length = 400;
+  const html = rows.map(i => {
+    const ind = lastIndividuals[dwellIndi[i]];
+    const t = dwellType[i];
+    const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+    const sd = dwellSide[i], ps = dwellSrc[i];
+    const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
+    const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
+    const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
+    return `<li data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span> <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
+  }).join("");
+  panelList.innerHTML = html || `<li style="color:#888;padding:14px;">No events visible.</li>`;
+}
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+panelList.addEventListener("click", e => {
+  const li = e.target.closest("li[data-idx]"); if (!li) return;
+  highlightedDwell = parseInt(li.dataset.idx, 10);
+  highlightUntil = performance.now() + 4000;
 });
 
 $("pick").addEventListener("click", () => fileInp.click());
