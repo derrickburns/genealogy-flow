@@ -513,6 +513,30 @@ const dragRotate = d3.drag()
   });
 d3.select(fxCanvas).call(dragRotate);
 
+// Safari GestureEvent: thumb-anchor-finger-pivot fires here with event.rotation.
+// In Chrome the same gesture surfaces only as ctrl+wheel and can't be told
+// apart from pinch.
+let _gestureRot0 = null;
+fxCanvas.addEventListener("gesturestart", e => {
+  e.preventDefault();
+  _gestureRot0 = projection.rotate ? projection.rotate().slice() : null;
+  _interacting = true;
+  if (!_restoringView) pushHistory();
+});
+fxCanvas.addEventListener("gesturechange", e => {
+  e.preventDefault();
+  if (projectionName === "ortho" && _gestureRot0) {
+    const r = _gestureRot0;
+    projection.rotate([r[0] - e.rotation, r[1], r[2]]);
+    requestDraw();
+  }
+});
+fxCanvas.addEventListener("gestureend", () => {
+  _gestureRot0 = null;
+  _interacting = false;
+  _baseDirty = true;
+});
+
 fxCanvas.addEventListener("click", e => {
   if (!timelineLoaded) return;
   const x = e.offsetX, y = e.offsetY;
