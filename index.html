@@ -221,7 +221,7 @@
   </span>
 </div>
 <div id="middle">
-<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
+<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><button id="backBtn" class="mapBtn" disabled style="top:50px; right:auto; left:10px;">&larr; Back</button><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
 <aside id="panel">
   <div id="panelScroll">
   <ul id="panelList"></ul>
@@ -443,7 +443,7 @@ const zoomBehavior = d3.zoom()
     // (mouse wheels) untouched.
     return -e.deltaY * (e.deltaMode === 1 ? 0.05 : e.deltaMode ? 1 : 0.002);
   })
-  .on("start", () => { _interacting = true; })
+  .on("start", () => { _interacting = true; if (!_restoringView) pushHistory(); })
   .on("zoom", e => { zoomTransform = e.transform; applyZoom(); })
   .on("end", () => { _interacting = false; _baseDirty = true; });
 d3.select(fxCanvas).call(zoomBehavior);
@@ -455,6 +455,7 @@ const dragRotate = d3.drag()
   .filter(() => projectionName === "ortho")
   .on("start", function(e) {
     _interacting = true;
+    if (!_restoringView) pushHistory();
     this._r = projection.rotate();
     this._x = e.x; this._y = e.y;
   })
@@ -498,6 +499,7 @@ fxCanvas.addEventListener("click", e => {
     if (dist < bestDist) { bestDist = dist; bestI = i; }
   }
   if (bestI < 0 || bestDist > HIT_R2) return;
+  pushHistory();
   const sameAsSelected = highlightedDwell === bestI && highlightInferredYear < 0;
   if (sameAsSelected) {
     highlightedDwell = -1;
@@ -571,6 +573,52 @@ fxCanvas.addEventListener("mousemove", e => {
 });
 fxCanvas.addEventListener("mouseleave", () => { hoverTip.style.display = "none"; });
 
+// View-history stack (infinite). Each entry is a snapshot of the user-visible
+// view state at a point in time. We push BEFORE a change is committed so the
+// Back button restores what was on screen before that interaction.
+const viewHistory = [];
+let _restoringView = false;
+function snapshotView() {
+  return {
+    highlightedDwell, highlightInferredYear, highlightInferredSrcYear,
+    curYear,
+    zoom: { ...zoomTransform },
+    rotation: projection.rotate ? projection.rotate().slice() : null,
+    rootId: lastRootId,
+  };
+}
+function pushHistory() {
+  if (_restoringView) return;
+  viewHistory.push(snapshotView());
+  $("backBtn").disabled = false;
+}
+function restoreView(s) {
+  if (!s) return;
+  _restoringView = true;
+  try {
+    if (s.rootId !== lastRootId && s.rootId) applyRoot(s.rootId);
+    highlightedDwell = s.highlightedDwell;
+    highlightInferredYear = s.highlightInferredYear;
+    highlightInferredSrcYear = s.highlightInferredSrcYear;
+    curYear = s.curYear;
+    range.value = curYear;
+    if (projection.rotate && s.rotation) projection.rotate(s.rotation);
+    zoomTransform = { ...s.zoom };
+    d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(zoomTransform.x, zoomTransform.y).scale(zoomTransform.k));
+    applyProjectionFromZoom();
+    drawBase();
+    if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
+  } finally {
+    _restoringView = false;
+  }
+}
+function backOneStep() {
+  if (viewHistory.length === 0) return;
+  const s = viewHistory.pop();
+  restoreView(s);
+  $("backBtn").disabled = viewHistory.length === 0;
+}
+
 function centerOnGeo(lon, lat) {
   if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
   const k = zoomTransform.k;
@@ -595,8 +643,10 @@ function centerOnGeo(lon, lat) {
 
 $("centerBtn").addEventListener("click", () => {
   if (highlightedDwell < 0) return;
+  pushHistory();
   centerOnGeo(dwellLon[highlightedDwell], dwellLat[highlightedDwell]);
 });
+$("backBtn").addEventListener("click", backOneStep);
 
 let staticLabelRects = [];
 function rectsOverlap(a, b) {
@@ -1167,7 +1217,7 @@ function clearHighlight() {
   updatePanel(true);
 }
 range.addEventListener("input", () => { curYear = parseFloat(range.value); clearHighlight(); });
-range.addEventListener("pointerdown", () => { isDraggingSlider = true; });
+range.addEventListener("pointerdown", () => { isDraggingSlider = true; pushHistory(); });
 range.addEventListener("pointerup", () => { isDraggingSlider = false; });
 range.addEventListener("pointercancel", () => { isDraggingSlider = false; });
 $("rot").addEventListener("input", e => {
@@ -2036,7 +2086,10 @@ function applyRoot(rootId) {
 }
 
 $("rootSel").addEventListener("change", e => {
-  if (e.target.value && e.target.value !== lastRootId) applyRoot(e.target.value);
+  if (e.target.value && e.target.value !== lastRootId) {
+    pushHistory();
+    applyRoot(e.target.value);
+  }
 });
 $("optionsBtn").addEventListener("click", e => {
   e.stopPropagation();
@@ -2477,13 +2530,14 @@ panelList.addEventListener("click", e => {
     e.preventDefault();
     const id = yrLink.dataset.id;
     const year = parseInt(yrLink.dataset.y, 10);
-    if (!Number.isNaN(year)) jumpToPersonYear(id, year);
+    if (!Number.isNaN(year)) { pushHistory(); jumpToPersonYear(id, year); }
     return;
   }
   const evRow = e.target.closest(".bEv[data-di]");
   if (evRow) {
     const di = parseInt(evRow.dataset.di, 10);
     if (Number.isNaN(di)) return;
+    pushHistory();
     highlightedDwell = di;
     highlightInferredYear = -1;
     highlightInferredSrcYear = -1;
@@ -2499,6 +2553,7 @@ panelList.addEventListener("click", e => {
   const i = parseInt(li.dataset.idx, 10);
   const inferredYear = li.dataset.inferred ? parseInt(li.dataset.inferred, 10) : -1;
   const basedOn = li.dataset.basedon ? parseInt(li.dataset.basedon, 10) : -1;
+  pushHistory();
   const sameAsSelected = highlightedDwell === i && highlightInferredYear === inferredYear;
   if (sameAsSelected) {
     highlightedDwell = -1;
