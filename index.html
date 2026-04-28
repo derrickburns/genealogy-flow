@@ -171,6 +171,7 @@ let curFilter = "all";
 let migrationViz = "lines";
 let lastBloodSet = null;
 let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
+let isDraggingSlider = false;
 
 let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null;
 let lastSideById = null, lastRootId = null;
@@ -474,7 +475,9 @@ function tick(now) {
   const dt = last ? (now - last) / 1000 : 0;
   last = now;
   if (timelineLoaded) {
-    if (playing) {
+    if (isDraggingSlider) {
+      curYear = parseFloat(range.value);
+    } else if (playing) {
       const sp = parseFloat(speedSel.value);
       curYear += sp * 60 * dt;
       if (curYear > maxYear) curYear = minYear;
@@ -495,7 +498,10 @@ playBtn.addEventListener("click", () => {
   playing = !playing;
   playBtn.textContent = playing ? "Pause" : "Play";
 });
-range.addEventListener("input", () => { if (!playing) curYear = parseFloat(range.value); });
+range.addEventListener("input", () => { curYear = parseFloat(range.value); });
+range.addEventListener("pointerdown", () => { isDraggingSlider = true; });
+range.addEventListener("pointerup", () => { isDraggingSlider = false; });
+range.addEventListener("pointercancel", () => { isDraggingSlider = false; });
 $("rot").addEventListener("input", e => {
   projection.rotate([parseFloat(e.target.value) || 0, 0, 0]);
   applyZoom();
@@ -1144,6 +1150,7 @@ function buildExportHtml(tl, worldData, label, candidatesData) {
     dwellExact: tl.dwellExact, flowExact: tl.flowExact,
     candidates: candidatesData,
     cities: majorCities ? majorCities.slice(0, 4000) : [],
+    eventCities: tl.eventCities || [],
     min_year: tl.min_year, max_year: tl.max_year,
   };
   const tlJson = JSON.stringify(exportTl).replace(/<\//g, "<\\/");
@@ -1178,6 +1185,9 @@ label { color:#566480; font-size:11px; }
   <b>${label}</b>
   <label>root <select id="rootSel"></select></label>
   <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
+  <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
+  <label>borders <select id="borderLayer"><option value="modern" selected>modern</option><option value="historical">historical</option></select></label>
+  <label>migration <select id="migViz"><option value="lines" selected>arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous">continuous</option></select></label>
   <span class="legend">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
     <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
@@ -1207,19 +1217,23 @@ const tl = JSON.parse(document.getElementById("tl").textContent);
 const world = JSON.parse(document.getElementById("world").textContent);
 const usStates = JSON.parse(document.getElementById("us").textContent);
 const majorCities = tl.cities || [];
+const eventCities = tl.eventCities || [];
 const baseCanvas=document.getElementById("base"), fxCanvas=document.getElementById("fx");
 const baseCtx=baseCanvas.getContext("2d"), fxCtx=fxCanvas.getContext("2d");
 const yearLabel=document.getElementById("year"), yearBig=document.getElementById("yearBig");
 const playBtn=document.getElementById("play"), range=document.getElementById("range");
 const speedSel=document.getElementById("speed"), trailSel=document.getElementById("trail");
 const rootSel=document.getElementById("rootSel"), filtSel=document.getElementById("filt");
+const cityLayerSel=document.getElementById("cityLayer"), borderSel=document.getElementById("borderLayer"), migSel=document.getElementById("migViz");
 let W=0,H=0; const projection=d3.geoNaturalEarth1();
 let baseScale=1, baseTranslate=[0,0];
 let zoomTransform={k:1,x:0,y:0};
+let cityLayer="major", borderLayer="modern", migrationViz="lines", curFilter="all", isDraggingSlider=false;
+let staticLabelRects=[];
+function rectsOverlap(a,b){return !(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);}
 const N=tl.dwells.length, F=tl.flows.length;
 const candidates = tl.candidates || [];
 let curCandidate = candidates[0] || null;
-let curFilter = "all";
 for (const c of candidates) {
   const opt = document.createElement("option");
   opt.value = c.id;
@@ -1230,19 +1244,35 @@ for (const c of candidates) {
 }
 const dwellY=new Int16Array(N), dwellLat=new Float32Array(N), dwellLon=new Float32Array(N);
 const dwellSide=new Uint8Array(N), dwellSrc=new Uint8Array(N), dwellBlood=new Uint8Array(N), dwellExact=new Uint8Array(N);
-const dwellIndi=new Int32Array(N), dwellCity=new Int32Array(N);
+const dwellIndi=new Int32Array(N); let dwellCity=new Int32Array(N);
 const dwellSx=new Float32Array(N), dwellSy=new Float32Array(N);
 for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i]; dwellExact[i]=tl.dwellExact?tl.dwellExact[i]:0;}
-for (let i=0;i<majorCities.length;i++) majorCities[i]._idx=i;
-const cityTree = majorCities.length ? d3.quadtree().x(c=>c.lon).y(c=>c.lat).addAll(majorCities) : null;
-if (cityTree) for (let i=0;i<N;i++){ const c=cityTree.find(dwellLon[i],dwellLat[i]); dwellCity[i]=c?c._idx:-1; }
-else for (let i=0;i<N;i++) dwellCity[i]=-1;
 const flowFromY=new Int16Array(F), flowToY=new Int16Array(F);
 const flowFromLat=new Float32Array(F), flowFromLon=new Float32Array(F), flowToLat=new Float32Array(F), flowToLon=new Float32Array(F);
 const flowSide=new Uint8Array(F), flowSrc=new Uint8Array(F), flowBlood=new Uint8Array(F), flowExact=new Uint8Array(F);
 const flowIndi=new Int32Array(F);
 const flowFromSx=new Float32Array(F), flowFromSy=new Float32Array(F), flowToSx=new Float32Array(F), flowToSy=new Float32Array(F);
 for (let i=0;i<F;i++){const f=tl.flows[i]; flowFromY[i]=f[0]; flowToY[i]=f[1]; flowFromLat[i]=f[2]; flowFromLon[i]=f[3]; flowToLat[i]=f[4]; flowToLon[i]=f[5]; flowSrc[i]=tl.flowSrc[i]; flowIndi[i]=tl.flowIndi[i]; flowExact[i]=tl.flowExact?tl.flowExact[i]:0;}
+function currentCities(){ return cityLayer==="events"&&eventCities&&eventCities.length?eventCities:majorCities; }
+let cityCanonicalByName = new Map();
+function rebuildCanonical(){
+  cityCanonicalByName=new Map();
+  const list=currentCities(); if(!list) return;
+  for (const c of list){
+    const ex=cityCanonicalByName.get(c.name);
+    const w=c.pop!=null?c.pop:c.count||0;
+    if (!ex||(ex.pop!=null?ex.pop:ex.count||0)<w) cityCanonicalByName.set(c.name,c);
+  }
+}
+function precomputeDwellCity(){
+  const list=currentCities();
+  if (!list||!list.length){ dwellCity.fill(-1); return; }
+  for (let i=0;i<list.length;i++) list[i]._idx=i;
+  const tree=d3.quadtree().x(c=>c.lon).y(c=>c.lat).addAll(list);
+  for (let i=0;i<N;i++){ const c=tree.find(dwellLon[i],dwellLat[i]); dwellCity[i]=c?c._idx:-1; }
+  rebuildCanonical();
+}
+precomputeDwellCity();
 function applyCandidate(c){
   curCandidate = c;
   if (!c) return;
@@ -1252,16 +1282,36 @@ function applyCandidate(c){
   fxCtx.clearRect(0,0,W,H);
 }
 applyCandidate(curCandidate);
-rootSel.addEventListener("change", e => {
-  const c = candidates.find(c => c.id === e.target.value);
-  if (c) applyCandidate(c);
-});
-filtSel.addEventListener("change", e => { curFilter = e.target.value; fxCtx.clearRect(0,0,W,H); });
+rootSel.addEventListener("change", e => { const c=candidates.find(c=>c.id===e.target.value); if(c) applyCandidate(c); });
+filtSel.addEventListener("change", e => { curFilter=e.target.value; fxCtx.clearRect(0,0,W,H); });
+cityLayerSel.addEventListener("change", e => { cityLayer=e.target.value; precomputeDwellCity(); drawBase(); fxCtx.clearRect(0,0,W,H); });
+borderSel.addEventListener("change", e => { borderLayer=e.target.value; drawBase(); });
+migSel.addEventListener("change", e => { migrationViz=e.target.value; fxCtx.clearRect(0,0,W,H); });
 const dwellOrder=new Int32Array(N); for(let i=0;i<N;i++) dwellOrder[i]=i; dwellOrder.sort((a,b)=>dwellY[a]-dwellY[b]);
 const flowOrder=new Int32Array(F); for(let i=0;i<F;i++) flowOrder[i]=i; flowOrder.sort((a,b)=>flowFromY[a]-flowFromY[b]);
 const minYear=tl.min_year, maxYear=tl.max_year;
 range.min=minYear; range.max=maxYear; range.step=0.1; range.value=Math.max(minYear,1700);
 let curYear=parseFloat(range.value), playing=false;
+const HISTORICAL_SNAPSHOTS=[1000,1279,1492,1530,1600,1650,1700,1715,1783,1815,1880,1914,1920,1938,1945,1960,1994,2000];
+let activeHistoricalYear=-1; let currentHistoricalWorld=null; const historicalBasemaps=new Map();
+function pickSnapshotYear(y){ let p=HISTORICAL_SNAPSHOTS[0]; for(const s of HISTORICAL_SNAPSHOTS) if(s<=y) p=s; return p; }
+async function fetchHistoricalBasemap(y){
+  if (historicalBasemaps.has(y)) return historicalBasemaps.get(y);
+  try {
+    const r=await fetch("https://cdn.jsdelivr.net/gh/aourednik/historical-basemaps/geojson/world_"+y+".geojson");
+    if (!r.ok) throw new Error("status "+r.status);
+    const j=await r.json(); historicalBasemaps.set(y,j); return j;
+  } catch(e){ historicalBasemaps.set(y,null); return null; }
+}
+function maybeUpdateHistoricalBasemap(){
+  if (borderLayer!=="historical"){ if(activeHistoricalYear!==-1){activeHistoricalYear=-1; currentHistoricalWorld=null; drawBase();} return; }
+  const snap=pickSnapshotYear(curYear);
+  if (snap===activeHistoricalYear) return;
+  activeHistoricalYear=snap;
+  const cached=historicalBasemaps.get(snap);
+  if (cached){ currentHistoricalWorld=cached; drawBase(); return; }
+  fetchHistoricalBasemap(snap).then(j=>{ if(activeHistoricalYear===snap){currentHistoricalWorld=j; drawBase();} });
+}
 function resize(){
   W=window.innerWidth; H=window.innerHeight;
   for (const c of [baseCanvas,fxCanvas]){
@@ -1282,38 +1332,79 @@ function applyZoom(){
 }
 const zoomBehavior=d3.zoom().scaleExtent([1,64]).on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
 d3.select(fxCanvas).call(zoomBehavior);
-d3.select(fxCanvas).on("dblclick.zoom",()=>{
-  d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform,d3.zoomIdentity);
-});
+d3.select(fxCanvas).on("dblclick.zoom",()=>{ d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform,d3.zoomIdentity); });
 function drawBase(){
+  if (!world) return;
+  staticLabelRects=[];
   baseCtx.clearRect(0,0,W,H); baseCtx.fillStyle="#cfe2ec"; baseCtx.fillRect(0,0,W,H);
   const k=zoomTransform.k;
-  const sphere={type:"Sphere"}; const land=topojson.feature(world,world.objects.countries); const borders=topojson.mesh(world,world.objects.countries,(a,b)=>a!==b);
+  const sphere={type:"Sphere"};
   const cp=d3.geoPath(projection,baseCtx);
   baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
-  baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
-  baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
-  if (usStates) {
+  const useHist = borderLayer==="historical" && currentHistoricalWorld;
+  let countryFeatures=null;
+  if (useHist) {
+    countryFeatures=currentHistoricalWorld.features||[];
+    baseCtx.beginPath(); cp(currentHistoricalWorld); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill();
+    baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
+  } else {
+    const land=topojson.feature(world,world.objects.countries);
+    const borders=topojson.mesh(world,world.objects.countries,(a,b)=>a!==b);
+    countryFeatures=land.features;
+    baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
+    baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+  }
+  if (usStates && !useHist) {
     const sb=topojson.mesh(usStates,usStates.objects.states,(a,b)=>a!==b);
     baseCtx.beginPath(); cp(sb);
     baseCtx.strokeStyle="rgba(140,120,90,"+Math.min(0.7,0.2+k*0.08)+")";
     baseCtx.lineWidth=0.35; baseCtx.stroke();
   }
-  if (majorCities && majorCities.length) {
-    const popThresh = k>=16?50000:k>=8?150000:k>=4?400000:k>=2?800000:1500000;
-    const labelThresh = k>=16?200000:k>=8?500000:k>=4?1500000:k>=2?3000000:6000000;
+  // country labels
+  if (countryFeatures && k<=8) {
+    const areaCutoff=k>=4?30:k>=2?150:500;
+    baseCtx.font="bold 12px -apple-system, sans-serif";
+    baseCtx.textAlign="center"; baseCtx.textBaseline="middle";
+    const cpProj=d3.geoPath(projection);
+    for (const f of countryFeatures) {
+      const props=f.properties||{};
+      const name=props.NAME||props.name||props.SOVEREIGNT||"";
+      if (!name) continue;
+      const a=cpProj.area(f); if (a<areaCutoff) continue;
+      const c=cpProj.centroid(f); if(!c||isNaN(c[0])) continue;
+      if (c[0]<0||c[0]>W||c[1]<0||c[1]>H) continue;
+      const tw=baseCtx.measureText(name).width;
+      const rect={x:c[0]-tw/2-2,y:c[1]-8,w:tw+4,h:16};
+      let coll=false; for (const ex of staticLabelRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
+      if (coll) continue; staticLabelRects.push(rect);
+      baseCtx.fillStyle="rgba(255,255,255,0.7)"; baseCtx.fillText(name,c[0]+1,c[1]+1);
+      baseCtx.fillStyle="rgba(70,55,30,0.75)"; baseCtx.fillText(name,c[0],c[1]);
+    }
+  }
+  const cities=currentCities();
+  if (cities && cities.length) {
+    const isEvents=cityLayer==="events"&&eventCities&&cities===eventCities;
+    const popThresh=isEvents?0:k>=16?50000:k>=8?150000:k>=4?400000:k>=2?800000:1500000;
+    const labelThresh=isEvents?0:k>=16?200000:k>=8?500000:k>=4?1500000:k>=2?3000000:6000000;
     baseCtx.font="11px -apple-system, sans-serif";
     baseCtx.textAlign="left"; baseCtx.textBaseline="middle";
-    for (const c of majorCities) {
-      if (c.pop < popThresh) continue;
+    const labeled=new Set();
+    const ordered=cities.slice().sort((a,b)=>(b.pop||b.count||0)-(a.pop||a.count||0));
+    for (const c of ordered) {
+      const w=isEvents?c.count:c.pop;
+      if (w<popThresh) continue;
       const p=projection([c.lon,c.lat]); if(!p) continue;
       if (p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10) continue;
-      const r = c.pop>=5000000?2.5:c.pop>=1000000?2:1.5;
+      const r=isEvents?Math.min(3,1+Math.log2(c.count+1)*0.4):(c.pop>=5000000?2.5:c.pop>=1000000?2:1.5);
       baseCtx.fillStyle="rgba(60,60,70,0.85)";
       baseCtx.beginPath(); baseCtx.arc(p[0],p[1],r,0,Math.PI*2); baseCtx.fill();
       baseCtx.strokeStyle="rgba(255,255,255,0.9)"; baseCtx.lineWidth=0.7; baseCtx.stroke();
-      if (c.pop >= labelThresh) {
+      if (w>=labelThresh && !labeled.has(c.name)) {
+        const tw=baseCtx.measureText(c.name).width;
+        const rect={x:p[0]+r+2,y:p[1]-7,w:tw+4,h:14};
+        let coll=false; for (const ex of staticLabelRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
+        if (coll) continue; labeled.add(c.name); staticLabelRects.push(rect);
         baseCtx.fillStyle="rgba(255,255,255,0.85)"; baseCtx.fillText(c.name,p[0]+r+3,p[1]+0.5);
         baseCtx.fillStyle="rgba(40,40,55,0.95)"; baseCtx.fillText(c.name,p[0]+r+2,p[1]);
       }
@@ -1335,11 +1426,12 @@ function drawShape(ctx,x,y,r,ps){
 }
 function lowerBound(arr,order,target){let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>>1; if(arr[order[m]]<target) lo=m+1; else hi=m;} return lo;}
 function frame(fade){
-  fxCtx.globalCompositeOperation="destination-out"; fxCtx.fillStyle="rgba(0,0,0,"+fade+")"; fxCtx.fillRect(0,0,W,H);
-  fxCtx.globalCompositeOperation="source-over";
+  if (migrationViz==="lines") fxCtx.clearRect(0,0,W,H);
+  else { fxCtx.globalCompositeOperation="destination-out"; fxCtx.fillStyle="rgba(0,0,0,"+fade+")"; fxCtx.fillRect(0,0,W,H); fxCtx.globalCompositeOperation="source-over"; }
   const y=curYear, dw=6;
   const lo=lowerBound(dwellY,dwellOrder,y-dw), hi=lowerBound(dwellY,dwellOrder,y+1);
-  const labeled=new Set();
+  const labeledNames=new Set();
+  const dynRects=[];
   fxCtx.textAlign="left"; fxCtx.textBaseline="middle";
   for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const dy=y-dwellY[i]; if(dy<0) continue;
     const sd=dwellSide[i], ps=dwellSrc[i];
@@ -1350,22 +1442,49 @@ function frame(fade){
     const exact=dwellExact[i];
     const r=(1.7+(1-dy/dw)*1.4)*(exact?1.4:1);
     drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
-    if (dwellCity[i]>=0 && !labeled.has(dwellCity[i]) && dy<3){
-      labeled.add(dwellCity[i]);
-      const city=majorCities[dwellCity[i]];
-      const p=projection([city.lon,city.lat]);
-      if (p) {
-        fxCtx.font=(exact?"bold ":"")+"10px -apple-system, sans-serif";
-        fxCtx.fillStyle="rgba(255,255,255,"+(0.7*a).toFixed(3)+")";
-        fxCtx.fillText(city.name, p[0]+4, p[1]+0.5);
-        fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")";
-        fxCtx.fillText(city.name, p[0]+3, p[1]);
-      }
+    if (dwellCity[i]>=0 && dy<3){
+      const rawCity=currentCities()[dwellCity[i]];
+      if (!rawCity) continue;
+      const canonical=cityCanonicalByName.get(rawCity.name)||rawCity;
+      if (labeledNames.has(canonical.name)) continue;
+      const p=projection([canonical.lon,canonical.lat]);
+      if (!p) continue;
+      fxCtx.font=(exact?"bold ":"")+"10px -apple-system, sans-serif";
+      const tw=fxCtx.measureText(canonical.name).width;
+      const rect={x:p[0]+3,y:p[1]-6,w:tw+4,h:13};
+      let coll=false;
+      for (const ex of staticLabelRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
+      if (!coll) for (const ex of dynRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
+      if (coll) continue;
+      labeledNames.add(canonical.name); dynRects.push(rect);
+      fxCtx.fillStyle="rgba(255,255,255,"+(0.75*a).toFixed(3)+")"; fxCtx.fillText(canonical.name,p[0]+4,p[1]+0.5);
+      fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")"; fxCtx.fillText(canonical.name,p[0]+3,p[1]);
     }
+  }
+  if (migrationViz==="discrete") return;
+  if (migrationViz==="lines"){
+    for (let i=0;i<F;i++){
+      if (flowToY[i]>y) continue;
+      const age=y-flowToY[i]; if (age>200) continue;
+      const fs=flowSide[i], fp=flowSrc[i];
+      if (curFilter==="ancestors" && fs!==0 && fs!==1) continue;
+      if (curFilter==="blood" && !flowBlood[i]) continue;
+      const x0=flowFromSx[i],y0=flowFromSy[i],x1=flowToSx[i],y1=flowToSy[i]; if(x0<-1000||x1<-1000) continue;
+      if ((x1-x0)===0&&(y1-y0)===0) continue;
+      const mx=(x0+x1)/2-(y1-y0)*0.18, my=(y0+y1)/2+(x1-x0)*0.18;
+      const c=colorForFinal(fs,fp);
+      const alpha=Math.max(0.08,1-age/80)*0.55;
+      fxCtx.beginPath(); fxCtx.moveTo(x0,y0); fxCtx.quadraticCurveTo(mx,my,x1,y1);
+      fxCtx.strokeStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+alpha.toFixed(3)+")";
+      fxCtx.lineWidth=age<3?1.2:0.5; fxCtx.stroke();
+    }
+    return;
   }
   const fHi=lowerBound(flowFromY,flowOrder,y+1);
   for (let k=0;k<fHi;k++){const i=flowOrder[k]; if(flowToY[i]<y-1) continue;
-    const span=Math.max(1,flowToY[i]-flowFromY[i]); const t=Math.max(0,Math.min(1,(y-flowFromY[i])/span));
+    let t;
+    if (migrationViz==="pulse"){ const win=1; if(y<flowToY[i]-win||y>flowToY[i]+0.1) continue; t=Math.max(0,Math.min(1,(y-(flowToY[i]-win))/win)); }
+    else { const span=Math.max(1,flowToY[i]-flowFromY[i]); t=Math.max(0,Math.min(1,(y-flowFromY[i])/span)); }
     if (t<=0||t>=1) continue;
     const x0=flowFromSx[i],y0=flowFromSy[i],x1=flowToSx[i],y1=flowToSy[i]; if(x0<-1000||x1<-1000) continue;
     const mx=(x0+x1)/2-(y1-y0)*0.18, my=(y0+y1)/2+(x1-x0)*0.18;
@@ -1381,19 +1500,21 @@ function frame(fade){
 let last=0;
 function tick(now){
   const dt=last?(now-last)/1000:0; last=now;
-  if (playing){curYear+=parseFloat(speedSel.value)*60*dt; if(curYear>maxYear) curYear=minYear; range.value=curYear;}
+  if (isDraggingSlider) curYear=parseFloat(range.value);
+  else if (playing){ curYear+=parseFloat(speedSel.value)*60*dt; if(curYear>maxYear) curYear=minYear; range.value=curYear; }
   else curYear=parseFloat(range.value);
   const yint=Math.floor(curYear);
   yearLabel.textContent=yint; yearBig.textContent=yint;
+  maybeUpdateHistoricalBasemap();
   frame(parseFloat(trailSel.value));
   requestAnimationFrame(tick);
 }
 playBtn.addEventListener("click",()=>{playing=!playing; playBtn.textContent=playing?"Pause":"Play";});
-range.addEventListener("input",()=>{if(!playing) curYear=parseFloat(range.value);});
-document.getElementById("rot").addEventListener("input",e=>{
-  projection.rotate([parseFloat(e.target.value)||0,0,0]);
-  applyZoom();
-});
+range.addEventListener("input",()=>{ curYear=parseFloat(range.value); });
+range.addEventListener("pointerdown",()=>{ isDraggingSlider=true; });
+range.addEventListener("pointerup",()=>{ isDraggingSlider=false; });
+range.addEventListener("pointercancel",()=>{ isDraggingSlider=false; });
+document.getElementById("rot").addEventListener("input",e=>{ projection.rotate([parseFloat(e.target.value)||0,0,0]); applyZoom(); });
 resize(); requestAnimationFrame(tick);
 <\/script>
 </body>
