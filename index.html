@@ -255,6 +255,7 @@ const PROJECTIONS = {
   ortho: () => d3.geoOrthographic().clipAngle(90),
 };
 let projection = PROJECTIONS.natural();
+let projectionName = "natural";
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
 let world = null, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
@@ -319,11 +320,36 @@ function applyZoom() {
 
 const zoomBehavior = d3.zoom()
   .scaleExtent([1, 64])
+  .filter(e => {
+    if (projectionName === "ortho") return e.type === "wheel" || e.type === "dblclick";
+    return !e.ctrlKey && !e.button;
+  })
   .on("zoom", e => { zoomTransform = e.transform; applyZoom(); });
 d3.select(fxCanvas).call(zoomBehavior);
 d3.select(fxCanvas).on("dblclick.zoom", () => {
   d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity);
 });
+
+const dragRotate = d3.drag()
+  .filter(() => projectionName === "ortho")
+  .on("start", function(e) {
+    this._r = projection.rotate();
+    this._x = e.x; this._y = e.y;
+  })
+  .on("drag", function(e) {
+    const k = 200 / projection.scale();
+    const r0 = this._r;
+    projection.rotate([
+      r0[0] + (e.x - this._x) * k,
+      Math.max(-90, Math.min(90, r0[1] - (e.y - this._y) * k)),
+      r0[2],
+    ]);
+    drawBase();
+    projectAll();
+    fxCtx.clearRect(0, 0, W, H);
+    updatePanel(true);
+  });
+d3.select(fxCanvas).call(dragRotate);
 
 let staticLabelRects = [];
 function rectsOverlap(a, b) {
@@ -1317,6 +1343,7 @@ $("projSel").addEventListener("change", e => {
   const key = e.target.value;
   if (PROJECTIONS[key]) {
     projection = PROJECTIONS[key]();
+    projectionName = key;
     zoomTransform = { k: 1, x: 0, y: 0 };
     d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity);
     resize();
@@ -1649,6 +1676,7 @@ const cityLayerSel=$("cityLayer"), borderSel=$("borderLayer"), migSel=$("migViz"
 const panelEl=$("panel"), panelList=$("panelList"), panelYear=$("panelYear");
 const PROJECTIONS={natural:()=>d3.geoNaturalEarth1(),equal:()=>d3.geoEqualEarth(),equirect:()=>d3.geoEquirectangular(),mercator:()=>d3.geoMercator(),ortho:()=>d3.geoOrthographic().clipAngle(90)};
 let projection=PROJECTIONS.natural();
+let projectionName="natural";
 let W=0,H=0,mapW=0,mapTop=0,mapBottom=0; let baseScale=1, baseTranslate=[0,0]; let zoomTransform={k:1,x:0,y:0};
 let cityLayer="major", borderLayer="modern", migrationViz="lines", curFilter="all", isDraggingSlider=false;
 let dwellWindow=6, inferenceYears=0, statusFilter="all";
@@ -1757,9 +1785,20 @@ function applyZoom(){
   projection.translate([baseTranslate[0]*t.k+t.x, baseTranslate[1]*t.k+t.y]);
   drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
 }
-const zoomBehavior=d3.zoom().scaleExtent([1,64]).on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
+const zoomBehavior=d3.zoom().scaleExtent([1,64])
+  .filter(e=>{ if (projectionName==="ortho") return e.type==="wheel"||e.type==="dblclick"; return !e.ctrlKey && !e.button; })
+  .on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
 d3.select(fxCanvas).call(zoomBehavior);
 d3.select(fxCanvas).on("dblclick.zoom",()=>{ d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform,d3.zoomIdentity); });
+const dragRotate=d3.drag()
+  .filter(()=>projectionName==="ortho")
+  .on("start", function(e){ this._r=projection.rotate(); this._x=e.x; this._y=e.y; })
+  .on("drag", function(e){
+    const k=200/projection.scale(); const r0=this._r;
+    projection.rotate([r0[0]+(e.x-this._x)*k, Math.max(-90,Math.min(90,r0[1]-(e.y-this._y)*k)), r0[2]]);
+    drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
+  });
+d3.select(fxCanvas).call(dragRotate);
 function drawBase(){
   if (!world) return;
   staticLabelRects=[];
@@ -2093,7 +2132,7 @@ filtSel.addEventListener("change",e=>{ curFilter=e.target.value; fxCtx.clearRect
 cityLayerSel.addEventListener("change",e=>{ cityLayer=e.target.value; precomputeDwellCity(); drawBase(); fxCtx.clearRect(0,0,W,H); updatePanel(true); });
 borderSel.addEventListener("change",e=>{ borderLayer=e.target.value; drawBase(); });
 migSel.addEventListener("change",e=>{ migrationViz=e.target.value; fxCtx.clearRect(0,0,W,H); });
-projSel.addEventListener("change",e=>{ const k=e.target.value; if (PROJECTIONS[k]){ projection=PROJECTIONS[k](); zoomTransform={k:1,x:0,y:0}; d3.select(fxCanvas).call(zoomBehavior.transform,d3.zoomIdentity); resize(); } });
+projSel.addEventListener("change",e=>{ const k=e.target.value; if (PROJECTIONS[k]){ projection=PROJECTIONS[k](); projectionName=k; zoomTransform={k:1,x:0,y:0}; d3.select(fxCanvas).call(zoomBehavior.transform,d3.zoomIdentity); resize(); } });
 resize(); requestAnimationFrame(tick);
 <\/script>
 </body>
