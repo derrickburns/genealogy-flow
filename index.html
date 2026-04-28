@@ -476,8 +476,8 @@ const zoomBehavior = d3.zoom()
     // - Pinch-vs-mouse damp: trackpad pinch (ctrlKey=true) is half as
     //   sensitive as mouse-wheel (ctrlKey=false), since pinch fires many
     //   small events in a sustained gesture.
-    const zoomDamp = 1 / Math.pow(Math.max(1, zoomTransform.k), 0.7);
-    const pinchScale = e.ctrlKey ? 0.25 : 1.0;
+    const zoomDamp = 1 / Math.pow(Math.max(1, zoomTransform.k), 0.6);
+    const pinchScale = e.ctrlKey ? 0.35 : 1.0;
     return -e.deltaY * zoomDamp * pinchScale * (e.deltaMode === 1 ? 0.2 : e.deltaMode ? 4 : 0.008);
   })
   .on("start", () => { _interacting = true; if (!_restoringView) pushHistory(); })
