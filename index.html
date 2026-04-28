@@ -70,6 +70,9 @@
   #panelInferRow input[type=range] { flex:1; min-width:0; }
   #panelInferRow label { display:flex; align-items:center; gap:4px; min-width:70px; }
   #panelInferRow label > span { font-weight:600; color:#2a4a8c; min-width:18px; text-align:right; }
+  #panelTypeRow { padding:6px 12px; border-bottom:1px solid #e0e6ee; display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; color:#566480; }
+  #panelTypeRow .pill { padding:2px 7px; border:1px solid #c0ccd8; border-radius:10px; background:#f5f5f8; color:#888; font-size:11px; cursor:pointer; user-select:none; }
+  #panelTypeRow .pill.on { background:#e0e9ff; color:#2a4a8c; border-color:#9fb6e0; font-weight:500; }
   #panelBanner { display:none; padding:10px 12px; border-bottom:1px solid #e0e6ee; background:#fff8e0; }
   #panelBanner.shown { display:block; }
   #panelBanner .bnm { font-weight:700; color:#1c2433; font-size:13px; }
@@ -168,6 +171,28 @@
     <label>infer<span id="inferYrsLabel">0</span>y</label>
     <input type="range" id="inferYrs" min="0" max="50" step="1" value="0" title="infer residency for people last seen this many years ago">
   </div>
+  <div id="panelStatusRow" style="padding:6px 12px;border-bottom:1px solid #e0e6ee;font-size:11px;color:#566480;display:flex;align-items:center;gap:8px;">
+    <span>status:</span>
+    <select id="statusFilt" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:2px 6px;font:inherit;">
+      <option value="all" selected>all</option>
+      <option value="living">living only</option>
+      <option value="dead">dead only</option>
+    </select>
+  </div>
+  <div id="panelTypeRow">
+    <span>events:</span>
+    <button data-t="0" class="pill on">born</button>
+    <button data-t="1" class="pill on">died</button>
+    <button data-t="2" class="pill on">lived</button>
+    <button data-t="3" class="pill on">married</button>
+    <button data-t="4" class="pill on">emig</button>
+    <button data-t="5" class="pill on">immig</button>
+    <button data-t="6" class="pill on">census</button>
+    <button data-t="7" class="pill on">baptized</button>
+    <button data-t="8" class="pill on">buried</button>
+    <button data-t="9" class="pill on">christened</button>
+    <button data-t="10" class="pill on">other</button>
+  </div>
   <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><details id="bannerRaw"><summary>GEDCOM record</summary><pre id="bannerRawPre"></pre></details></div>
   <ul id="panelList"></ul>
 </aside>
@@ -244,6 +269,8 @@ let highlightInferredYear = -1, highlightInferredSrcYear = -1;
 let indiDwells = new Map();
 let inferenceYears = 0;
 let dwellWindow = 6;
+let typeFilter = new Set([0,1,2,3,4,5,6,7,8,9,10]);
+let statusFilter = "all";
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
@@ -482,6 +509,8 @@ function frame(activeTrailFade) {
     const sd = dwellSide[i], ps = dwellSrc[i];
     if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
     if (curFilter === "blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
     const a = Math.max(0, 1 - dy / dw) * 0.85;
     const c = colorForFinal(sd, ps);
     fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
@@ -610,8 +639,15 @@ function tick(now) {
 playBtn.addEventListener("click", () => {
   playing = !playing;
   playBtn.textContent = playing ? "Pause" : "Play";
+  if (playing) clearHighlight();
 });
-range.addEventListener("input", () => { curYear = parseFloat(range.value); });
+function clearHighlight() {
+  if (highlightedDwell < 0 && highlightInferredYear < 0) return;
+  highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
+  fxCtx.clearRect(0, 0, W, H);
+  updatePanel(true);
+}
+range.addEventListener("input", () => { curYear = parseFloat(range.value); clearHighlight(); });
 range.addEventListener("pointerdown", () => { isDraggingSlider = true; });
 range.addEventListener("pointerup", () => { isDraggingSlider = false; });
 range.addEventListener("pointercancel", () => { isDraggingSlider = false; });
@@ -1287,6 +1323,32 @@ $("winYrs").addEventListener("input", e => {
   fxCtx.clearRect(0, 0, W, H);
   updatePanel(true);
 });
+$("panelTypeRow").addEventListener("click", e => {
+  const btn = e.target.closest(".pill"); if (!btn) return;
+  const t = parseInt(btn.dataset.t, 10);
+  if (typeFilter.has(t)) typeFilter.delete(t); else typeFilter.add(t);
+  btn.classList.toggle("on");
+  fxCtx.clearRect(0, 0, W, H);
+  updatePanel(true);
+});
+$("statusFilt").addEventListener("change", e => {
+  statusFilter = e.target.value;
+  fxCtx.clearRect(0, 0, W, H);
+  updatePanel(true);
+});
+
+function passesStatus(indi) {
+  if (statusFilter === "all") return true;
+  const ind = lastIndividuals[indi];
+  if (!ind) return true;
+  const by = ind.birth_year, dy = ind.death_year;
+  const T = curYear;
+  const isAlive = (by == null || by <= T) && (dy == null || dy > T);
+  const isDead = dy != null && dy <= T;
+  if (statusFilter === "living") return isAlive;
+  if (statusFilter === "dead") return isDead;
+  return true;
+}
 
 let lastPanelYear = -9999, lastPanelTime = 0;
 function updatePanel(force) {
@@ -1307,6 +1369,8 @@ function updatePanel(force) {
     const sd = dwellSide[i];
     if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
     if (curFilter === "blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
     rows.push({ kind: "real", i, year: dwellY[i] });
@@ -1314,7 +1378,7 @@ function updatePanel(force) {
   }
 
   const MAX_LIFESPAN = 100;
-  if (inferenceYears > 0) for (let idx = 0; idx < lastIndividuals.length; idx++) {
+  if (inferenceYears > 0 && typeFilter.has(2) && statusFilter !== "dead") for (let idx = 0; idx < lastIndividuals.length; idx++) {
     if (visibleIndis.has(idx)) continue;
     const ind = lastIndividuals[idx];
     if (!ind.events.length) continue;
