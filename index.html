@@ -199,6 +199,7 @@
         <h4>Clusters</h4>
         <label>mode <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="hull">region rings</option><option value="heatmap">heatmap</option><option value="dispersion">on zoom</option></select></label>
         <label>radius <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"> <b id="clusterRadiusLabel">30</b>px</label>
+        <label title="for each person, draw great-circle lines to their N closest blood relatives currently visible">kin lines <input type="range" id="kinN" min="0" max="20" step="1" value="0"> <b id="kinNLabel">0</b></label>
       </div>
       <div class="section">
         <h4>Animation</h4>
@@ -313,11 +314,12 @@ let curFilter = "all";
 let migrationViz = "continuous";
 let clusterMode = "none";
 let clusterRadius = 30;
+let kinLinesN = 0;
 let lastBloodSet = null;
 let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
 let isDraggingSlider = false;
 
-let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null;
+let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null, lastIndiIdxById = null;
 let lastSideById = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
 
@@ -507,6 +509,8 @@ fxCanvas.addEventListener("mousemove", e => {
   if (!ind) { hoverTip.style.display = "none"; return; }
   const by = ind.birth_year, dy = ind.death_year;
   const yrs = by && dy ? `${by}–${dy}` : by ? `b. ${by}` : dy ? `d. ${dy}` : "";
+  const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+  const yrPlace = `<div class="tipYrs">${escHtml(yrs)}${yrs && placeStr ? " · " : ""}${escHtml(placeStr)} (${dwellY[i]})</div>`;
   let chainHtml = "";
   if (lastRootId && ind.id !== lastRootId) {
     const path = pathFromRoot(ind.id);
@@ -521,7 +525,7 @@ fxCanvas.addEventListener("mousemove", e => {
       chainHtml = `<div class="tipChain" style="font-style:italic;">no path to root</div>`;
     }
   }
-  hoverTip.innerHTML = `<div class="tipName">${escHtml(ind.name)}</div><div class="tipYrs">${yrs}</div>${chainHtml}`;
+  hoverTip.innerHTML = `<div class="tipName">${escHtml(ind.name)}</div>${yrPlace}${chainHtml}`;
   const wrapRect = $("mapWrap").getBoundingClientRect();
   const tx = Math.min(e.offsetX + 14, W - 290);
   const ty = Math.min(e.offsetY + 14, H - 200);
@@ -866,7 +870,47 @@ function frame(activeTrailFade) {
     }
   }
 
+  if (kinLinesN > 0 && lastIndiIdxById) drawKinLines(lo, hi, y, dw);
   if (highlightedDwell >= 0) drawHighlight();
+}
+
+function drawKinLines(lo, hi, y, dw) {
+  // Build map: indi index -> dwell index for visible/passes-filter dwells
+  const visibleByIndi = new Map();
+  for (let k = lo; k < hi; k++) {
+    const i = dwellOrder[k];
+    const dyy = y - dwellY[i]; if (dyy < 0) continue;
+    if (curFilter === "ancestors" && dwellSide[i] !== 0 && dwellSide[i] !== 1) continue;
+    if (curFilter === "blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
+    const sx = dwellSx[i], sy = dwellSy[i];
+    if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
+    const indi = dwellIndi[i];
+    if (!visibleByIndi.has(indi)) visibleByIndi.set(indi, i);
+  }
+  const drawn = new Set();
+  fxCtx.lineWidth = 0.6;
+  for (const [indiIdx, dwellI] of visibleByIndi) {
+    const ind = lastIndividuals[indiIdx];
+    if (!ind) continue;
+    const relatives = nearestRelativesByDag(ind.id, kinLinesN);
+    for (let r = 0; r < relatives.length; r++) {
+      const relIdx = lastIndiIdxById.get(relatives[r].id);
+      if (relIdx === undefined) continue;
+      const otherDwell = visibleByIndi.get(relIdx);
+      if (otherDwell === undefined) continue;
+      const a = Math.min(dwellI, otherDwell), b = Math.max(dwellI, otherDwell);
+      const key = a * 1e7 + b;
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+      const dist = relatives[r].dist;
+      const alpha = Math.max(0.08, 0.55 * (1 - r / Math.max(kinLinesN, 1)));
+      const c = colorForFinal(dwellSide[dwellI], 0);
+      fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(2)})`;
+      drawGreatCircle(fxCtx, dwellLon[dwellI], dwellLat[dwellI], dwellLon[otherDwell], dwellLat[otherDwell]);
+    }
+  }
 }
 
 function buildClusters(visible, radius) {
@@ -1213,7 +1257,8 @@ function parseGedcom(text) {
 
 function computeRelations(individuals, families) {
   const indiById = new Map();
-  for (const ind of individuals) indiById.set(ind.id, ind);
+  const indiIdxById = new Map();
+  for (let i = 0; i < individuals.length; i++) { indiById.set(individuals[i].id, individuals[i]); indiIdxById.set(individuals[i].id, i); }
   const parentsOf = new Map();
   for (const ind of individuals) {
     if (ind.famc && families.has(ind.famc)) {
@@ -1233,7 +1278,28 @@ function computeRelations(individuals, families) {
       for (const c of f.chil) arr.push(c);
     }
   }
-  return { indiById, parentsOf, isParent, childrenOf };
+  return { indiById, indiIdxById, parentsOf, isParent, childrenOf };
+}
+
+function nearestRelativesByDag(indId, N) {
+  if (!lastParentsOf || !lastChildrenOf) return [];
+  const visited = new Set([indId]);
+  const queue = [[indId, 0]];
+  let head = 0;
+  const out = [];
+  while (head < queue.length && out.length < N) {
+    const [id, dist] = queue[head++];
+    if (id !== indId) out.push({ id, dist });
+    const par = lastParentsOf.get(id);
+    if (par) for (const p of par) {
+      if (p && !visited.has(p)) { visited.add(p); queue.push([p, dist + 1]); }
+    }
+    const kids = lastChildrenOf.get(id);
+    if (kids) for (const k of kids) {
+      if (!visited.has(k)) { visited.add(k); queue.push([k, dist + 1]); }
+    }
+  }
+  return out;
 }
 
 function ancestorSet(rootId, parentsOf) {
@@ -1856,8 +1922,8 @@ async function processFile(file) {
   stats.textContent = "parsing GEDCOM...";
   await new Promise(r => requestAnimationFrame(r));
   const { individuals, families } = parseGedcom(text);
-  const { indiById, parentsOf, isParent, childrenOf } = computeRelations(individuals, families);
-  lastIndividuals = individuals; lastIndiById = indiById;
+  const { indiById, indiIdxById, parentsOf, isParent, childrenOf } = computeRelations(individuals, families);
+  lastIndividuals = individuals; lastIndiById = indiById; lastIndiIdxById = indiIdxById;
   lastParentsOf = parentsOf; lastIsParent = isParent; lastChildrenOf = childrenOf;
   stats.textContent = `geocoding ${individuals.length.toLocaleString()} people...`;
   await new Promise(r => requestAnimationFrame(r));
@@ -1950,6 +2016,11 @@ $("clusterMode").addEventListener("change", e => {
 $("clusterRadius").addEventListener("input", e => {
   clusterRadius = parseInt(e.target.value, 10) || 30;
   $("clusterRadiusLabel").textContent = clusterRadius;
+  fxCtx.clearRect(0, 0, W, H);
+});
+$("kinN").addEventListener("input", e => {
+  kinLinesN = parseInt(e.target.value, 10) || 0;
+  $("kinNLabel").textContent = kinLinesN;
   fxCtx.clearRect(0, 0, W, H);
 });
 $("projSel").addEventListener("change", e => {
