@@ -86,6 +86,10 @@
   #panelBanner details { margin-top:6px; font-size:11px; }
   #panelBanner details summary { cursor:pointer; color:#566480; }
   #panelBanner pre { margin:6px 0 0; padding:6px 8px; background:#fffbe9; border:1px solid #f0e6c0; border-radius:4px; font:11px ui-monospace, Menlo, monospace; max-height:280px; overflow:auto; white-space:pre-wrap; word-break:break-word; color:#1c2433; }
+  #bannerSummary { margin-top:8px; padding:8px 10px; background:#fff; border:1px solid #e6decf; border-radius:5px; font-size:12px; line-height:1.45; color:#1c2433; }
+  #bannerSummary a { color:#2a4a8c; text-decoration:underline; }
+  #bannerSummary p { margin:0 0 6px; }
+  #bannerSummary p:last-child { margin-bottom:0; }
   #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
   #panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
@@ -114,7 +118,7 @@
   <span id="stats">starting...</span>
   <button id="pick">Open .ged</button>
   <button id="export" disabled>Export HTML</button>
-  <input type="file" id="fileinp" accept=".ged,.gedcom,.GED">
+  <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
   <span id="rootwrap" style="display:none;">
     <label style="margin-left:6px;">root
       <select id="rootSel" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;max-width:360px;"></select>
@@ -198,7 +202,7 @@
     <button data-t="9" class="pill on">christened</button>
     <button data-t="10" class="pill on">other</button>
   </div>
-  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><details id="bannerRaw"><summary>GEDCOM record</summary><pre id="bannerRawPre"></pre></details></div>
+  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><div id="bannerSummary" style="display:none;"></div><details id="bannerRaw"><summary>GEDCOM record</summary><pre id="bannerRawPre"></pre></details></div>
   <ul id="panelList"></ul>
 </aside>
 </div>
@@ -273,6 +277,7 @@ let currentHistoricalWorld = null;
 
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;
 let placesList = [];
+let summaryById = new Map();
 let highlightedDwell = -1;
 let highlightInferredYear = -1, highlightInferredSrcYear = -1;
 let indiDwells = new Map();
@@ -1552,8 +1557,28 @@ function updateBanner() {
   bnm.textContent = ind.name;
   bev.textContent = `${yearShown} - ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
   const rawPre = $("bannerRawPre");
-  if (rawPre) rawPre.textContent = ind.raw || "(raw GEDCOM not captured)";
+  const summaryEl = $("bannerSummary");
+  const summary = summaryById.get(ind.id);
+  if (summary && summaryEl) {
+    summaryEl.innerHTML = renderMarkdown(summary);
+    summaryEl.style.display = "block";
+    if (rawPre) rawPre.textContent = ind.raw || "(raw GEDCOM not captured)";
+  } else {
+    if (summaryEl) summaryEl.style.display = "none";
+    if (rawPre) rawPre.textContent = ind.raw || "(raw GEDCOM not captured)";
+  }
   banner.classList.add("shown");
+}
+
+function renderMarkdown(text) {
+  // Minimal: escape HTML, then re-enable a small subset of markdown.
+  const esc = String(text).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  return esc
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/\n\n+/g, '</p><p>')
+    .replace(/\n/g, '<br>');
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
@@ -1579,17 +1604,34 @@ panelList.addEventListener("click", e => {
   updatePanel(true);
 });
 
+async function handleFiles(files) {
+  const arr = Array.from(files || []);
+  const ged = arr.find(f => /\.(ged|gedcom)$/i.test(f.name));
+  const json = arr.find(f => /\.json$/i.test(f.name));
+  if (json) {
+    try {
+      const txt = await json.text();
+      const map = JSON.parse(txt);
+      summaryById = new Map(Object.entries(map));
+      stats.textContent = `${summaryById.size.toLocaleString()} summaries loaded from ${json.name}`;
+      updatePanel(true);
+    } catch (e) {
+      stats.textContent = "summaries error: " + e.message;
+    }
+  }
+  if (ged) {
+    try { await processFile(ged); }
+    catch (e) { stats.textContent = "error: " + e.message; console.error(e); }
+  }
+}
 $("pick").addEventListener("click", () => fileInp.click());
 const pick2 = $("pick2"); if (pick2) pick2.addEventListener("click", () => fileInp.click());
-fileInp.addEventListener("change", () => {
-  if (fileInp.files && fileInp.files[0]) processFile(fileInp.files[0]).catch(e => { stats.textContent = "error: " + e.message; console.error(e); });
-});
+fileInp.addEventListener("change", () => handleFiles(fileInp.files));
 window.addEventListener("dragover", e => { e.preventDefault(); dropEl.classList.add("on"); });
 window.addEventListener("dragleave", e => { if (!e.relatedTarget) dropEl.classList.remove("on"); });
 window.addEventListener("drop", e => {
   e.preventDefault(); dropEl.classList.remove("on");
-  const f = e.dataTransfer?.files?.[0];
-  if (f) processFile(f).catch(err => { stats.textContent = "error: " + err.message; console.error(err); });
+  if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
 });
 
 // ---------- Export shareable HTML ----------
