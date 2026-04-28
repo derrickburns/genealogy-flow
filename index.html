@@ -155,7 +155,7 @@
   <span class="legend" id="legend" style="display:none; margin-left:auto;">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
     <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
-    <span><span class="swatch" style="background:#a03cc8;"></span>other</span>
+    <span><span class="swatch" style="background:#50a064;"></span>other</span>
     <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 missing</span>
     <span><span class="swatch square" style="background:#000;"></span>both missing</span>
   </span>
@@ -477,7 +477,7 @@ function drawBase() {
 
 const COLOR_PATERNAL   = [40, 100, 220];
 const COLOR_MATERNAL   = [220, 60, 90];
-const COLOR_OTHER      = [160, 60, 200];
+const COLOR_OTHER      = [80, 160, 100];
 const COLOR_NO_PARENT  = [0, 0, 0];
 const COLOR_ONE_PARENT = [110, 110, 115];
 function colorFor(s) { return s === 0 ? COLOR_PATERNAL : s === 1 ? COLOR_MATERNAL : COLOR_OTHER; }
@@ -1697,7 +1697,7 @@ function rowInnerHtml(r) {
     const t = dwellType[i];
     const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
     const sd = dwellSide[i], ps = dwellSrc[i];
-    const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
+    const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [80,160,100];
     const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
     const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
     const rel = relationCache.get(ind?.id);
@@ -1706,7 +1706,7 @@ function rowInnerHtml(r) {
   }
   const ind = lastIndividuals[r.indi];
   const sd = r.side;
-  const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
+  const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [80,160,100];
   const swatch = `<span class="pm" style="background:rgb(${c[0]},${c[1]},${c[2]});opacity:0.6"></span>`;
   const rel = relationCache.get(ind?.id);
   const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
@@ -1819,6 +1819,8 @@ function renderExpandedCard(ind, dwellIdx, isInferred) {
         rows.push(`<div class="step"><span class="lbl">${escHtml(step.label)}</span><span class="nm">${escHtml(stepInd?.name || step.id)}${fmtYears(stepInd)}</span></div>`);
       }
       chainHtml = `<div class="bcardSection"><h4>Lineage from root</h4><div class="bChain">${rows.join("")}</div></div>`;
+    } else {
+      chainHtml = `<div class="bcardSection"><h4>Lineage from root</h4><div class="bChain"><div class="step"><span class="nm" style="font-style:italic;color:#888;">No path through the family graph in this file. This person is unrelated by blood to the root.</span></div></div></div>`;
     }
   }
 
@@ -2094,7 +2096,7 @@ label { color:#566480; font-size:11px; }
   <span class="legend" style="margin-left:auto;">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
     <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
-    <span><span class="swatch" style="background:#a03cc8;"></span>other</span>
+    <span><span class="swatch" style="background:#50a064;"></span>other</span>
     <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 missing</span>
     <span><span class="swatch square" style="background:#000;"></span>both missing</span>
   </span>
@@ -2391,7 +2393,7 @@ function projectAll(){
   for (let i=0;i<F;i++){const a=safeProject([flowFromLon[i],flowFromLat[i]]); const b=safeProject([flowToLon[i],flowToLat[i]]);
     flowFromSx[i]=a?a[0]:-9999; flowFromSy[i]=a?a[1]:-9999; flowToSx[i]=b?b[0]:-9999; flowToSy[i]=b?b[1]:-9999;}
 }
-const COLOR=[[40,100,220],[220,60,90],[160,60,200]];
+const COLOR=[[40,100,220],[220,60,90],[80,160,100]];
 const COLOR_NO=[0,0,0], COLOR_ONE=[110,110,115];
 function colorForFinal(side, ps){ if(ps===2) return COLOR_NO; if(ps===1) return COLOR_ONE; return COLOR[side]||COLOR[2]; }
 function drawShape(ctx,x,y,r,ps){
@@ -2565,7 +2567,7 @@ function updatePanel(force){
       const i=r.i; const ind=individuals[dwellIndi[i]];
       const t=dwellType[i]; const place=dwellPlace[i]>=0?places[dwellPlace[i]]:"";
       const sd=dwellSide[i], ps=dwellSrc[i];
-      const c=ps===2?[0,0,0]:ps===1?[110,110,115]:sd===0?[40,100,220]:sd===1?[220,60,90]:[160,60,200];
+      const c=ps===2?[0,0,0]:ps===1?[110,110,115]:sd===0?[40,100,220]:sd===1?[220,60,90]:[80,160,100];
       const shapeCls=ps===2?"sq":ps===1?"di":"";
       const swatch="<span class='pm "+shapeCls+"' style='background:rgb("+c[0]+","+c[1]+","+c[2]+")'></span>";
       const sel = highlightedDwell===i ? " selected" : "";
@@ -2573,7 +2575,7 @@ function updatePanel(force){
     } else {
       const ind=individuals[r.indi];
       const sd=r.side;
-      const c=sd===0?[40,100,220]:sd===1?[220,60,90]:[160,60,200];
+      const c=sd===0?[40,100,220]:sd===1?[220,60,90]:[80,160,100];
       const swatch="<span class='pm' style='background:rgb("+c[0]+","+c[1]+","+c[2]+");opacity:0.6'></span>";
       const sel = (highlightedDwell===r.srcDwell && highlightInferredYear===r.year) ? " selected" : "";
       return "<li class='inferred"+sel+"' data-idx='"+r.srcDwell+"' data-inferred='"+r.year+"' data-basedon='"+r.basedOnYear+"'><span class='yr'>"+r.year+"</span>"+swatch+"<span class='nm'>"+escHtml(ind?.name??"?")+"</span> <span class='ev'>lived in "+escHtml(r.place)+"<span class='tag'>INFERRED "+r.basedOnYear+"</span></span></li>";
