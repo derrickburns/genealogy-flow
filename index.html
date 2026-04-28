@@ -1055,10 +1055,14 @@ const DATE_RE = /(?:(?:ABT|BEF|AFT|EST|CAL|FROM|TO|BET|AND)\s+)?(?:\d{1,2}\s+)?(
 
 function parseYear(d) {
   if (!d) return null;
-  const m = d.match(DATE_RE);
-  if (!m) return null;
-  const y = parseInt(m[2], 10);
-  return (y >= 1000 && y <= 2100) ? y : null;
+  const matches = d.match(/\b(\d{3,4})\b/g);
+  if (!matches) return null;
+  let best = null;
+  for (const s of matches) {
+    const y = parseInt(s, 10);
+    if (y >= 1000 && y <= 2100 && (best === null || y > best)) best = y;
+  }
+  return best;
 }
 
 const SINGLETON_EVENT_TAGS = new Set(["BIRT", "DEAT", "BURI", "BAPM", "CHR"]);
