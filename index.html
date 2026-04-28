@@ -174,8 +174,8 @@
     <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
     <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
     <span><span class="swatch" style="background:#50a064;"></span>other</span>
-    <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 missing</span>
-    <span><span class="swatch square" style="background:#000;"></span>both missing</span>
+    <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span>1 parent missing</span>
+    <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span>both parents missing</span>
   </span>
   <span id="optionsWrap" style="display:none;">
     <button id="optionsBtn">Options ▾</button>
@@ -628,9 +628,7 @@ const COLOR_OTHER      = [80, 160, 100];
 const COLOR_NO_PARENT  = [0, 0, 0];
 const COLOR_ONE_PARENT = [110, 110, 115];
 function colorFor(s) { return s === 0 ? COLOR_PATERNAL : s === 1 ? COLOR_MATERNAL : COLOR_OTHER; }
-function colorForFinal(side, parStat) {
-  if (parStat === 2) return COLOR_NO_PARENT;
-  if (parStat === 1) return COLOR_ONE_PARENT;
+function colorForFinal(side, _parStat) {
   return colorFor(side);
 }
 function drawShape(ctx, x, y, r, ps) {
@@ -2025,7 +2023,7 @@ function rowInnerHtml(r) {
     const t = dwellType[i];
     const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
     const sd = dwellSide[i], ps = dwellSrc[i];
-    const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [80,160,100];
+    const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [80,160,100];
     const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
     const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
     const rel = relationCache.get(ind?.id);
@@ -2516,8 +2514,8 @@ label { color:#566480; font-size:11px; }
     <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
     <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
     <span><span class="swatch" style="background:#50a064;"></span>other</span>
-    <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 missing</span>
-    <span><span class="swatch square" style="background:#000;"></span>both missing</span>
+    <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span>1 parent missing</span>
+    <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span>both parents missing</span>
   </span>
   <span id="optionsWrap">
     <button id="optionsBtn">Options ▾</button>
@@ -2842,7 +2840,7 @@ function projectAll(){
 }
 const COLOR=[[40,100,220],[220,60,90],[80,160,100]];
 const COLOR_NO=[0,0,0], COLOR_ONE=[110,110,115];
-function colorForFinal(side, ps){ if(ps===2) return COLOR_NO; if(ps===1) return COLOR_ONE; return COLOR[side]||COLOR[2]; }
+function colorForFinal(side, _ps){ return COLOR[side]||COLOR[2]; }
 function drawShape(ctx,x,y,r,ps){
   if(ps===2){ ctx.fillRect(x-r,y-r,r*2,r*2); }
   else if(ps===1){ ctx.beginPath(); ctx.moveTo(x,y-r); ctx.lineTo(x+r,y); ctx.lineTo(x,y+r); ctx.lineTo(x-r,y); ctx.closePath(); ctx.fill(); }
@@ -3014,7 +3012,7 @@ function updatePanel(force){
       const i=r.i; const ind=individuals[dwellIndi[i]];
       const t=dwellType[i]; const place=dwellPlace[i]>=0?places[dwellPlace[i]]:"";
       const sd=dwellSide[i], ps=dwellSrc[i];
-      const c=ps===2?[0,0,0]:ps===1?[110,110,115]:sd===0?[40,100,220]:sd===1?[220,60,90]:[80,160,100];
+      const c=sd===0?[40,100,220]:sd===1?[220,60,90]:[80,160,100];
       const shapeCls=ps===2?"sq":ps===1?"di":"";
       const swatch="<span class='pm "+shapeCls+"' style='background:rgb("+c[0]+","+c[1]+","+c[2]+")'></span>";
       const sel = highlightedDwell===i ? " selected" : "";
