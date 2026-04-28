@@ -243,6 +243,7 @@
     <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
     <span id="year">----</span>
   </div>
+  <div id="migBar" class="empty"></div>
   <div class="uirow">
     <label>speed
       <select id="speed">
@@ -302,6 +303,7 @@ let currentHistoricalWorld = null;
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;
 let placesList = [];
 let summaryById = new Map();
+let migrationsData = null;
 let highlightedDwell = -1;
 let highlightInferredYear = -1, highlightInferredSrcYear = -1;
 let indiDwells = new Map();
@@ -339,7 +341,7 @@ function resize() {
   applyZoom();
 }
 window.addEventListener("resize", resize);
-const _ro = new ResizeObserver(() => resize());
+const _ro = new ResizeObserver(() => { resize(); renderMigBar(); });
 queueMicrotask(() => { const wrap = $("mapWrap"); if (wrap) _ro.observe(wrap); });
 
 function applyZoom() {
@@ -711,6 +713,7 @@ function tick(now) {
   maybeUpdateHistoricalBasemap();
   frame(parseFloat(trailSel.value));
   updatePanel(false);
+  updateNowMarker();
   requestAnimationFrame(tick);
 }
 
@@ -1290,6 +1293,7 @@ function loadTimelineArrays(t, sideForIdx) {
   curYear = parseFloat(range.value);
   timelineLoaded = true; projectAll();
   fxCtx.clearRect(0, 0, W, H); playBtn.disabled = false;
+  renderMigBar();
 }
 
 function rebuildSideArrays() {
@@ -1761,22 +1765,102 @@ panelList.addEventListener("click", e => {
 async function handleFiles(files) {
   const arr = Array.from(files || []);
   const ged = arr.find(f => /\.(ged|gedcom)$/i.test(f.name));
-  const json = arr.find(f => /\.json$/i.test(f.name));
-  if (json) {
+  const jsons = arr.filter(f => /\.json$/i.test(f.name));
+  for (const j of jsons) {
     try {
-      const txt = await json.text();
-      const map = JSON.parse(txt);
-      summaryById = new Map(Object.entries(map));
-      stats.textContent = `${summaryById.size.toLocaleString()} summaries loaded from ${json.name}`;
-      updatePanel(true);
+      const txt = await j.text();
+      const obj = JSON.parse(txt);
+      if (obj && Array.isArray(obj.patterns) && Array.isArray(obj.migrations)) {
+        migrationsData = obj;
+        const matched = obj.patterns.filter(p => p.match_count).length;
+        stats.textContent = `migrations: ${obj.migrations.length.toLocaleString()} moves, ${matched} historical patterns matched`;
+        renderMigBar();
+      } else {
+        summaryById = new Map(Object.entries(obj));
+        stats.textContent = `${summaryById.size.toLocaleString()} summaries loaded`;
+        updatePanel(true);
+      }
     } catch (e) {
-      stats.textContent = "summaries error: " + e.message;
+      stats.textContent = `error reading ${j.name}: ${e.message}`;
     }
   }
   if (ged) {
     try { await processFile(ged); }
     catch (e) { stats.textContent = "error: " + e.message; console.error(e); }
   }
+}
+
+function renderMigBar() {
+  const bar = $("migBar");
+  if (!bar) return;
+  if (!migrationsData || !Array.isArray(migrationsData.patterns)) {
+    bar.classList.add("empty"); return;
+  }
+  bar.classList.remove("empty");
+  const sliderRect = range.getBoundingClientRect();
+  const barRect = bar.getBoundingClientRect();
+  if (barRect.width <= 10) return;
+  const sliderLeft = sliderRect.left - barRect.left;
+  const sliderW = sliderRect.width;
+  const yMin = parseFloat(range.min) || 1700;
+  const yMax = parseFloat(range.max) || 2026;
+  const yearToPx = y => sliderLeft + (Math.max(yMin, Math.min(yMax, y)) - yMin) / (yMax - yMin) * sliderW;
+  const matched = migrationsData.patterns.filter(p => p.match_count > 0);
+  // Pack into rows so labels don't overlap
+  const rows = [];
+  for (const p of matched) {
+    let placed = false;
+    for (const r of rows) {
+      if (r.every(q => q.years[1] < p.years[0] || p.years[1] < q.years[0])) {
+        r.push(p); placed = true; break;
+      }
+    }
+    if (!placed) rows.push([p]);
+  }
+  bar.style.height = (18 + rows.length * 14 + 4) + "px";
+  bar.innerHTML = "";
+  rows.forEach((row, ri) => {
+    for (const p of row) {
+      const x0 = yearToPx(p.years[0]);
+      const x1 = yearToPx(p.years[1]);
+      const w = Math.max(2, x1 - x0);
+      const top = 18 + ri * 14;
+      const div = document.createElement("div");
+      div.className = "pat";
+      div.style.left = x0 + "px";
+      div.style.width = w + "px";
+      div.style.top = top + "px";
+      div.style.background = p.color || "#999";
+      div.title = `${p.name} (${p.years[0]}-${p.years[1]})\n${p.match_count} migrations match\n\n${p.description || ""}`;
+      const lbl = document.createElement("span");
+      lbl.className = "lbl";
+      lbl.style.left = x0 + "px";
+      lbl.style.top = (top - 12) + "px";
+      lbl.style.maxWidth = Math.max(80, w) + "px";
+      lbl.textContent = `${p.name} · ${p.match_count}`;
+      bar.appendChild(div);
+      bar.appendChild(lbl);
+    }
+  });
+  const now = document.createElement("div");
+  now.className = "now";
+  bar.appendChild(now);
+  updateNowMarker();
+}
+
+function updateNowMarker() {
+  const bar = $("migBar");
+  if (!bar || bar.classList.contains("empty")) return;
+  const now = bar.querySelector(".now");
+  if (!now) return;
+  const sliderRect = range.getBoundingClientRect();
+  const barRect = bar.getBoundingClientRect();
+  const sliderLeft = sliderRect.left - barRect.left;
+  const sliderW = sliderRect.width;
+  const yMin = parseFloat(range.min) || 1700;
+  const yMax = parseFloat(range.max) || 2026;
+  const x = sliderLeft + (curYear - yMin) / (yMax - yMin) * sliderW;
+  now.style.left = x + "px";
 }
 $("pick").addEventListener("click", () => fileInp.click());
 const pick2 = $("pick2"); if (pick2) pick2.addEventListener("click", () => fileInp.click());
