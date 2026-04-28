@@ -300,10 +300,27 @@ let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChild
 let lastSideById = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
 
+function applyProjectionFromZoom() {
+  const t = zoomTransform;
+  projection.scale(baseScale * t.k);
+  projection.translate([baseTranslate[0] * t.k + t.x, baseTranslate[1] * t.k + t.y]);
+}
+
 function resize() {
   const wrap = $("mapWrap");
   if (!wrap) return;
   const r = wrap.getBoundingClientRect();
+
+  // Capture the geographic point currently at the viewport center BEFORE
+  // we change anything — we'll re-anchor it after the new fitExtent.
+  let centerLL = null;
+  if (W > 0 && H > 0 && projection.invert) {
+    try {
+      const p = projection.invert([W / 2, H / 2]);
+      if (p && Number.isFinite(p[0]) && Number.isFinite(p[1])) centerLL = p;
+    } catch (_) { /* ignore */ }
+  }
+
   W = Math.max(50, Math.floor(r.width));
   H = Math.max(50, Math.floor(r.height));
   for (const c of [baseCanvas, fxCanvas]) {
@@ -312,19 +329,33 @@ function resize() {
     c.getContext("2d").setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   }
   mapW = W; mapTop = 0; mapBottom = H;
+
   projection.fitExtent([[10, 10], [W - 10, H - 10]], { type: "Sphere" });
   baseScale = projection.scale();
   baseTranslate = projection.translate().slice();
-  applyZoom();
+  applyProjectionFromZoom();
+
+  // Re-anchor the previously-centered geographic point.
+  if (centerLL) {
+    const np = projection(centerLL);
+    if (np && Number.isFinite(np[0]) && Number.isFinite(np[1])) {
+      const dx = W / 2 - np[0];
+      const dy = H / 2 - np[1];
+      zoomTransform = { k: zoomTransform.k, x: zoomTransform.x + dx, y: zoomTransform.y + dy };
+      d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(zoomTransform.x, zoomTransform.y).scale(zoomTransform.k));
+      applyProjectionFromZoom();
+    }
+  }
+
+  drawBase();
+  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
 }
 window.addEventListener("resize", resize);
 const _ro = new ResizeObserver(() => { resize(); renderMigBar(); });
 queueMicrotask(() => { const wrap = $("mapWrap"); if (wrap) _ro.observe(wrap); });
 
 function applyZoom() {
-  const t = zoomTransform;
-  projection.scale(baseScale * t.k);
-  projection.translate([baseTranslate[0] * t.k + t.x, baseTranslate[1] * t.k + t.y]);
+  applyProjectionFromZoom();
   drawBase();
   if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
 }
@@ -2114,9 +2145,18 @@ function maybeUpdateHistoricalBasemap(){
   if (cached){ currentHistoricalWorld=cached; drawBase(); return; }
   fetchHistoricalBasemap(snap).then(j=>{ if(activeHistoricalYear===snap){currentHistoricalWorld=j; drawBase();} });
 }
+function applyProjectionFromZoom(){
+  const t=zoomTransform;
+  projection.scale(baseScale*t.k);
+  projection.translate([baseTranslate[0]*t.k+t.x, baseTranslate[1]*t.k+t.y]);
+}
 function resize(){
   const wrap=$("mapWrap"); if (!wrap) return;
   const r=wrap.getBoundingClientRect();
+  let centerLL=null;
+  if (W>0 && H>0 && projection.invert){
+    try { const p=projection.invert([W/2,H/2]); if (p && Number.isFinite(p[0]) && Number.isFinite(p[1])) centerLL=p; } catch(_) {}
+  }
   W=Math.max(50,Math.floor(r.width)); H=Math.max(50,Math.floor(r.height));
   for (const c of [baseCanvas,fxCanvas]){
     c.width=Math.floor(W*devicePixelRatio); c.height=Math.floor(H*devicePixelRatio);
@@ -2126,15 +2166,23 @@ function resize(){
   mapW=W; mapTop=0; mapBottom=H;
   projection.fitExtent([[10,10],[W-10,H-10]],{type:"Sphere"});
   baseScale=projection.scale(); baseTranslate=projection.translate().slice();
-  applyZoom();
+  applyProjectionFromZoom();
+  if (centerLL) {
+    const np=projection(centerLL);
+    if (np && Number.isFinite(np[0]) && Number.isFinite(np[1])) {
+      const dx=W/2-np[0], dy=H/2-np[1];
+      zoomTransform={k:zoomTransform.k, x:zoomTransform.x+dx, y:zoomTransform.y+dy};
+      d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(zoomTransform.x,zoomTransform.y).scale(zoomTransform.k));
+      applyProjectionFromZoom();
+    }
+  }
+  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H);
 }
 window.addEventListener("resize",resize);
 const _ro=new ResizeObserver(()=>resize());
 queueMicrotask(()=>{ const w=$("mapWrap"); if (w) _ro.observe(w); });
 function applyZoom(){
-  const t=zoomTransform;
-  projection.scale(baseScale*t.k);
-  projection.translate([baseTranslate[0]*t.k+t.x, baseTranslate[1]*t.k+t.y]);
+  applyProjectionFromZoom();
   drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
 }
 const zoomBehavior=d3.zoom().scaleExtent([1,64])
