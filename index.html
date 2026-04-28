@@ -68,10 +68,18 @@
   #optionsWrap { position:relative; }
   #optionsBtn { background:#1a2238; color:#fff; border:1px solid #2a3654; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
   #optionsBtn:hover { background:#243056; }
-  #optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:240px; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 12px; display:none; flex-direction:column; gap:8px; z-index:30; }
+  #optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:300px; max-width:340px; max-height:80vh; overflow-y:auto; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 14px; display:none; flex-direction:column; gap:6px; z-index:30; }
   #optionsMenu.open { display:flex; }
   #optionsMenu label { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; color:#566480; }
   #optionsMenu select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:3px 6px; font:inherit; }
+  #optionsMenu input[type=range] { -webkit-appearance:none; appearance:none; width:120px; height:3px; background:#c0ccd8; border-radius:2px; outline:none; }
+  #optionsMenu input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
+  #optionsMenu input[type=range]::-moz-range-thumb { width:12px; height:12px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
+  #optionsMenu .section { display:flex; flex-direction:column; gap:6px; padding-top:6px; border-top:1px solid #e0e6ee; margin-top:2px; }
+  #optionsMenu .section:first-of-type { border-top:none; padding-top:0; margin-top:0; }
+  #optionsMenu .section h4 { margin:0 0 2px; font-size:9px; font-weight:700; color:#888; letter-spacing:0.08em; text-transform:uppercase; }
+  #optionsMenu .legend { display:flex; flex-wrap:wrap; gap:8px; font-size:11px; color:#566480; }
+  #optionsMenu .clusterSec.hidden { display:none; }
   select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
   label { color:#566480; font-size:11px; }
   #pick, #export { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
@@ -167,34 +175,53 @@
       <select id="rootSel" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;max-width:300px;"></select>
     </label>
   </span>
-  <span class="legend" id="legend" style="display:none; margin-left:auto;">
-    <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
-    <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
-    <span><span class="swatch" style="background:#50a064;"></span>other</span>
-    <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span>1 parent missing</span>
-    <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span>both parents missing</span>
-  </span>
-  <span id="optionsWrap" style="display:none;">
+  <span id="optionsWrap" style="display:none; margin-left:auto;">
     <button id="optionsBtn">Options ▾</button>
     <div id="optionsMenu">
-      <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
-      <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
-      <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
-      <label>migration <select id="migViz"><option value="lines">arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous" selected>continuous</option></select></label>
-      <label>projection <select id="projSel"><option value="natural">Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho" selected>Globe</option></select></label>
-      <label>cluster <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="hull">region rings</option><option value="heatmap">heatmap</option><option value="dispersion">on zoom</option></select></label>
-      <label>cluster radius <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"> <b id="clusterRadiusLabel">30</b>px</label>
+      <div class="section">
+        <h4>Filters</h4>
+        <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
+        <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">alive in YYYY</option><option value="dead">died by YYYY</option></select></label>
+      </div>
+      <div class="section">
+        <h4>Timing</h4>
+        <label title="show events from this many years prior">window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
+        <label title="infer residency for people last seen this many years ago">infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
+      </div>
+      <div class="section">
+        <h4>Display</h4>
+        <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
+        <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
+        <label>migration <select id="migViz"><option value="lines">arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous" selected>continuous</option></select></label>
+        <label>projection <select id="projSel"><option value="natural">Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho" selected>Globe</option></select></label>
+      </div>
+      <div class="section clusterSec hidden" id="clusterSection">
+        <h4>Clusters</h4>
+        <label>mode <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="hull">region rings</option><option value="heatmap">heatmap</option><option value="dispersion">on zoom</option></select></label>
+        <label>radius <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"> <b id="clusterRadiusLabel">30</b>px</label>
+      </div>
+      <div class="section">
+        <h4>Animation</h4>
+        <label>speed <select id="speed"><option value="0.05">0.25x</option><option value="0.1">0.5x</option><option value="0.2" selected>1x</option><option value="0.5">2.5x</option><option value="1">5x</option><option value="2">10x</option></select></label>
+        <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
+        <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0"></label>
+      </div>
+      <div class="section">
+        <h4>Legend</h4>
+        <div class="legend">
+          <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
+          <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
+          <span><span class="swatch" style="background:#50a064;"></span>other</span>
+          <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span>1 missing</span>
+          <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span>both missing</span>
+        </div>
+      </div>
     </div>
   </span>
 </div>
 <div id="middle">
 <div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
 <aside id="panel">
-  <div id="panelControls">
-    <label title="show events from this many years prior">window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
-    <label title="infer residency for people last seen this many years ago">infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
-    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">alive in YYYY</option><option value="dead">died by YYYY</option></select></label>
-  </div>
   <div id="panelScroll">
   <ul id="panelList"></ul>
   </div>
@@ -217,27 +244,6 @@
     </div>
   </div>
   <div id="migBar" class="empty"></div>
-  <div class="uirow">
-    <label>speed
-      <select id="speed">
-        <option value="0.05">0.25x</option>
-        <option value="0.1">0.5x</option>
-        <option value="0.2" selected>1x</option>
-        <option value="0.5">2.5x</option>
-        <option value="1">5x</option>
-        <option value="2">10x</option>
-      </select>
-    </label>
-    <label>fade
-      <select id="trail">
-        <option value="0.06">short</option>
-        <option value="0.03" selected>medium</option>
-        <option value="0.012">long</option>
-        <option value="0.004">infinite</option>
-      </select>
-    </label>
-    <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
-  </div>
 </div>
 </div><!-- /#app -->
 
@@ -253,7 +259,7 @@ const yearCorners = ["yearTL", "yearTR", "yearBL", "yearBR"].map($);
 const playBtn = $("play"), range = $("range");
 const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
 const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
-const rootwrap = $("rootwrap"), legend = $("legend");
+const rootwrap = $("rootwrap");
 
 let W = 0, H = 0;
 let mapW = 0, mapTop = 0, mapBottom = 0;
@@ -397,7 +403,7 @@ let _baseDirty = false;
 function requestDraw() { _baseDirty = true; }
 
 const zoomBehavior = d3.zoom()
-  .scaleExtent([1, 16])
+  .scaleExtent([1, 64])
   .filter(e => {
     if (e.type === "wheel") { e.preventDefault(); return true; }
     if (e.type === "dblclick") return true;
@@ -569,19 +575,25 @@ function drawBase() {
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
 
   const useHistorical = borderLayer === "historical" && currentHistoricalWorld;
-  let countryFeatures = null;
+  const w = activeWorld();
+  const land = topojson.feature(w, w.objects.countries);
+  // Always: paint modern land parchment (so ocean reliably stays blue)
+  baseCtx.beginPath(); cp(land); baseCtx.fillStyle = "#f3ecd8"; baseCtx.fill();
+  baseCtx.strokeStyle = "rgba(80,100,120,0.55)"; baseCtx.lineWidth = 0.6; baseCtx.stroke();
+  let countryFeatures;
   if (useHistorical) {
     const fc = currentHistoricalWorld;
     countryFeatures = fc.features || [];
-    baseCtx.beginPath(); cp(fc); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill();
-    baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
+    // Historical empire borders, clipped to modern land so they don't claim the ocean
+    baseCtx.save();
+    baseCtx.beginPath(); cp(land); baseCtx.clip();
+    baseCtx.beginPath(); cp(fc);
+    baseCtx.strokeStyle = "rgba(80,100,120,0.7)"; baseCtx.lineWidth = 0.7; baseCtx.stroke();
+    baseCtx.restore();
   } else {
-    const w = activeWorld();
-    const land = topojson.feature(w, w.objects.countries);
     const borders = topojson.mesh(w, w.objects.countries, (a, b) => a !== b);
     countryFeatures = land.features;
-    baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
-    baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
+    baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle = "rgba(120,100,80,0.55)"; baseCtx.lineWidth = 0.5; baseCtx.stroke();
   }
   if (usStates && (!useHistorical)) {
     const stateBorders = topojson.mesh(usStates, usStates.objects.states, (a, b) => a !== b);
@@ -1860,8 +1872,8 @@ async function processFile(file) {
   applyRoot(rootId);
 
   rootwrap.style.display = "";
-  legend.style.display = "";
   $("optionsWrap").style.display = "";
+  $("clusterSection").classList.remove("hidden");
   $("export").disabled = false;
 }
 
