@@ -90,6 +90,10 @@
   #bannerSummary a { color:#2a4a8c; text-decoration:underline; }
   #bannerSummary p { margin:0 0 6px; }
   #bannerSummary p:last-child { margin-bottom:0; }
+  #bannerChain { margin-top:6px; padding:5px 8px; background:#f4f6fb; border:1px solid #e0e6ee; border-radius:4px; font-size:11px; color:#566480; line-height:1.4; word-break:break-word; }
+  #bannerChain b { color:#1c2433; }
+  #bannerChain .rel { color:#888; font-style:italic; }
+  #bannerChain .arrow { color:#aab; margin:0 4px; }
   #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
   #panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
@@ -202,7 +206,7 @@
     <button data-t="9" class="pill on">christened</button>
     <button data-t="10" class="pill on">other</button>
   </div>
-  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><div id="bannerSummary" style="display:none;"></div><details id="bannerRaw"><summary>GEDCOM record</summary><pre id="bannerRawPre"></pre></details></div>
+  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><div id="bannerChain" style="display:none;"></div><div id="bannerSummary" style="display:none;"></div><details id="bannerRaw"><summary>GEDCOM record</summary><pre id="bannerRawPre"></pre></details></div>
   <ul id="panelList"></ul>
 </aside>
 </div>
@@ -872,6 +876,49 @@ function formatRelation(m, n, rootId, otherId, parentsOf) {
   const cn = Math.min(m, n) - 1;
   const removed = Math.abs(m - n);
   return cn + "C" + (removed ? removed + "R" : "");
+}
+
+function pathFromRoot(otherId) {
+  if (!lastRootId || !lastParentsOf || !lastChildrenOf) return null;
+  if (otherId === lastRootId) return [];
+  const visited = new Set([lastRootId]);
+  const prev = new Map();
+  const queue = [lastRootId];
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur === otherId) break;
+    const par = lastParentsOf.get(cur);
+    if (par) {
+      const candidates = [];
+      if (par[0]) candidates.push([par[0], "father"]);
+      if (par[1]) candidates.push([par[1], "mother"]);
+      for (const [nid, label] of candidates) {
+        if (visited.has(nid)) continue;
+        visited.add(nid); prev.set(nid, [cur, label]);
+        queue.push(nid);
+      }
+    }
+    const kids = lastChildrenOf.get(cur);
+    if (kids) {
+      for (const k of kids) {
+        if (visited.has(k)) continue;
+        const ksex = lastIndiById.get(k)?.sex;
+        const label = ksex === "M" ? "son" : ksex === "F" ? "daughter" : "child";
+        visited.add(k); prev.set(k, [cur, label]);
+        queue.push(k);
+      }
+    }
+  }
+  if (!prev.has(otherId) && otherId !== lastRootId) return null;
+  const path = [];
+  let cur = otherId;
+  while (cur !== lastRootId) {
+    const step = prev.get(cur);
+    if (!step) return null;
+    path.unshift({ id: cur, label: step[0] === lastRootId ? step[1] : step[1] });
+    cur = step[0];
+  }
+  return path;
 }
 
 let relationCache = new Map();
@@ -1556,16 +1603,43 @@ function updateBanner() {
   const inferTag = isInferred ? `  (based on ${highlightInferredSrcYear})` : "";
   bnm.textContent = ind.name;
   bev.textContent = `${yearShown} - ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
+
+  // Relationship chain from root to selected person
+  const chainEl = $("bannerChain");
+  if (chainEl) {
+    if (lastRootId && ind.id !== lastRootId) {
+      const path = pathFromRoot(ind.id);
+      if (path && path.length) {
+        const rootInd = lastIndiById.get(lastRootId);
+        const rel = relationCache.get(ind.id) || "";
+        const parts = [`<b>${escHtml(rootInd?.name || "root")}</b>`];
+        for (const step of path) {
+          const stepInd = lastIndiById.get(step.id);
+          parts.push(`<span class="arrow">→</span><span class="rel">${escHtml(step.label)}</span> <b>${escHtml(stepInd?.name || step.id)}</b>`);
+        }
+        const relTag = rel ? ` &nbsp;<span style="background:#dde9ff;color:#1f3a78;padding:1px 5px;border-radius:3px;font-style:normal;">${escHtml(rel)}</span>` : "";
+        chainEl.innerHTML = parts.join(" ") + relTag;
+        chainEl.style.display = "block";
+      } else {
+        chainEl.style.display = "none";
+      }
+    } else {
+      chainEl.style.display = "none";
+    }
+  }
+
   const rawPre = $("bannerRawPre");
+  const rawDetails = $("bannerRaw");
   const summaryEl = $("bannerSummary");
   const summary = summaryById.get(ind.id);
   if (summary && summaryEl) {
     summaryEl.innerHTML = renderMarkdown(summary);
     summaryEl.style.display = "block";
-    if (rawPre) rawPre.textContent = ind.raw || "(raw GEDCOM not captured)";
+    if (rawDetails) rawDetails.style.display = "none";
   } else {
     if (summaryEl) summaryEl.style.display = "none";
     if (rawPre) rawPre.textContent = ind.raw || "(raw GEDCOM not captured)";
+    if (rawDetails) rawDetails.style.display = "";
   }
   banner.classList.add("shown");
 }
