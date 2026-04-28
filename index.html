@@ -93,34 +93,34 @@
   #panelControls input[type=range]::-moz-range-thumb { width:11px; height:11px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
   #panelControls select { background:#fff; border:1px solid #c0ccd8; border-radius:3px; padding:1px 4px; font:inherit; }
   #panelScroll { flex:1; overflow-y:auto; min-height:0; }
-  #panelBanner { display:none; padding:0; border-bottom:1px solid #e0e6ee; background:#fffbf2; }
-  #panelBanner.shown { display:block; }
-  #panelBanner .bcardHead { padding:12px 14px 8px; position:relative; border-bottom:1px solid #f0e9d6; }
-  #panelBanner .bcardHead .bcl { position:absolute; top:8px; right:10px; background:none; border:none; color:#888; cursor:pointer; font-size:18px; padding:0; line-height:1; }
-  #panelBanner .bnm { font-weight:700; color:#0a1426; font-size:15px; margin-right:24px; line-height:1.2; }
-  #panelBanner .bsub { color:#566480; font-size:11px; margin-top:2px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  #panelBanner .bsub .reltag { background:#dde9ff; color:#1f3a78; padding:1px 6px; border-radius:3px; font-weight:600; }
-  #panelBanner .bev { color:#566480; font-size:11px; margin-top:6px; font-style:italic; }
-  #panelBanner .bcardSection { padding:8px 14px; border-bottom:1px solid #f0e9d6; }
-  #panelBanner .bcardSection:last-child { border-bottom:none; }
-  #panelBanner .bcardSection h4 { margin:0 0 6px; font-size:10px; font-weight:600; color:#888; letter-spacing:0.06em; text-transform:uppercase; }
-  #bannerSummary { font-size:12px; line-height:1.5; color:#1c2433; }
-  #bannerSummary a { color:#2a4a8c; text-decoration:underline; }
-  #bannerSummary p { margin:0 0 6px; }
-  #bannerSummary p:last-child { margin-bottom:0; }
-  #bannerChain { font-size:11px; color:#566480; line-height:1.5; }
-  #bannerChain .step { display:flex; gap:6px; align-items:baseline; padding:1px 0; }
-  #bannerChain .step .nm { color:#1c2433; font-weight:600; }
-  #bannerChain .step .lbl { color:#888; font-style:italic; min-width:60px; }
-  #bannerChain .step.root .lbl { color:#1f3a78; font-weight:600; font-style:normal; }
-  #bannerChain .step .yrs { color:#888; font-weight:400; font-variant-numeric:tabular-nums; margin-left:4px; }
-  #bannerEvents { font-size:11px; }
-  #bannerEvents .ev { display:flex; gap:8px; align-items:baseline; padding:3px 6px; border-radius:3px; cursor:pointer; line-height:1.4; }
-  #bannerEvents .ev:hover { background:#fff; }
-  #bannerEvents .ev.cur { background:#fff3d4; box-shadow:inset 2px 0 0 #ffb930; }
-  #bannerEvents .ev .yr { font-variant-numeric:tabular-nums; color:#888; min-width:36px; font-weight:600; }
-  #bannerEvents .ev .verb { color:#566480; min-width:60px; }
-  #bannerEvents .ev .pl { color:#1c2433; flex:1; }
+  .bcard { background:#fffbf2; border-top:1px solid #f0e9d6; }
+  .bcard .bcardHead { padding:10px 12px 6px; }
+  .bcard .bnm { font-weight:700; color:#0a1426; font-size:14px; line-height:1.2; }
+  .bcard .bsub { color:#566480; font-size:11px; margin-top:2px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .bcard .bsub .reltag { background:#dde9ff; color:#1f3a78; padding:1px 6px; border-radius:3px; font-weight:600; }
+  .bcard .bev { color:#566480; font-size:11px; margin-top:4px; font-style:italic; }
+  .bcard .bcardSection { padding:6px 12px; border-top:1px solid #f0e9d6; }
+  .bcard .bcardSection h4 { margin:0 0 4px; font-size:10px; font-weight:600; color:#888; letter-spacing:0.06em; text-transform:uppercase; }
+  .bcard .bSummary { font-size:12px; line-height:1.5; color:#1c2433; }
+  .bcard .bSummary a { color:#2a4a8c; text-decoration:underline; }
+  .bcard .bSummary p { margin:0 0 6px; }
+  .bcard .bSummary p:last-child { margin-bottom:0; }
+  .bcard .bChain { font-size:11px; color:#566480; line-height:1.5; }
+  .bcard .bChain .step { display:flex; gap:6px; align-items:baseline; padding:1px 0; }
+  .bcard .bChain .step .nm { color:#1c2433; font-weight:600; }
+  .bcard .bChain .step .lbl { color:#888; font-style:italic; min-width:60px; }
+  .bcard .bChain .step.root .lbl { color:#1f3a78; font-weight:600; font-style:normal; }
+  .bcard .bChain .step .yrs { color:#888; font-weight:400; font-variant-numeric:tabular-nums; margin-left:4px; }
+  .bcard .bEvs { font-size:11px; }
+  .bcard .bEv { display:flex; gap:8px; align-items:baseline; padding:3px 6px; border-radius:3px; cursor:pointer; line-height:1.4; }
+  .bcard .bEv:hover { background:#fff; }
+  .bcard .bEv.cur { background:#fff3d4; box-shadow:inset 2px 0 0 #ffb930; }
+  .bcard .bEv .yr { font-variant-numeric:tabular-nums; color:#888; min-width:36px; font-weight:600; }
+  .bcard .bEv .verb { color:#566480; min-width:60px; }
+  .bcard .bEv .pl { color:#1c2433; flex:1; }
+  #panelList li.expanded { padding:0; cursor:default; }
+  #panelList li.expanded .liHead { padding:8px 12px; cursor:pointer; background:#fffbf2; }
+  #panelList li.expanded.inferred .liHead { font-style:italic; }
   #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
   #panelList { list-style:none; margin:0; padding:0; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
@@ -183,26 +183,6 @@
     <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">living</option><option value="dead">dead</option></select></label>
   </div>
   <div id="panelScroll">
-  <div id="panelBanner">
-    <div class="bcardHead">
-      <button class="bcl" id="bannerClear" title="Clear selection">&times;</button>
-      <div class="bnm" id="bannerName"></div>
-      <div class="bsub" id="bannerSub"></div>
-      <div class="bev" id="bannerEvent"></div>
-    </div>
-    <div class="bcardSection" id="bannerChainSection" style="display:none;">
-      <h4>Lineage from root</h4>
-      <div id="bannerChain"></div>
-    </div>
-    <div class="bcardSection" id="bannerSummarySection" style="display:none;">
-      <h4>Biography</h4>
-      <div id="bannerSummary"></div>
-    </div>
-    <div class="bcardSection" id="bannerEventsSection" style="display:none;">
-      <h4>All recorded events</h4>
-      <div id="bannerEvents"></div>
-    </div>
-  </div>
   <ul id="panelList"></ul>
   </div>
 </aside>
@@ -1559,23 +1539,6 @@ $("projSel").addEventListener("change", e => {
 });
 
 const panelEl = $("panel"), panelList = $("panelList"), panelYear = $("panelYear");
-$("bannerClear").addEventListener("click", () => {
-  highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
-  fxCtx.clearRect(0, 0, W, H); updatePanel(true);
-});
-$("bannerEvents").addEventListener("click", e => {
-  const row = e.target.closest(".ev[data-di]"); if (!row) return;
-  const di = parseInt(row.dataset.di, 10);
-  if (Number.isNaN(di)) return;
-  highlightedDwell = di;
-  highlightInferredYear = -1;
-  highlightInferredSrcYear = -1;
-  curYear = dwellY[di];
-  range.value = curYear;
-  if (playing) { playing = false; playBtn.textContent = "Play"; }
-  fxCtx.clearRect(0, 0, W, H);
-  updatePanel(true);
-});
 $("inferYrs").addEventListener("input", e => {
   inferenceYears = parseInt(e.target.value, 10) || 0;
   $("inferYrsLabel").textContent = inferenceYears;
@@ -1662,6 +1625,28 @@ function updatePanel(force) {
 
   rows.sort((a, b) => b.year - a.year);
   if (rows.length > 600) rows.length = 600;
+
+  // Make sure the highlighted row is included even if the year window moved off it.
+  if (highlightedDwell >= 0) {
+    const wantInferred = highlightInferredYear >= 0;
+    let present = false;
+    for (const r of rows) {
+      if (r.kind === "real" && !wantInferred && r.i === highlightedDwell) { present = true; break; }
+      if (r.kind === "inferred" && wantInferred && r.srcDwell === highlightedDwell && r.year === highlightInferredYear) { present = true; break; }
+    }
+    if (!present) {
+      if (wantInferred) {
+        const idx = dwellIndi[highlightedDwell];
+        const ind = lastIndividuals[idx];
+        const sd = lastSideById ? (lastSideById.get(ind.id) ?? 2) : 2;
+        const lastE = ind.events.find(e => e.year === highlightInferredSrcYear);
+        rows.unshift({ kind: "inferred", indi: idx, year: highlightInferredYear, place: lastE?.place ?? "", side: sd, basedOnYear: highlightInferredSrcYear, srcDwell: highlightedDwell });
+      } else {
+        rows.unshift({ kind: "real", i: highlightedDwell, year: dwellY[highlightedDwell] });
+      }
+    }
+  }
+
   const html = rows.map(r => {
     if (r.kind === "real") {
       const i = r.i;
@@ -1672,36 +1657,38 @@ function updatePanel(force) {
       const c = ps === 2 ? [0,0,0] : ps === 1 ? [110,110,115] : sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
       const shapeCls = ps === 2 ? "sq" : ps === 1 ? "di" : "";
       const swatch = `<span class="pm ${shapeCls}" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`;
-      const sel = highlightedDwell === i ? " selected" : "";
+      const expanded = highlightedDwell === i && highlightInferredYear < 0;
+      const cls = (expanded ? "expanded selected" : "");
       const rel = relationCache.get(ind?.id);
       const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
-      return `<li class="${sel}" data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
+      const head = `<div class="liHead"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></div>`;
+      const card = expanded && ind ? renderExpandedCard(ind, i, false) : "";
+      if (expanded) return `<li class="${cls}" data-idx="${i}">${head}${card}</li>`;
+      return `<li class="${cls}" data-idx="${i}"><span class="yr">${dwellY[i]}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">${EVENT_TYPE_LABEL[t] || "event"} ${escHtml(place)}</span></li>`;
     } else {
       const ind = lastIndividuals[r.indi];
       const sd = r.side;
       const c = sd === 0 ? [40,100,220] : sd === 1 ? [220,60,90] : [160,60,200];
       const swatch = `<span class="pm" style="background:rgb(${c[0]},${c[1]},${c[2]});opacity:0.6"></span>`;
-      const sel = highlightedDwell === r.srcDwell && highlightInferredYear === r.year ? " selected" : "";
+      const expanded = highlightedDwell === r.srcDwell && highlightInferredYear === r.year;
+      const cls = (expanded ? "inferred expanded selected" : "inferred");
       const rel = relationCache.get(ind?.id);
       const relTag = rel ? `<span class="tag rel">${escHtml(rel)}</span>` : "";
-      return `<li class="inferred${sel}" data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></li>`;
+      const head = `<div class="liHead"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></div>`;
+      const card = expanded && ind ? renderExpandedCard(ind, r.srcDwell, true) : "";
+      if (expanded) return `<li class="${cls}" data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}">${head}${card}</li>`;
+      return `<li class="${cls}" data-idx="${r.srcDwell}" data-inferred="${r.year}" data-basedon="${r.basedOnYear}"><span class="yr">${r.year}</span>${swatch}<span class="nm">${escHtml(ind?.name ?? "?")}</span>${relTag} <span class="ev">lived in ${escHtml(r.place)}<span class="tag">INFERRED ${r.basedOnYear}</span></span></li>`;
     }
   }).join("");
   panelList.innerHTML = html || `<li style="color:#888;padding:14px;">No events visible.</li>`;
-  updateBanner();
+
+  if (highlightedDwell >= 0) {
+    const expandedLi = panelList.querySelector("li.expanded");
+    if (expandedLi) expandedLi.scrollIntoView({ block: "start" });
+  }
 }
 
-function updateBanner() {
-  const banner = $("panelBanner"), bnm = $("bannerName");
-  if (highlightedDwell < 0) { banner.classList.remove("shown"); return; }
-  const i = highlightedDwell;
-  const ind = lastIndividuals[dwellIndi[i]];
-  if (!ind) { banner.classList.remove("shown"); return; }
-
-  bnm.textContent = ind.name;
-
-  // Sub-line: lifespan, sex, kinship tag
-  const sub = $("bannerSub");
+function renderExpandedCard(ind, dwellIdx, isInferred) {
   const by = ind.birth_year, dy = ind.death_year;
   const lifespan = by && dy ? `${by} – ${dy}` : by ? `b. ${by}` : dy ? `d. ${dy}` : "no dates";
   const sex = ind.sex === "M" ? "male" : ind.sex === "F" ? "female" : "";
@@ -1709,26 +1696,21 @@ function updateBanner() {
   let subHtml = `<span>${escHtml(lifespan)}</span>`;
   if (sex) subHtml += `<span>· ${sex}</span>`;
   if (rel) subHtml += `<span class="reltag">${escHtml(rel)}</span>`;
-  sub.innerHTML = subHtml;
 
-  // Current event line
-  const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
-  const isInferred = highlightInferredYear >= 0;
-  const verb = isInferred ? "lived in (inferred)" : (EVENT_TYPE_LABEL[dwellType[i]] || "event");
-  const yearShown = isInferred ? highlightInferredYear : dwellY[i];
+  const placeStr = dwellPlace[dwellIdx] >= 0 ? placesList[dwellPlace[dwellIdx]] : "";
+  const verb = isInferred ? "lived in (inferred)" : (EVENT_TYPE_LABEL[dwellType[dwellIdx]] || "event");
+  const yearShown = isInferred ? highlightInferredYear : dwellY[dwellIdx];
   const inferTag = isInferred ? ` (based on ${highlightInferredSrcYear})` : "";
-  $("bannerEvent").textContent = `currently viewing: ${yearShown} — ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
+  const evLine = `currently viewing: ${yearShown} — ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
 
-  // Lineage chain (vertical, indented)
-  const chainSection = $("bannerChainSection");
-  const chainEl = $("bannerChain");
+  let chainHtml = "";
   if (lastRootId && ind.id !== lastRootId) {
     const path = pathFromRoot(ind.id);
     if (path && path.length) {
       const rootInd = lastIndiById.get(lastRootId);
-      const fmtYears = (i) => {
-        if (!i) return "";
-        const b = i.birth_year, d = i.death_year;
+      const fmtYears = (p) => {
+        if (!p) return "";
+        const b = p.birth_year, d = p.death_year;
         if (b && d) return ` <span class="yrs">${b}–${d}</span>`;
         if (b) return ` <span class="yrs">b. ${b}</span>`;
         if (d) return ` <span class="yrs">d. ${d}</span>`;
@@ -1739,46 +1721,30 @@ function updateBanner() {
         const stepInd = lastIndiById.get(step.id);
         rows.push(`<div class="step"><span class="lbl">${escHtml(step.label)}</span><span class="nm">${escHtml(stepInd?.name || step.id)}${fmtYears(stepInd)}</span></div>`);
       }
-      chainEl.innerHTML = rows.join("");
-      chainSection.style.display = "block";
-    } else {
-      chainSection.style.display = "none";
+      chainHtml = `<div class="bcardSection"><h4>Lineage from root</h4><div class="bChain">${rows.join("")}</div></div>`;
     }
-  } else {
-    chainSection.style.display = "none";
   }
 
-  // Biography summary
-  const summaryEl = $("bannerSummary");
-  const summarySection = $("bannerSummarySection");
   const summary = summaryById.get(ind.id);
-  if (summary) {
-    summaryEl.innerHTML = renderMarkdown(summary);
-    summarySection.style.display = "block";
-  } else {
-    summarySection.style.display = "none";
-  }
+  const summaryHtml = summary
+    ? `<div class="bcardSection"><h4>Biography</h4><div class="bSummary">${renderMarkdown(summary)}</div></div>`
+    : "";
 
-  // Mini-timeline: every dwell of this person, chronological
-  const indiIdx = dwellIndi[i];
-  const eventsEl = $("bannerEvents");
-  const eventsSection = $("bannerEventsSection");
+  const indiIdx = dwellIndi[dwellIdx];
   const indiDwellList = (indiDwells.get(indiIdx) || []).slice().sort((a, b) => dwellY[a] - dwellY[b]);
+  let evsHtml = "";
   if (indiDwellList.length) {
-    const rows = indiDwellList.map(di => {
+    const evRows = indiDwellList.map(di => {
       const yr = dwellY[di];
       const t = dwellType[di];
       const place = dwellPlace[di] >= 0 ? placesList[dwellPlace[di]] : "";
       const cur = di === highlightedDwell && !isInferred;
-      return `<div class="ev${cur ? " cur" : ""}" data-di="${di}"><span class="yr">${yr}</span><span class="verb">${EVENT_TYPE_LABEL[t] || "event"}</span><span class="pl">${escHtml(place)}</span></div>`;
+      return `<div class="bEv${cur ? " cur" : ""}" data-di="${di}"><span class="yr">${yr}</span><span class="verb">${EVENT_TYPE_LABEL[t] || "event"}</span><span class="pl">${escHtml(place)}</span></div>`;
     });
-    eventsEl.innerHTML = rows.join("");
-    eventsSection.style.display = "block";
-  } else {
-    eventsSection.style.display = "none";
+    evsHtml = `<div class="bcardSection"><h4>All recorded events</h4><div class="bEvs">${evRows.join("")}</div></div>`;
   }
 
-  banner.classList.add("shown");
+  return `<div class="bcard"><div class="bcardHead"><div class="bnm">${escHtml(ind.name)}</div><div class="bsub">${subHtml}</div><div class="bev">${escHtml(evLine)}</div></div>${chainHtml}${summaryHtml}${evsHtml}</div>`;
 }
 
 function renderMarkdown(text) {
@@ -1794,7 +1760,22 @@ function renderMarkdown(text) {
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 panelList.addEventListener("click", e => {
+  const evRow = e.target.closest(".bEv[data-di]");
+  if (evRow) {
+    const di = parseInt(evRow.dataset.di, 10);
+    if (Number.isNaN(di)) return;
+    highlightedDwell = di;
+    highlightInferredYear = -1;
+    highlightInferredSrcYear = -1;
+    curYear = dwellY[di];
+    range.value = curYear;
+    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    fxCtx.clearRect(0, 0, W, H);
+    updatePanel(true);
+    return;
+  }
   const li = e.target.closest("li[data-idx]"); if (!li) return;
+  if (e.target.closest(".bcard") && !e.target.closest(".liHead")) return;
   const i = parseInt(li.dataset.idx, 10);
   const inferredYear = li.dataset.inferred ? parseInt(li.dataset.inferred, 10) : -1;
   const basedOn = li.dataset.basedon ? parseInt(li.dataset.basedon, 10) : -1;
