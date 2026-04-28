@@ -77,11 +77,15 @@
     box-shadow:0 2px 12px rgba(0,0,0,0.08);
     display:flex; flex-direction:column; overflow:hidden; min-height:0; min-width:0;
   }
-  #panelHead { padding:8px 12px; border-bottom:1px solid #e0e6ee; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:13px; }
-  #panelInferRow { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid #e0e6ee; font-size:11px; color:#566480; }
-  #panelInferRow input[type=range] { flex:1; min-width:0; }
-  #panelInferRow label { display:flex; align-items:center; gap:4px; min-width:70px; }
-  #panelInferRow label > span { font-weight:600; color:#2a4a8c; min-width:18px; text-align:right; }
+  #panelHead { padding:6px 12px; border-bottom:1px solid #e0e6ee; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; }
+  #panelControls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:5px 10px; border-bottom:1px solid #e0e6ee; font-size:10.5px; color:#566480; line-height:1.1; }
+  #panelControls label { display:flex; align-items:center; gap:3px; }
+  #panelControls label > b { color:#2a4a8c; font-weight:600; min-width:14px; text-align:right; font-variant-numeric:tabular-nums; }
+  #panelControls input[type=range] { -webkit-appearance:none; appearance:none; width:70px; height:3px; background:#c0ccd8; border-radius:2px; outline:none; vertical-align:middle; }
+  #panelControls input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:11px; height:11px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
+  #panelControls input[type=range]::-moz-range-thumb { width:11px; height:11px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
+  #panelControls select { background:#fff; border:1px solid #c0ccd8; border-radius:3px; padding:1px 4px; font:inherit; }
+  #panelScroll { flex:1; overflow-y:auto; min-height:0; }
   #panelBanner { display:none; padding:0; border-bottom:1px solid #e0e6ee; background:#fffbf2; }
   #panelBanner.shown { display:block; }
   #panelBanner .bcardHead { padding:12px 14px 8px; position:relative; border-bottom:1px solid #f0e9d6; }
@@ -102,6 +106,7 @@
   #bannerChain .step .nm { color:#1c2433; font-weight:600; }
   #bannerChain .step .lbl { color:#888; font-style:italic; min-width:60px; }
   #bannerChain .step.root .lbl { color:#1f3a78; font-weight:600; font-style:normal; }
+  #bannerChain .step .yrs { color:#888; font-weight:400; font-variant-numeric:tabular-nums; margin-left:4px; }
   #bannerEvents { font-size:11px; }
   #bannerEvents .ev { display:flex; gap:8px; align-items:baseline; padding:3px 6px; border-radius:3px; cursor:pointer; line-height:1.4; }
   #bannerEvents .ev:hover { background:#fff; }
@@ -110,7 +115,7 @@
   #bannerEvents .ev .verb { color:#566480; min-width:60px; }
   #bannerEvents .ev .pl { color:#1c2433; flex:1; }
   #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
-  #panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
+  #panelList { list-style:none; margin:0; padding:0; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
   #panelList li:hover { background:#f0f4f8; }
   #panelList li.selected { background:#fff3d4; box-shadow:inset 3px 0 0 #ffb930; }
@@ -191,22 +196,12 @@
 <div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig">----</div></div>
 <aside id="panel">
   <div id="panelHead"><span>Events at <span id="panelYear">----</span></span></div>
-  <div id="panelInferRow">
-    <label>window<span id="winYrsLabel">6</span>y</label>
-    <input type="range" id="winYrs" min="1" max="50" step="1" value="6" title="show events from this many years prior">
+  <div id="panelControls">
+    <label title="show events from this many years prior">window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
+    <label title="infer residency for people last seen this many years ago">infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
+    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">living</option><option value="dead">dead</option></select></label>
   </div>
-  <div id="panelInferRow">
-    <label>infer<span id="inferYrsLabel">0</span>y</label>
-    <input type="range" id="inferYrs" min="0" max="50" step="1" value="0" title="infer residency for people last seen this many years ago">
-  </div>
-  <div id="panelStatusRow" style="padding:6px 12px;border-bottom:1px solid #e0e6ee;font-size:11px;color:#566480;display:flex;align-items:center;gap:8px;">
-    <span>status:</span>
-    <select id="statusFilt" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:2px 6px;font:inherit;">
-      <option value="all" selected>all</option>
-      <option value="living">living only</option>
-      <option value="dead">dead only</option>
-    </select>
-  </div>
+  <div id="panelScroll">
   <div id="panelBanner">
     <div class="bcardHead">
       <button class="bcl" id="bannerClear" title="Clear selection">&times;</button>
@@ -228,6 +223,7 @@
     </div>
   </div>
   <ul id="panelList"></ul>
+  </div>
 </aside>
 </div>
 <div id="drop">Drop GEDCOM file to load</div>
@@ -1681,10 +1677,18 @@ function updateBanner() {
     const path = pathFromRoot(ind.id);
     if (path && path.length) {
       const rootInd = lastIndiById.get(lastRootId);
-      const rows = [`<div class="step root"><span class="lbl">root</span><span class="nm">${escHtml(rootInd?.name || "")}</span></div>`];
+      const fmtYears = (i) => {
+        if (!i) return "";
+        const b = i.birth_year, d = i.death_year;
+        if (b && d) return ` <span class="yrs">${b}–${d}</span>`;
+        if (b) return ` <span class="yrs">b. ${b}</span>`;
+        if (d) return ` <span class="yrs">d. ${d}</span>`;
+        return "";
+      };
+      const rows = [`<div class="step root"><span class="lbl">root</span><span class="nm">${escHtml(rootInd?.name || "")}${fmtYears(rootInd)}</span></div>`];
       for (const step of path) {
         const stepInd = lastIndiById.get(step.id);
-        rows.push(`<div class="step"><span class="lbl">${escHtml(step.label)}</span><span class="nm">${escHtml(stepInd?.name || step.id)}</span></div>`);
+        rows.push(`<div class="step"><span class="lbl">${escHtml(step.label)}</span><span class="nm">${escHtml(stepInd?.name || step.id)}${fmtYears(stepInd)}</span></div>`);
       }
       chainEl.innerHTML = rows.join("");
       chainSection.style.display = "block";
@@ -1975,9 +1979,12 @@ label { color:#566480; font-size:11px; }
 <div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig">----</div></div>
 <aside id="panel">
   <div id="panelHead"><span>Events at <span id="panelYear">----</span></span></div>
-  <div id="panelInferRow"><label>window<span id="winYrsLabel">6</span>y</label><input type="range" id="winYrs" min="1" max="50" step="1" value="6"></div>
-  <div id="panelInferRow"><label>infer<span id="inferYrsLabel">0</span>y</label><input type="range" id="inferYrs" min="0" max="50" step="1" value="0"></div>
-  <div id="panelStatusRow"><span>status:</span><select id="statusFilt"><option value="all" selected>all</option><option value="living">living only</option><option value="dead">dead only</option></select></div>
+  <div id="panelControls">
+    <label>window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
+    <label>infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
+    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">living</option><option value="dead">dead</option></select></label>
+  </div>
+  <div id="panelScroll">
   <div id="panelTypeRow"><span>events:</span>
     <button data-t="0" class="pill on">born</button><button data-t="1" class="pill on">died</button>
     <button data-t="2" class="pill on">lived</button><button data-t="3" class="pill on">married</button>
@@ -1988,6 +1995,7 @@ label { color:#566480; font-size:11px; }
   </div>
   <div id="panelBanner"><button class="bcl" id="bannerClear">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div></div>
   <ul id="panelList"></ul>
+  </div>
 </aside>
 </div>
 <div id="ui">
