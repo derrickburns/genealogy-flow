@@ -17,7 +17,7 @@
     user-select:none; mix-blend-mode:multiply;
   }
   #ui {
-    position:fixed; left:14px; right:var(--right-margin, 14px); bottom:14px; z-index:10;
+    position:fixed; left:14px; right:14px; bottom:14px; z-index:13;
     background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
     padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
     display:flex; flex-direction:column; gap:8px;
@@ -34,7 +34,7 @@
   #range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
   #range::-moz-range-track { height:6px; background:#c0ccd8; border-radius:3px; }
   #stats { font-size:11px; color:#566480; }
-  #title { position:fixed; top:14px; left:18px; right:var(--right-margin, 18px); z-index:11; font-size:14px; color:#1c2433; letter-spacing:0.04em; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #title { position:fixed; top:14px; left:18px; right:18px; z-index:13; font-size:14px; color:#1c2433; letter-spacing:0.04em; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   #title b { color:#0a1426; }
   #title input[type=text] { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:4px 6px; font:inherit; }
   select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
@@ -1494,15 +1494,18 @@ window.addEventListener("drop", e => {
 });
 
 // ---------- Export shareable HTML ----------
-function buildExportHtml(tl, worldData, label, candidatesData) {
+function buildExportHtml(tl, worldData, label, candidatesData, individualsData, places) {
   const exportTl = {
     dwells: tl.dwells, flows: tl.flows,
     dwellIndi: tl.dwellIndi, flowIndi: tl.flowIndi,
     dwellSrc: tl.dwellSrc, flowSrc: tl.flowSrc,
     dwellExact: tl.dwellExact, flowExact: tl.flowExact,
+    dwellType: tl.dwellType, dwellPlace: tl.dwellPlace,
     candidates: candidatesData,
     cities: majorCities ? majorCities.slice(0, 4000) : [],
     eventCities: tl.eventCities || [],
+    individuals: individualsData,
+    places: places || [],
     min_year: tl.min_year, max_year: tl.max_year,
   };
   const tlJson = JSON.stringify(exportTl).replace(/<\//g, "<\\/");
@@ -1515,50 +1518,105 @@ function buildExportHtml(tl, worldData, label, candidatesData) {
 <title>${label} - Genealogy Particle Flow</title>
 <style>
 html, body { margin:0; padding:0; background:#cfe2ec; color:#1c2433; font:13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; overflow:hidden; }
-canvas { position:fixed; inset:0; display:block; image-rendering:pixelated; }
+canvas { position:fixed; left:0; top:0; display:block; image-rendering:pixelated; }
 #base { z-index:1; } #fx { z-index:2; }
-#yearBig { position:fixed; inset:0; z-index:3; pointer-events:none; display:flex; align-items:center; justify-content:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; font-weight:700; font-size:42vh; line-height:0.85; color:rgba(20,30,55,0.06); letter-spacing:-0.02em; user-select:none; mix-blend-mode:multiply; }
-#ui { position:fixed; left:14px; right:14px; bottom:14px; z-index:10; background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
-#range { flex:1 1 200px; min-width:200px; }
+#yearBig { position:fixed; left:0; top:0; height:100%; z-index:3; pointer-events:none; display:flex; align-items:center; justify-content:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; font-weight:700; font-size:42vh; line-height:0.85; color:rgba(20,30,55,0.06); letter-spacing:-0.02em; user-select:none; mix-blend-mode:multiply; }
+#ui { position:fixed; left:14px; right:14px; bottom:14px; z-index:13; background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; flex-direction:column; gap:8px; }
+#ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+#ui .uirow.primary { flex-wrap:nowrap; }
 #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
 #year { font-variant-numeric:tabular-nums; font-weight:600; font-size:18px; min-width:60px; }
-#range { width:100%; -webkit-appearance:none; appearance:none; height:4px; background:#c0ccd8; border-radius:2px; }
-#range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
-#title { position:fixed; top:14px; left:18px; right:18px; z-index:11; font-size:14px; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+#range { -webkit-appearance:none; appearance:none; height:6px; background:#c0ccd8; border-radius:3px; outline:none; flex:1 1 auto; min-width:120px; }
+#range::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
+#range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
+#title { position:fixed; top:14px; left:18px; right:18px; z-index:13; font-size:14px; background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .legend { font-size:11px; color:#566480; display:flex; gap:10px; align-items:center; }
 .legend .swatch { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
 .legend .square { border-radius:0; }
 .legend .diamond { width:12px; height:12px; border-radius:2px; transform:rotate(45deg); }
 select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
 label { color:#566480; font-size:11px; }
+#panel { position:fixed; top:var(--panel-top, 80px); right:0; bottom:var(--panel-bottom, 110px); z-index:12; width:320px; background:rgba(255,255,255,0.98); border-left:1px solid #c0ccd8; box-shadow:-4px 0 20px rgba(0,0,0,0.08); display:flex; flex-direction:column; overflow:hidden; }
+#panel.hidden { display:none; }
+#panelHead { padding:8px 12px; border-bottom:1px solid #e0e6ee; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:13px; }
+#panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
+#panelInferRow { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid #e0e6ee; font-size:11px; color:#566480; }
+#panelInferRow input[type=range] { flex:1; min-width:0; }
+#panelInferRow label { display:flex; align-items:center; gap:4px; min-width:70px; }
+#panelInferRow label > span { font-weight:600; color:#2a4a8c; min-width:18px; text-align:right; }
+#panelStatusRow { padding:6px 12px; border-bottom:1px solid #e0e6ee; font-size:11px; color:#566480; display:flex; align-items:center; gap:8px; }
+#panelStatusRow select { background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:2px 6px; font:inherit; }
+#panelTypeRow { padding:6px 12px; border-bottom:1px solid #e0e6ee; display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; color:#566480; }
+#panelTypeRow .pill { padding:2px 7px; border:1px solid #c0ccd8; border-radius:10px; background:#f5f5f8; color:#888; font-size:11px; cursor:pointer; user-select:none; }
+#panelTypeRow .pill.on { background:#e0e9ff; color:#2a4a8c; border-color:#9fb6e0; font-weight:500; }
+#panelBanner { display:none; padding:10px 12px; border-bottom:1px solid #e0e6ee; background:#fff8e0; }
+#panelBanner.shown { display:block; }
+#panelBanner .bnm { font-weight:700; color:#1c2433; font-size:13px; }
+#panelBanner .bev { color:#566480; font-size:11px; margin-top:2px; }
+#panelBanner .bcl { float:right; background:none; border:none; color:#888; cursor:pointer; font-size:14px; margin-top:-2px; }
+#panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
+#panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
+#panelList li:hover { background:#f0f4f8; }
+#panelList li.selected { background:#fff3d4; box-shadow:inset 3px 0 0 #ffb930; }
+#panelList li.inferred { background:#fafbfd; font-style:italic; }
+#panelList li.inferred .nm { color:#566480; }
+#panelList .yr { font-variant-numeric:tabular-nums; color:#888; margin-right:6px; font-size:11px; }
+#panelList .nm { font-weight:600; color:#1c2433; }
+#panelList .ev { color:#566480; font-size:11px; }
+#panelList .pm { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+#panelList .sq { border-radius:0; }
+#panelList .di { border-radius:1px; transform:rotate(45deg); width:8px; height:8px; }
+#panelList .tag { display:inline-block; background:#e0e6ee; color:#566480; font-size:10px; padding:0 4px; border-radius:3px; margin-left:4px; vertical-align:middle; font-style:normal; }
 </style>
 </head>
 <body>
 <div id="title">
   <b>${label}</b>
+  <button id="panelToggle">List</button>
   <label>root <select id="rootSel"></select></label>
   <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
   <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
   <label>borders <select id="borderLayer"><option value="modern" selected>modern</option><option value="historical">historical</option></select></label>
   <label>migration <select id="migViz"><option value="lines" selected>arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous">continuous</option></select></label>
+  <label>projection <select id="projSel"><option value="natural" selected>Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho">Globe</option></select></label>
   <span class="legend">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
     <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
     <span><span class="swatch" style="background:#a03cc8;"></span>other</span>
-    <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 parent missing</span>
+    <span><span class="swatch diamond" style="background:#6e6e73;"></span>1 missing</span>
     <span><span class="swatch square" style="background:#000;"></span>both missing</span>
   </span>
 </div>
 <canvas id="base"></canvas>
 <canvas id="fx"></canvas>
 <div id="yearBig">----</div>
+<aside id="panel" class="hidden">
+  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span><button id="panelClose">&times;</button></div>
+  <div id="panelInferRow"><label>window<span id="winYrsLabel">6</span>y</label><input type="range" id="winYrs" min="1" max="50" step="1" value="6"></div>
+  <div id="panelInferRow"><label>infer<span id="inferYrsLabel">0</span>y</label><input type="range" id="inferYrs" min="0" max="50" step="1" value="0"></div>
+  <div id="panelStatusRow"><span>status:</span><select id="statusFilt"><option value="all" selected>all</option><option value="living">living only</option><option value="dead">dead only</option></select></div>
+  <div id="panelTypeRow"><span>events:</span>
+    <button data-t="0" class="pill on">born</button><button data-t="1" class="pill on">died</button>
+    <button data-t="2" class="pill on">lived</button><button data-t="3" class="pill on">married</button>
+    <button data-t="4" class="pill on">emig</button><button data-t="5" class="pill on">immig</button>
+    <button data-t="6" class="pill on">census</button><button data-t="7" class="pill on">baptized</button>
+    <button data-t="8" class="pill on">buried</button><button data-t="9" class="pill on">christened</button>
+    <button data-t="10" class="pill on">other</button>
+  </div>
+  <div id="panelBanner"><button class="bcl" id="bannerClear">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div></div>
+  <ul id="panelList"></ul>
+</aside>
 <div id="ui">
-  <button id="play">Play</button>
-  <input type="range" id="range" min="0" max="1" step="0.1" value="0">
-  <span id="year">----</span>
-  <label>speed <select id="speed"><option value="0.05">0.25x</option><option value="0.1">0.5x</option><option value="0.2" selected>1x</option><option value="0.5">2.5x</option><option value="1">5x</option><option value="2">10x</option></select></label>
-  <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
-  <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
+  <div class="uirow primary">
+    <button id="play">Play</button>
+    <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
+    <span id="year">----</span>
+  </div>
+  <div class="uirow">
+    <label>speed <select id="speed"><option value="0.05">0.25x</option><option value="0.1">0.5x</option><option value="0.2" selected>1x</option><option value="0.5">2.5x</option><option value="1">5x</option><option value="2">10x</option></select></label>
+    <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
+    <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
+  </div>
 </div>
 <script id="tl" type="application/json">${tlJson}<\/script>
 <script id="world" type="application/json">${worldJson}<\/script>
@@ -1571,19 +1629,24 @@ const world = JSON.parse(document.getElementById("world").textContent);
 const usStates = JSON.parse(document.getElementById("us").textContent);
 const majorCities = tl.cities || [];
 const eventCities = tl.eventCities || [];
-const baseCanvas=document.getElementById("base"), fxCanvas=document.getElementById("fx");
-const baseCtx=baseCanvas.getContext("2d"), fxCtx=fxCanvas.getContext("2d");
-const yearLabel=document.getElementById("year"), yearBig=document.getElementById("yearBig");
-const playBtn=document.getElementById("play"), range=document.getElementById("range");
-const speedSel=document.getElementById("speed"), trailSel=document.getElementById("trail");
-const rootSel=document.getElementById("rootSel"), filtSel=document.getElementById("filt");
-const cityLayerSel=document.getElementById("cityLayer"), borderSel=document.getElementById("borderLayer"), migSel=document.getElementById("migViz");
-let W=0,H=0; const projection=d3.geoNaturalEarth1();
-let baseScale=1, baseTranslate=[0,0];
-let zoomTransform={k:1,x:0,y:0};
+const individuals = tl.individuals || [];
+const places = tl.places || [];
+const $ = id => document.getElementById(id);
+const baseCanvas=$("base"), fxCanvas=$("fx"), baseCtx=baseCanvas.getContext("2d"), fxCtx=fxCanvas.getContext("2d");
+const yearLabel=$("year"), yearBig=$("yearBig"), playBtn=$("play"), range=$("range");
+const speedSel=$("speed"), trailSel=$("trail"), rootSel=$("rootSel"), filtSel=$("filt");
+const cityLayerSel=$("cityLayer"), borderSel=$("borderLayer"), migSel=$("migViz"), projSel=$("projSel");
+const panelEl=$("panel"), panelList=$("panelList"), panelYear=$("panelYear");
+const PROJECTIONS={natural:()=>d3.geoNaturalEarth1(),equal:()=>d3.geoEqualEarth(),equirect:()=>d3.geoEquirectangular(),mercator:()=>d3.geoMercator(),ortho:()=>d3.geoOrthographic().clipAngle(90)};
+let projection=PROJECTIONS.natural();
+let W=0,H=0,mapW=0,mapTop=0,mapBottom=0; let baseScale=1, baseTranslate=[0,0]; let zoomTransform={k:1,x:0,y:0};
 let cityLayer="major", borderLayer="modern", migrationViz="lines", curFilter="all", isDraggingSlider=false;
+let dwellWindow=6, inferenceYears=0, statusFilter="all";
+let typeFilter=new Set([0,1,2,3,4,5,6,7,8,9,10]);
+let highlightedDwell=-1, highlightInferredYear=-1, highlightInferredSrcYear=-1;
 let staticLabelRects=[];
 function rectsOverlap(a,b){return !(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);}
+const EVENT_TYPE_LABEL=["born","died","lived in","married in","emigrated from","immigrated to","census in","baptized in","buried in","christened in","event in"];
 const N=tl.dwells.length, F=tl.flows.length;
 const candidates = tl.candidates || [];
 let curCandidate = candidates[0] || null;
@@ -1597,9 +1660,10 @@ for (const c of candidates) {
 }
 const dwellY=new Int16Array(N), dwellLat=new Float32Array(N), dwellLon=new Float32Array(N);
 const dwellSide=new Uint8Array(N), dwellSrc=new Uint8Array(N), dwellBlood=new Uint8Array(N), dwellExact=new Uint8Array(N);
+const dwellType=new Uint8Array(N), dwellPlace=new Int32Array(N);
 const dwellIndi=new Int32Array(N); let dwellCity=new Int32Array(N);
 const dwellSx=new Float32Array(N), dwellSy=new Float32Array(N);
-for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i]; dwellExact[i]=tl.dwellExact?tl.dwellExact[i]:0;}
+for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i]; dwellExact[i]=tl.dwellExact?tl.dwellExact[i]:0; dwellType[i]=tl.dwellType?tl.dwellType[i]:10; dwellPlace[i]=tl.dwellPlace?tl.dwellPlace[i]:-1;}
 const flowFromY=new Int16Array(F), flowToY=new Int16Array(F);
 const flowFromLat=new Float32Array(F), flowFromLon=new Float32Array(F), flowToLat=new Float32Array(F), flowToLon=new Float32Array(F);
 const flowSide=new Uint8Array(F), flowSrc=new Uint8Array(F), flowBlood=new Uint8Array(F), flowExact=new Uint8Array(F);
@@ -1607,51 +1671,41 @@ const flowIndi=new Int32Array(F);
 const flowFromSx=new Float32Array(F), flowFromSy=new Float32Array(F), flowToSx=new Float32Array(F), flowToSy=new Float32Array(F);
 for (let i=0;i<F;i++){const f=tl.flows[i]; flowFromY[i]=f[0]; flowToY[i]=f[1]; flowFromLat[i]=f[2]; flowFromLon[i]=f[3]; flowToLat[i]=f[4]; flowToLon[i]=f[5]; flowSrc[i]=tl.flowSrc[i]; flowIndi[i]=tl.flowIndi[i]; flowExact[i]=tl.flowExact?tl.flowExact[i]:0;}
 function currentCities(){ return cityLayer==="events"&&eventCities&&eventCities.length?eventCities:majorCities; }
-let cityCanonicalByName = new Map();
+let cityCanonicalByName=new Map(), cityTree=null;
 function rebuildCanonical(){
   cityCanonicalByName=new Map();
   const list=currentCities(); if(!list) return;
-  for (const c of list){
-    const ex=cityCanonicalByName.get(c.name);
-    const w=c.pop!=null?c.pop:c.count||0;
-    if (!ex||(ex.pop!=null?ex.pop:ex.count||0)<w) cityCanonicalByName.set(c.name,c);
-  }
+  for (const c of list){ const ex=cityCanonicalByName.get(c.name); const w=c.pop!=null?c.pop:c.count||0;
+    if (!ex||(ex.pop!=null?ex.pop:ex.count||0)<w) cityCanonicalByName.set(c.name,c); }
 }
 function precomputeDwellCity(){
   const list=currentCities();
   if (!list||!list.length){ dwellCity.fill(-1); return; }
   for (let i=0;i<list.length;i++) list[i]._idx=i;
-  const tree=d3.quadtree().x(c=>c.lon).y(c=>c.lat).addAll(list);
-  for (let i=0;i<N;i++){ const c=tree.find(dwellLon[i],dwellLat[i]); dwellCity[i]=c?c._idx:-1; }
+  cityTree=d3.quadtree().x(c=>c.lon).y(c=>c.lat).addAll(list);
+  for (let i=0;i<N;i++){ const c=cityTree.find(dwellLon[i],dwellLat[i]); dwellCity[i]=c?c._idx:-1; }
   rebuildCanonical();
 }
 precomputeDwellCity();
 function applyCandidate(c){
-  curCandidate = c;
-  if (!c) return;
-  const sf = c.sideForIdx, bf = c.bloodForIdx;
-  for (let i=0;i<N;i++){ dwellSide[i] = sf[dwellIndi[i]] ?? 2; dwellBlood[i] = bf[dwellIndi[i]] || 0; }
-  for (let i=0;i<F;i++){ flowSide[i] = sf[flowIndi[i]] ?? 2; flowBlood[i] = bf[flowIndi[i]] || 0; }
+  curCandidate = c; if (!c) return;
+  const sf=c.sideForIdx, bf=c.bloodForIdx;
+  for (let i=0;i<N;i++){ dwellSide[i]=sf[dwellIndi[i]]??2; dwellBlood[i]=bf[dwellIndi[i]]||0; }
+  for (let i=0;i<F;i++){ flowSide[i]=sf[flowIndi[i]]??2; flowBlood[i]=bf[flowIndi[i]]||0; }
   fxCtx.clearRect(0,0,W,H);
 }
 applyCandidate(curCandidate);
-rootSel.addEventListener("change", e => { const c=candidates.find(c=>c.id===e.target.value); if(c) applyCandidate(c); });
-filtSel.addEventListener("change", e => { curFilter=e.target.value; fxCtx.clearRect(0,0,W,H); });
-cityLayerSel.addEventListener("change", e => { cityLayer=e.target.value; precomputeDwellCity(); drawBase(); fxCtx.clearRect(0,0,W,H); });
-borderSel.addEventListener("change", e => { borderLayer=e.target.value; drawBase(); });
-migSel.addEventListener("change", e => { migrationViz=e.target.value; fxCtx.clearRect(0,0,W,H); });
 const dwellOrder=new Int32Array(N); for(let i=0;i<N;i++) dwellOrder[i]=i; dwellOrder.sort((a,b)=>dwellY[a]-dwellY[b]);
-const flowOrder=new Int32Array(F); for(let i=0;i<F;i++) flowOrder[i]=i; flowOrder.sort((a,b)=>flowFromY[a]-flowFromY[b]);
+const flowFromOrder=new Int32Array(F); for(let i=0;i<F;i++) flowFromOrder[i]=i; flowFromOrder.sort((a,b)=>flowFromY[a]-flowFromY[b]);
 const minYear=tl.min_year, maxYear=tl.max_year;
 range.min=minYear; range.max=maxYear; range.step=0.1; range.value=Math.max(minYear,1700);
 let curYear=parseFloat(range.value), playing=false;
 const HISTORICAL_SNAPSHOTS=[1000,1279,1492,1530,1600,1650,1700,1715,1783,1815,1880,1914,1920,1938,1945,1960,1994,2000];
-let activeHistoricalYear=-1; let currentHistoricalWorld=null; const historicalBasemaps=new Map();
+let activeHistoricalYear=-1, currentHistoricalWorld=null; const historicalBasemaps=new Map();
 function pickSnapshotYear(y){ let p=HISTORICAL_SNAPSHOTS[0]; for(const s of HISTORICAL_SNAPSHOTS) if(s<=y) p=s; return p; }
 async function fetchHistoricalBasemap(y){
   if (historicalBasemaps.has(y)) return historicalBasemaps.get(y);
-  try {
-    const r=await fetch("https://cdn.jsdelivr.net/gh/aourednik/historical-basemaps/geojson/world_"+y+".geojson");
+  try { const r=await fetch("https://cdn.jsdelivr.net/gh/aourednik/historical-basemaps/geojson/world_"+y+".geojson");
     if (!r.ok) throw new Error("status "+r.status);
     const j=await r.json(); historicalBasemaps.set(y,j); return j;
   } catch(e){ historicalBasemaps.set(y,null); return null; }
@@ -1666,13 +1720,23 @@ function maybeUpdateHistoricalBasemap(){
   fetchHistoricalBasemap(snap).then(j=>{ if(activeHistoricalYear===snap){currentHistoricalWorld=j; drawBase();} });
 }
 function resize(){
+  const panelOpen=!panelEl.classList.contains("hidden");
+  const panelW=panelOpen?320:0;
+  document.documentElement.style.setProperty("--right-margin", panelOpen?(panelW+14)+"px":"14px");
   W=window.innerWidth; H=window.innerHeight;
   for (const c of [baseCanvas,fxCanvas]){
     c.width=Math.floor(W*devicePixelRatio); c.height=Math.floor(H*devicePixelRatio);
     c.style.width=W+"px"; c.style.height=H+"px";
     c.getContext("2d").setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   }
-  projection.fitExtent([[10,30],[W-10,H-80]],{type:"Sphere"});
+  yearBig.style.width=W+"px";
+  const titleEl=$("title"), uiEl=$("ui");
+  const titleH=titleEl?titleEl.offsetHeight+24:80;
+  const uiH=uiEl?uiEl.offsetHeight+24:110;
+  document.documentElement.style.setProperty("--panel-top",titleH+"px");
+  document.documentElement.style.setProperty("--panel-bottom",uiH+"px");
+  mapW=W-panelW; mapTop=titleH; mapBottom=H-uiH;
+  projection.fitExtent([[10,titleH],[mapW-10,H-uiH]],{type:"Sphere"});
   baseScale=projection.scale(); baseTranslate=projection.translate().slice();
   applyZoom();
 }
@@ -1681,7 +1745,7 @@ function applyZoom(){
   const t=zoomTransform;
   projection.scale(baseScale*t.k);
   projection.translate([baseTranslate[0]*t.k+t.x, baseTranslate[1]*t.k+t.y]);
-  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H);
+  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
 }
 const zoomBehavior=d3.zoom().scaleExtent([1,64]).on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
 d3.select(fxCanvas).call(zoomBehavior);
@@ -1691,8 +1755,7 @@ function drawBase(){
   staticLabelRects=[];
   baseCtx.clearRect(0,0,W,H); baseCtx.fillStyle="#cfe2ec"; baseCtx.fillRect(0,0,W,H);
   const k=zoomTransform.k;
-  const sphere={type:"Sphere"};
-  const cp=d3.geoPath(projection,baseCtx);
+  const sphere={type:"Sphere"}; const cp=d3.geoPath(projection,baseCtx);
   baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
   const useHist = borderLayer==="historical" && currentHistoricalWorld;
@@ -1714,7 +1777,6 @@ function drawBase(){
     baseCtx.strokeStyle="rgba(140,120,90,"+Math.min(0.7,0.2+k*0.08)+")";
     baseCtx.lineWidth=0.35; baseCtx.stroke();
   }
-  // country labels
   if (countryFeatures && k<=8) {
     const areaCutoff=k>=4?30:k>=2?150:500;
     baseCtx.font="bold 12px -apple-system, sans-serif";
@@ -1778,30 +1840,67 @@ function drawShape(ctx,x,y,r,ps){
   else { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
 }
 function lowerBound(arr,order,target){let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>>1; if(arr[order[m]]<target) lo=m+1; else hi=m;} return lo;}
+function drawGreatCircle(ctx,lon0,lat0,lon1,lat1){
+  const dist=d3.geoDistance([lon0,lat0],[lon1,lat1]); if(dist<1e-6) return;
+  const interp=d3.geoInterpolate([lon0,lat0],[lon1,lat1]);
+  const segs=Math.max(2,Math.min(40,Math.ceil(dist*30)));
+  let started=false; ctx.beginPath();
+  for (let i=0;i<=segs;i++){ const p=projection(interp(i/segs)); if(!p){started=false; continue;}
+    if(!started){ ctx.moveTo(p[0],p[1]); started=true; } else ctx.lineTo(p[0],p[1]); }
+  ctx.stroke();
+}
+function positionOnGreatCircle(lon0,lat0,lon1,lat1,t){ return projection(d3.geoInterpolate([lon0,lat0],[lon1,lat1])(t)); }
+function passesStatus(indi){
+  if (statusFilter==="all") return true;
+  const ind=individuals[indi]; if (!ind) return true;
+  const by=ind.by, dy=ind.dy, T=curYear;
+  const isAlive=(by==null||by<=T)&&(dy==null||dy>T);
+  const isDead=dy!=null&&dy<=T;
+  if (statusFilter==="living") return isAlive;
+  if (statusFilter==="dead") return isDead;
+  return true;
+}
+function drawHighlight(){
+  const i=highlightedDwell; if (i<0) return;
+  const sx=dwellSx[i], sy=dwellSy[i]; if (sx<=-1000) return;
+  const sd=dwellSide[i], ps=dwellSrc[i];
+  const dotColor=colorForFinal(sd,ps);
+  fxCtx.fillStyle="rgba("+dotColor[0]+","+dotColor[1]+","+dotColor[2]+",1)";
+  drawShape(fxCtx,sx,sy,9,ps);
+  fxCtx.strokeStyle="rgba(255,255,255,0.95)"; fxCtx.lineWidth=2.5;
+  if (ps===2) fxCtx.strokeRect(sx-9,sy-9,18,18);
+  else if (ps===1){ fxCtx.beginPath(); fxCtx.moveTo(sx,sy-9); fxCtx.lineTo(sx+9,sy); fxCtx.lineTo(sx,sy+9); fxCtx.lineTo(sx-9,sy); fxCtx.closePath(); fxCtx.stroke(); }
+  else { fxCtx.beginPath(); fxCtx.arc(sx,sy,9,0,Math.PI*2); fxCtx.stroke(); }
+  const t=performance.now()/1000;
+  for (let rr=0;rr<3;rr++){
+    const phase=((t+rr*0.45)%1.4)/1.4; const radius=12+phase*70;
+    fxCtx.strokeStyle="rgba(255,180,30,"+(0.7*(1-phase)).toFixed(3)+")"; fxCtx.lineWidth=3;
+    fxCtx.beginPath(); fxCtx.arc(sx,sy,radius,0,Math.PI*2); fxCtx.stroke();
+  }
+}
 function frame(fade){
-  if (migrationViz==="lines") fxCtx.clearRect(0,0,W,H);
+  if (migrationViz==="lines"||highlightedDwell>=0) fxCtx.clearRect(0,0,W,H);
   else { fxCtx.globalCompositeOperation="destination-out"; fxCtx.fillStyle="rgba(0,0,0,"+fade+")"; fxCtx.fillRect(0,0,W,H); fxCtx.globalCompositeOperation="source-over"; }
-  const y=curYear, dw=6;
+  if (highlightedDwell>=0){ drawHighlight(); return; }
+  const y=curYear, dw=dwellWindow;
   const lo=lowerBound(dwellY,dwellOrder,y-dw), hi=lowerBound(dwellY,dwellOrder,y+1);
-  const labeledNames=new Set();
-  const dynRects=[];
+  const labeledNames=new Set(); const dynRects=[];
   fxCtx.textAlign="left"; fxCtx.textBaseline="middle";
   for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const dy=y-dwellY[i]; if(dy<0) continue;
     const sd=dwellSide[i], ps=dwellSrc[i];
     if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
     if (curFilter==="blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
     const a=Math.max(0,1-dy/dw)*0.85; const c=colorForFinal(sd,ps);
     fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+a.toFixed(3)+")";
-    const exact=dwellExact[i];
-    const r=(1.7+(1-dy/dw)*1.4)*(exact?1.4:1);
-    drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
+    const exact=dwellExact[i]; const r=(1.7+(1-dy/dw)*1.4)*(exact?1.4:1);
+    drawShape(fxCtx,dwellSx[i],dwellSy[i],r,ps);
     if (dwellCity[i]>=0 && dy<3){
-      const rawCity=currentCities()[dwellCity[i]];
-      if (!rawCity) continue;
+      const rawCity=currentCities()[dwellCity[i]]; if (!rawCity) continue;
       const canonical=cityCanonicalByName.get(rawCity.name)||rawCity;
       if (labeledNames.has(canonical.name)) continue;
-      const p=projection([canonical.lon,canonical.lat]);
-      if (!p) continue;
+      const p=projection([canonical.lon,canonical.lat]); if (!p) continue;
       fxCtx.font=(exact?"bold ":"")+"10px -apple-system, sans-serif";
       const tw=fxCtx.measureText(canonical.name).width;
       const rect={x:p[0]+3,y:p[1]-6,w:tw+4,h:13};
@@ -1814,7 +1913,6 @@ function frame(fade){
       fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")"; fxCtx.fillText(canonical.name,p[0]+3,p[1]);
     }
   }
-  if (migrationViz==="discrete") return;
   if (migrationViz==="lines"){
     for (let i=0;i<F;i++){
       if (flowToY[i]>y) continue;
@@ -1822,33 +1920,117 @@ function frame(fade){
       const fs=flowSide[i], fp=flowSrc[i];
       if (curFilter==="ancestors" && fs!==0 && fs!==1) continue;
       if (curFilter==="blood" && !flowBlood[i]) continue;
-      const x0=flowFromSx[i],y0=flowFromSy[i],x1=flowToSx[i],y1=flowToSy[i]; if(x0<-1000||x1<-1000) continue;
-      if ((x1-x0)===0&&(y1-y0)===0) continue;
-      const mx=(x0+x1)/2-(y1-y0)*0.18, my=(y0+y1)/2+(x1-x0)*0.18;
+      const lon0=flowFromLon[i], lat0=flowFromLat[i], lon1=flowToLon[i], lat1=flowToLat[i];
+      if (lon0===lon1 && lat0===lat1) continue;
       const c=colorForFinal(fs,fp);
       const alpha=Math.max(0.08,1-age/80)*0.55;
-      fxCtx.beginPath(); fxCtx.moveTo(x0,y0); fxCtx.quadraticCurveTo(mx,my,x1,y1);
       fxCtx.strokeStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+alpha.toFixed(3)+")";
-      fxCtx.lineWidth=age<3?1.2:0.5; fxCtx.stroke();
+      fxCtx.lineWidth=age<3?1.2:0.5;
+      drawGreatCircle(fxCtx,lon0,lat0,lon1,lat1);
     }
-    return;
+  } else if (migrationViz!=="discrete"){
+    const fHi=lowerBound(flowFromY,flowFromOrder,y+1);
+    for (let k=0;k<fHi;k++){const i=flowFromOrder[k]; if(flowToY[i]<y-1) continue;
+      let t;
+      if (migrationViz==="pulse"){ const win=1; if(y<flowToY[i]-win||y>flowToY[i]+0.1) continue; t=Math.max(0,Math.min(1,(y-(flowToY[i]-win))/win)); }
+      else { const span=Math.max(1,flowToY[i]-flowFromY[i]); t=Math.max(0,Math.min(1,(y-flowFromY[i])/span)); }
+      if (t<=0||t>=1) continue;
+      const fs=flowSide[i], fp=flowSrc[i];
+      if (curFilter==="ancestors" && fs!==0 && fs!==1) continue;
+      if (curFilter==="blood" && !flowBlood[i]) continue;
+      const p=positionOnGreatCircle(flowFromLon[i],flowFromLat[i],flowToLon[i],flowToLat[i],t);
+      if (!p) continue;
+      const c=colorForFinal(fs,fp);
+      fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+",0.95)";
+      drawShape(fxCtx,p[0],p[1],flowExact[i]?2.6:1.9,fp);
+    }
   }
-  const fHi=lowerBound(flowFromY,flowOrder,y+1);
-  for (let k=0;k<fHi;k++){const i=flowOrder[k]; if(flowToY[i]<y-1) continue;
-    let t;
-    if (migrationViz==="pulse"){ const win=1; if(y<flowToY[i]-win||y>flowToY[i]+0.1) continue; t=Math.max(0,Math.min(1,(y-(flowToY[i]-win))/win)); }
-    else { const span=Math.max(1,flowToY[i]-flowFromY[i]); t=Math.max(0,Math.min(1,(y-flowFromY[i])/span)); }
-    if (t<=0||t>=1) continue;
-    const x0=flowFromSx[i],y0=flowFromSy[i],x1=flowToSx[i],y1=flowToSy[i]; if(x0<-1000||x1<-1000) continue;
-    const mx=(x0+x1)/2-(y1-y0)*0.18, my=(y0+y1)/2+(x1-x0)*0.18;
-    const u=1-t; const px=u*u*x0+2*u*t*mx+t*t*x1, py=u*u*y0+2*u*t*my+t*t*y1;
-    const fs=flowSide[i], fp=flowSrc[i];
-    if (curFilter==="ancestors" && fs!==0 && fs!==1) continue;
-    if (curFilter==="blood" && !flowBlood[i]) continue;
-    const c=colorForFinal(fs,fp);
-    fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+",0.95)";
-    drawShape(fxCtx, px, py, flowExact[i]?2.6:1.9, fp);
+}
+function escHtml(s){ const map={"&":"&amp;","<":"&lt;",">":"&gt;"}; map['"']="&quot;"; map["'"]="&#39;"; return String(s).replace(/[&<>"']/g, c => map[c]); }
+let lastPanelYear=-9999, lastPanelTime=0;
+function updatePanel(force){
+  if (panelEl.classList.contains("hidden")) return;
+  const now=performance.now(); const yint=Math.floor(curYear);
+  if (!force && yint===lastPanelYear && now-lastPanelTime<250) return;
+  lastPanelYear=yint; lastPanelTime=now;
+  panelYear.textContent=yint;
+  const dw=dwellWindow;
+  const lo=lowerBound(dwellY,dwellOrder,yint-dw); const hi=lowerBound(dwellY,dwellOrder,yint+1);
+  const rows=[]; const visibleIndis=new Set();
+  for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const sd=dwellSide[i];
+    if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
+    if (curFilter==="blood" && !dwellBlood[i]) continue;
+    if (!typeFilter.has(dwellType[i])) continue;
+    if (!passesStatus(dwellIndi[i])) continue;
+    const sx=dwellSx[i], sy=dwellSy[i];
+    if (sx<-10||sx>mapW+10||sy<mapTop-10||sy>mapBottom+10) continue;
+    rows.push({kind:"real",i,year:dwellY[i]});
+    visibleIndis.add(dwellIndi[i]);
   }
+  const MAX_LIFESPAN=100;
+  if (inferenceYears>0 && typeFilter.has(2) && statusFilter!=="dead") {
+    for (let idx=0; idx<individuals.length; idx++) {
+      if (visibleIndis.has(idx)) continue;
+      const ind=individuals[idx]; if (!ind || !ind.dws || !ind.dws.length) continue;
+      const sd=curCandidate ? (curCandidate.sideForIdx[idx] ?? 2) : 2;
+      if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
+      if (curFilter==="blood" && curCandidate && !curCandidate.bloodForIdx[idx]) continue;
+      const by=ind.by, dy_=ind.dy;
+      if (by!=null && by>yint) continue;
+      if (dy_!=null && dy_<yint) continue;
+      if (by!=null && (yint-by)>MAX_LIFESPAN) continue;
+      let lastDi=-1, lastDy=-Infinity;
+      for (const di of ind.dws){ if (dwellY[di]<=yint && dwellY[di]>lastDy){ lastDi=di; lastDy=dwellY[di]; } }
+      if (lastDi<0) continue;
+      if (yint-lastDy>inferenceYears) continue;
+      const sx=dwellSx[lastDi], sy=dwellSy[lastDi];
+      if (sx<-10||sx>mapW+10||sy<mapTop-10||sy>mapBottom+10) continue;
+      const place = dwellPlace[lastDi]>=0 ? places[dwellPlace[lastDi]] : "";
+      rows.push({kind:"inferred",indi:idx,year:yint,place,side:sd,basedOnYear:lastDy,srcDwell:lastDi});
+    }
+  }
+  rows.sort((a,b)=>b.year-a.year);
+  if (rows.length>600) rows.length=600;
+  const html=rows.map(r=>{
+    if (r.kind==="real"){
+      const i=r.i; const ind=individuals[dwellIndi[i]];
+      const t=dwellType[i]; const place=dwellPlace[i]>=0?places[dwellPlace[i]]:"";
+      const sd=dwellSide[i], ps=dwellSrc[i];
+      const c=ps===2?[0,0,0]:ps===1?[110,110,115]:sd===0?[40,100,220]:sd===1?[220,60,90]:[160,60,200];
+      const shapeCls=ps===2?"sq":ps===1?"di":"";
+      const swatch="<span class='pm "+shapeCls+"' style='background:rgb("+c[0]+","+c[1]+","+c[2]+")'></span>";
+      const sel = highlightedDwell===i ? " selected" : "";
+      return "<li class='"+sel+"' data-idx='"+i+"'><span class='yr'>"+dwellY[i]+"</span>"+swatch+"<span class='nm'>"+escHtml(ind?.name??"?")+"</span> <span class='ev'>"+(EVENT_TYPE_LABEL[t]||"event")+" "+escHtml(place)+"</span></li>";
+    } else {
+      const ind=individuals[r.indi];
+      const sd=r.side;
+      const c=sd===0?[40,100,220]:sd===1?[220,60,90]:[160,60,200];
+      const swatch="<span class='pm' style='background:rgb("+c[0]+","+c[1]+","+c[2]+");opacity:0.6'></span>";
+      const sel = (highlightedDwell===r.srcDwell && highlightInferredYear===r.year) ? " selected" : "";
+      return "<li class='inferred"+sel+"' data-idx='"+r.srcDwell+"' data-inferred='"+r.year+"' data-basedon='"+r.basedOnYear+"'><span class='yr'>"+r.year+"</span>"+swatch+"<span class='nm'>"+escHtml(ind?.name??"?")+"</span> <span class='ev'>lived in "+escHtml(r.place)+"<span class='tag'>INFERRED "+r.basedOnYear+"</span></span></li>";
+    }
+  }).join("");
+  panelList.innerHTML=html||"<li style='color:#888;padding:14px;'>No events visible.</li>";
+  updateBanner();
+}
+function updateBanner(){
+  const banner=$("panelBanner");
+  if (highlightedDwell<0){ banner.classList.remove("shown"); return; }
+  const i=highlightedDwell; const ind=individuals[dwellIndi[i]];
+  if (!ind){ banner.classList.remove("shown"); return; }
+  const placeStr=dwellPlace[i]>=0?places[dwellPlace[i]]:"";
+  const isInferred=highlightInferredYear>=0;
+  const verb=isInferred?"lived in (inferred)":(EVENT_TYPE_LABEL[dwellType[i]]||"event");
+  const yearShown=isInferred?highlightInferredYear:dwellY[i];
+  const inferTag=isInferred?"  (based on "+highlightInferredSrcYear+")":"";
+  $("bannerName").textContent=ind.name;
+  $("bannerEvent").textContent=yearShown+" - "+verb+(placeStr?" "+placeStr:"")+inferTag;
+  banner.classList.add("shown");
+}
+function clearHighlight(){
+  if (highlightedDwell<0&&highlightInferredYear<0) return;
+  highlightedDwell=-1; highlightInferredYear=-1; highlightInferredSrcYear=-1;
+  fxCtx.clearRect(0,0,W,H); updatePanel(true);
 }
 let last=0;
 function tick(now){
@@ -1860,14 +2042,48 @@ function tick(now){
   yearLabel.textContent=yint; yearBig.textContent=yint;
   maybeUpdateHistoricalBasemap();
   frame(parseFloat(trailSel.value));
+  updatePanel(false);
   requestAnimationFrame(tick);
 }
-playBtn.addEventListener("click",()=>{playing=!playing; playBtn.textContent=playing?"Pause":"Play";});
-range.addEventListener("input",()=>{ curYear=parseFloat(range.value); });
+playBtn.addEventListener("click",()=>{playing=!playing; playBtn.textContent=playing?"Pause":"Play"; if (playing) clearHighlight();});
+range.addEventListener("input",()=>{ curYear=parseFloat(range.value); clearHighlight(); });
 range.addEventListener("pointerdown",()=>{ isDraggingSlider=true; });
 range.addEventListener("pointerup",()=>{ isDraggingSlider=false; });
 range.addEventListener("pointercancel",()=>{ isDraggingSlider=false; });
-document.getElementById("rot").addEventListener("input",e=>{ projection.rotate([parseFloat(e.target.value)||0,0,0]); applyZoom(); });
+$("rot").addEventListener("input",e=>{ projection.rotate([parseFloat(e.target.value)||0,0,0]); applyZoom(); });
+$("panelToggle").addEventListener("click",()=>{ panelEl.classList.toggle("hidden"); resize(); if (!panelEl.classList.contains("hidden")) updatePanel(true); });
+$("panelClose").addEventListener("click",()=>{ panelEl.classList.add("hidden"); resize(); });
+$("bannerClear").addEventListener("click",clearHighlight);
+$("inferYrs").addEventListener("input",e=>{ inferenceYears=parseInt(e.target.value,10)||0; $("inferYrsLabel").textContent=inferenceYears; updatePanel(true); });
+$("winYrs").addEventListener("input",e=>{ dwellWindow=Math.max(1,parseInt(e.target.value,10)||6); $("winYrsLabel").textContent=dwellWindow; fxCtx.clearRect(0,0,W,H); updatePanel(true); });
+$("statusFilt").addEventListener("change",e=>{ statusFilter=e.target.value; fxCtx.clearRect(0,0,W,H); updatePanel(true); });
+$("panelTypeRow").addEventListener("click",e=>{
+  const btn=e.target.closest(".pill"); if (!btn) return;
+  const t=parseInt(btn.dataset.t,10);
+  if (typeFilter.has(t)) typeFilter.delete(t); else typeFilter.add(t);
+  btn.classList.toggle("on"); fxCtx.clearRect(0,0,W,H); updatePanel(true);
+});
+panelList.addEventListener("click",e=>{
+  const li=e.target.closest("li[data-idx]"); if (!li) return;
+  const i=parseInt(li.dataset.idx,10);
+  const inferredYear=li.dataset.inferred?parseInt(li.dataset.inferred,10):-1;
+  const basedOn=li.dataset.basedon?parseInt(li.dataset.basedon,10):-1;
+  const same=highlightedDwell===i && highlightInferredYear===inferredYear;
+  if (same){ clearHighlight(); }
+  else {
+    highlightedDwell=i; highlightInferredYear=inferredYear; highlightInferredSrcYear=basedOn;
+    curYear=inferredYear>=0?inferredYear:dwellY[i];
+    range.value=curYear;
+    if (playing){ playing=false; playBtn.textContent="Play"; }
+    fxCtx.clearRect(0,0,W,H); updatePanel(true);
+  }
+});
+rootSel.addEventListener("change",e=>{ const c=candidates.find(c=>c.id===e.target.value); if (c) applyCandidate(c); });
+filtSel.addEventListener("change",e=>{ curFilter=e.target.value; fxCtx.clearRect(0,0,W,H); updatePanel(true); });
+cityLayerSel.addEventListener("change",e=>{ cityLayer=e.target.value; precomputeDwellCity(); drawBase(); fxCtx.clearRect(0,0,W,H); updatePanel(true); });
+borderSel.addEventListener("change",e=>{ borderLayer=e.target.value; drawBase(); });
+migSel.addEventListener("change",e=>{ migrationViz=e.target.value; fxCtx.clearRect(0,0,W,H); });
+projSel.addEventListener("change",e=>{ const k=e.target.value; if (PROJECTIONS[k]){ projection=PROJECTIONS[k](); zoomTransform={k:1,x:0,y:0}; d3.select(fxCanvas).call(zoomBehavior.transform,d3.zoomIdentity); resize(); } });
 resize(); requestAnimationFrame(tick);
 <\/script>
 </body>
@@ -1887,16 +2103,26 @@ function exportHtml() {
       bloodForIdx[i] = bloodSet.has(lastIndividuals[i].id) ? 1 : 0;
     }
     return {
-      id: c.ind.id,
-      name: c.ind.name,
-      birth: c.ind.birth_year ?? null,
-      death: c.ind.death_year ?? null,
-      label: c.label || "",
-      count: c.count,
+      id: c.ind.id, name: c.ind.name,
+      birth: c.ind.birth_year ?? null, death: c.ind.death_year ?? null,
+      label: c.label || "", count: c.count,
       sideForIdx, bloodForIdx,
     };
   });
-  const html = buildExportHtml(lastTimeline, world, lastFileName, candidatesData);
+  const indiDwellsMap = new Map();
+  for (let i = 0; i < lastTimeline.dwellIndi.length; i++) {
+    const idx = lastTimeline.dwellIndi[i];
+    let arr = indiDwellsMap.get(idx);
+    if (!arr) { arr = []; indiDwellsMap.set(idx, arr); }
+    arr.push(i);
+  }
+  const individualsData = lastIndividuals.map((ind, idx) => ({
+    name: ind.name,
+    by: ind.birth_year ?? null,
+    dy: ind.death_year ?? null,
+    dws: indiDwellsMap.get(idx) || [],
+  }));
+  const html = buildExportHtml(lastTimeline, world, lastFileName, candidatesData, individualsData, lastTimeline.places || []);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = lastFileName + "-flow.html";
