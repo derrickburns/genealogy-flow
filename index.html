@@ -678,8 +678,8 @@ function positionOnGreatCircle(lon0, lat0, lon1, lat1, t) {
 function safeProject(lonlat) {
   const p = projection(lonlat);
   if (!p) return null;
-  if (projection.clipAngle && projection.clipAngle() < 180) {
-    const r = projection.rotate ? projection.rotate() : [0, 0, 0];
+  if (projectionName === "ortho") {
+    const r = projection.rotate();
     const center = [-r[0], -r[1]];
     if (d3.geoDistance(lonlat, center) > Math.PI / 2 + 0.001) return null;
   }
@@ -2858,8 +2858,8 @@ function drawBase(){
 }
 function safeProject(lonlat){
   const p=projection(lonlat); if(!p) return null;
-  if (projection.clipAngle && projection.clipAngle()<180){
-    const r=projection.rotate?projection.rotate():[0,0,0];
+  if (projectionName==="ortho"){
+    const r=projection.rotate();
     if (d3.geoDistance(lonlat,[-r[0],-r[1]])>Math.PI/2+0.001) return null;
   }
   return p;
