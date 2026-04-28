@@ -75,9 +75,6 @@
   #panelInferRow input[type=range] { flex:1; min-width:0; }
   #panelInferRow label { display:flex; align-items:center; gap:4px; min-width:70px; }
   #panelInferRow label > span { font-weight:600; color:#2a4a8c; min-width:18px; text-align:right; }
-  #panelTypeRow { padding:6px 12px; border-bottom:1px solid #e0e6ee; display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; color:#566480; }
-  #panelTypeRow .pill { padding:2px 7px; border:1px solid #c0ccd8; border-radius:10px; background:#f5f5f8; color:#888; font-size:11px; cursor:pointer; user-select:none; }
-  #panelTypeRow .pill.on { background:#e0e9ff; color:#2a4a8c; border-color:#9fb6e0; font-weight:500; }
   #panelBanner { display:none; padding:10px 12px; border-bottom:1px solid #e0e6ee; background:#fff8e0; }
   #panelBanner.shown { display:block; }
   #panelBanner .bnm { font-weight:700; color:#1c2433; font-size:13px; }
@@ -188,20 +185,6 @@
       <option value="living">living only</option>
       <option value="dead">dead only</option>
     </select>
-  </div>
-  <div id="panelTypeRow">
-    <span>events:</span>
-    <button data-t="0" class="pill on">born</button>
-    <button data-t="1" class="pill on">died</button>
-    <button data-t="2" class="pill on">lived</button>
-    <button data-t="3" class="pill on">married</button>
-    <button data-t="4" class="pill on">emig</button>
-    <button data-t="5" class="pill on">immig</button>
-    <button data-t="6" class="pill on">census</button>
-    <button data-t="7" class="pill on">baptized</button>
-    <button data-t="8" class="pill on">buried</button>
-    <button data-t="9" class="pill on">christened</button>
-    <button data-t="10" class="pill on">other</button>
   </div>
   <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><div id="bannerChain" style="display:none;"></div><div id="bannerSummary" style="display:none;"></div></div>
   <ul id="panelList"></ul>
@@ -1472,14 +1455,6 @@ $("inferYrs").addEventListener("input", e => {
 $("winYrs").addEventListener("input", e => {
   dwellWindow = Math.max(1, parseInt(e.target.value, 10) || 6);
   $("winYrsLabel").textContent = dwellWindow;
-  fxCtx.clearRect(0, 0, W, H);
-  updatePanel(true);
-});
-$("panelTypeRow").addEventListener("click", e => {
-  const btn = e.target.closest(".pill"); if (!btn) return;
-  const t = parseInt(btn.dataset.t, 10);
-  if (typeFilter.has(t)) typeFilter.delete(t); else typeFilter.add(t);
-  btn.classList.toggle("on");
   fxCtx.clearRect(0, 0, W, H);
   updatePanel(true);
 });
