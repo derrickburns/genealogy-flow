@@ -20,9 +20,11 @@
     position:fixed; left:14px; right:14px; bottom:14px; z-index:10;
     background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
     padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
-    display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+    display:flex; flex-direction:column; gap:8px;
   }
-  #range { flex:1 1 200px; min-width:200px; }
+  #ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  #ui .uirow.primary { flex-wrap:nowrap; }
+  #range { flex:1 1 auto; min-width:120px; }
   #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
   #ui button:hover { background:#1c3669; }
   #ui button[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
@@ -64,6 +66,16 @@
   }
   #panel.hidden { display:none; }
   #panelHead { padding:8px 12px; border-bottom:1px solid #e0e6ee; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:13px; }
+  #panelInferRow { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid #e0e6ee; font-size:11px; color:#566480; }
+  #panelInferRow input[type=range] { flex:1; min-width:0; }
+  #panelBanner { display:none; padding:10px 12px; border-bottom:1px solid #e0e6ee; background:#fff8e0; }
+  #panelBanner.shown { display:block; }
+  #panelBanner .bnm { font-weight:700; color:#1c2433; font-size:13px; }
+  #panelBanner .bev { color:#566480; font-size:11px; margin-top:2px; }
+  #panelBanner .bcl { float:right; background:none; border:none; color:#888; cursor:pointer; font-size:14px; margin-top:-2px; }
+  #panelBanner details { margin-top:6px; font-size:11px; }
+  #panelBanner details summary { cursor:pointer; color:#566480; }
+  #panelBanner pre { margin:6px 0 0; padding:6px 8px; background:#fffbe9; border:1px solid #f0e6c0; border-radius:4px; font:11px ui-monospace, Menlo, monospace; max-height:280px; overflow:auto; white-space:pre-wrap; word-break:break-word; color:#1c2433; }
   #panelHead button { background:none; border:none; font-size:18px; cursor:pointer; color:#666; padding:0 4px; }
   #panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
   #panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
@@ -123,6 +135,15 @@
         <option value="continuous">continuous</option>
       </select>
     </label>
+    <label>projection
+      <select id="projSel" style="background:#fff;border:1px solid #c0ccd8;border-radius:4px;padding:4px 6px;font:inherit;">
+        <option value="natural" selected>Natural Earth</option>
+        <option value="equal">Equal Earth</option>
+        <option value="equirect">Equirectangular</option>
+        <option value="mercator">Mercator</option>
+        <option value="ortho">Globe</option>
+      </select>
+    </label>
   </span>
   <span class="legend" id="legend" style="display:none;">
     <span><span class="swatch" style="background:#2864dc;"></span>paternal ancestor of root</span>
@@ -137,6 +158,8 @@
 <div id="yearBig">----</div>
 <aside id="panel" class="hidden">
   <div id="panelHead"><span>Events at <span id="panelYear">----</span></span><button id="panelClose">&times;</button></div>
+  <div id="panelInferRow"><label>infer up to <span id="inferYrsLabel">0</span> yrs prior</label><input type="range" id="inferYrs" min="0" max="50" step="1" value="0"></div>
+  <div id="panelBanner"><button class="bcl" id="bannerClear" title="Clear selection">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div><details id="bannerRaw"><summary>GEDCOM record</summary><pre id="bannerRawPre"></pre></details></div>
   <ul id="panelList"></ul>
 </aside>
 <div id="drop">Drop GEDCOM file to load</div>
@@ -147,28 +170,32 @@
   <p style="font-size:11px;margin-top:14px;">Geocoded entirely in your browser. Nothing uploaded.</p>
 </div>
 <div id="ui">
-  <button id="play" disabled>Play</button>
-  <input type="range" id="range" min="0" max="1" step="0.01" value="0">
-  <span id="year">----</span>
-  <label>speed
-    <select id="speed">
-      <option value="0.05">0.25x</option>
-      <option value="0.1">0.5x</option>
-      <option value="0.2" selected>1x</option>
-      <option value="0.5">2.5x</option>
-      <option value="1">5x</option>
-      <option value="2">10x</option>
-    </select>
-  </label>
-  <label>fade
-    <select id="trail">
-      <option value="0.06">short</option>
-      <option value="0.03" selected>medium</option>
-      <option value="0.012">long</option>
-      <option value="0.004">infinite</option>
-    </select>
-  </label>
-  <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
+  <div class="uirow primary">
+    <button id="play" disabled>Play</button>
+    <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
+    <span id="year">----</span>
+  </div>
+  <div class="uirow">
+    <label>speed
+      <select id="speed">
+        <option value="0.05">0.25x</option>
+        <option value="0.1">0.5x</option>
+        <option value="0.2" selected>1x</option>
+        <option value="0.5">2.5x</option>
+        <option value="1">5x</option>
+        <option value="2">10x</option>
+      </select>
+    </label>
+    <label>fade
+      <select id="trail">
+        <option value="0.06">short</option>
+        <option value="0.03" selected>medium</option>
+        <option value="0.012">long</option>
+        <option value="0.004">infinite</option>
+      </select>
+    </label>
+    <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
+  </div>
 </div>
 
 <script type="module">
@@ -185,7 +212,14 @@ const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
 const rootwrap = $("rootwrap"), legend = $("legend");
 
 let W = 0, H = 0;
-const projection = d3.geoNaturalEarth1();
+const PROJECTIONS = {
+  natural: () => d3.geoNaturalEarth1(),
+  equal: () => d3.geoEqualEarth(),
+  equirect: () => d3.geoEquirectangular(),
+  mercator: () => d3.geoMercator(),
+  ortho: () => d3.geoOrthographic().clipAngle(90),
+};
+let projection = PROJECTIONS.natural();
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
 let world = null, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
@@ -199,6 +233,7 @@ let placesList = [];
 let highlightedDwell = -1;
 let highlightInferredYear = -1, highlightInferredSrcYear = -1;
 let indiDwells = new Map();
+let inferenceYears = 0;
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
@@ -522,37 +557,6 @@ function drawHighlight() {
     fxCtx.lineWidth = 3;
     fxCtx.beginPath(); fxCtx.arc(sx, sy, radius, 0, Math.PI * 2); fxCtx.stroke();
   }
-  const ind = lastIndividuals[dwellIndi[i]];
-  if (ind) {
-    const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
-    const isInferred = highlightInferredYear >= 0;
-    const verb = isInferred ? "lived in (inferred)" : (EVENT_TYPE_LABEL[dwellType[i]] || "event");
-    const line1 = ind.name;
-    const yearShown = isInferred ? highlightInferredYear : dwellY[i];
-    const inferTag = isInferred ? `  (based on ${highlightInferredSrcYear})` : "";
-    const line2 = `${yearShown} - ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
-    fxCtx.textAlign = "center"; fxCtx.textBaseline = "bottom";
-    fxCtx.font = "bold 14px -apple-system, sans-serif";
-    const w1 = fxCtx.measureText(line1).width;
-    fxCtx.font = "12px -apple-system, sans-serif";
-    const w2 = fxCtx.measureText(line2).width;
-    const maxW = Math.max(w1, w2);
-    const margin = 6;
-    let lx = sx;
-    const half = maxW / 2 + margin;
-    if (lx - half < margin) lx = half + margin;
-    if (lx + half > W - margin) lx = W - half - margin;
-    let y1 = sy - 32, y2 = sy - 16;
-    if (y1 - 14 < margin) { y1 = sy + 30; y2 = sy + 46; }
-    fxCtx.font = "bold 14px -apple-system, sans-serif";
-    fxCtx.lineWidth = 4; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
-    fxCtx.strokeText(line1, lx, y1);
-    fxCtx.fillStyle = "rgba(20,28,48,1)"; fxCtx.fillText(line1, lx, y1);
-    fxCtx.font = "12px -apple-system, sans-serif";
-    fxCtx.lineWidth = 3.5; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
-    fxCtx.strokeText(line2, lx, y2);
-    fxCtx.fillStyle = "rgba(60,70,90,1)"; fxCtx.fillText(line2, lx, y2);
-  }
 }
 
 let last = 0;
@@ -613,6 +617,7 @@ function parseGedcom(text) {
   let cur = null;
   let curEvent = null, curDate = null, curPlace = null;
   let curName = null, curSex = null, curBirth = null, curDeath = null, curFamc = null;
+  let curRaw = [];
 
   function flushEvent() {
     if (cur && mode === "INDI" && curEvent) {
@@ -631,6 +636,7 @@ function parseGedcom(text) {
       cur.birth_year = curBirth;
       cur.death_year = curDeath;
       cur.famc = curFamc;
+      cur.raw = curRaw.join("\n");
       cur.events.sort((a, b) => a.year - b.year);
       individuals.push(cur);
     } else if (cur && mode === "FAM") {
@@ -638,6 +644,7 @@ function parseGedcom(text) {
     }
     cur = null; mode = null;
     curName = null; curSex = null; curBirth = null; curDeath = null; curFamc = null;
+    curRaw = [];
   }
 
   for (const raw of lines) {
@@ -650,11 +657,12 @@ function parseGedcom(text) {
       flushRecord();
       const mi = rest.match(/^(@[^@]+@)\s+INDI/);
       const mf = rest.match(/^(@[^@]+@)\s+FAM/);
-      if (mi) { cur = { id: mi[1], events: [] }; mode = "INDI"; }
+      if (mi) { cur = { id: mi[1], events: [] }; mode = "INDI"; curRaw = [raw]; }
       else if (mf) { cur = { id: mf[1], husb: null, wife: null, chil: [] }; mode = "FAM"; }
       continue;
     }
     if (!cur) continue;
+    if (mode === "INDI") curRaw.push(raw);
     const sp2 = rest.indexOf(" ");
     const tag = sp2 >= 0 ? rest.slice(0, sp2) : rest;
     const value = sp2 >= 0 ? rest.slice(sp2 + 1) : "";
@@ -1228,10 +1236,28 @@ $("migViz").addEventListener("change", e => {
   migrationViz = e.target.value;
   fxCtx.clearRect(0, 0, W, H);
 });
+$("projSel").addEventListener("change", e => {
+  const key = e.target.value;
+  if (PROJECTIONS[key]) {
+    projection = PROJECTIONS[key]();
+    zoomTransform = { k: 1, x: 0, y: 0 };
+    d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity);
+    resize();
+  }
+});
 
 const panelEl = $("panel"), panelList = $("panelList"), panelYear = $("panelYear");
 $("panelToggle").addEventListener("click", () => { panelEl.classList.toggle("hidden"); if (!panelEl.classList.contains("hidden")) updatePanel(true); });
 $("panelClose").addEventListener("click", () => panelEl.classList.add("hidden"));
+$("bannerClear").addEventListener("click", () => {
+  highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
+  fxCtx.clearRect(0, 0, W, H); updatePanel(true);
+});
+$("inferYrs").addEventListener("input", e => {
+  inferenceYears = parseInt(e.target.value, 10) || 0;
+  $("inferYrsLabel").textContent = inferenceYears;
+  updatePanel(true);
+});
 
 let lastPanelYear = -9999, lastPanelTime = 0;
 function updatePanel(force) {
@@ -1259,7 +1285,7 @@ function updatePanel(force) {
   }
 
   const MAX_LIFESPAN = 100;
-  for (let idx = 0; idx < lastIndividuals.length; idx++) {
+  if (inferenceYears > 0) for (let idx = 0; idx < lastIndividuals.length; idx++) {
     if (visibleIndis.has(idx)) continue;
     const ind = lastIndividuals[idx];
     if (!ind.events.length) continue;
@@ -1273,6 +1299,7 @@ function updatePanel(force) {
     let lastE = null;
     for (const e of ind.events) { if (e.year > yint) break; lastE = e; }
     if (!lastE) continue;
+    if (yint - lastE.year > inferenceYears) continue;
     const dwellsForIndi = indiDwells.get(idx);
     let srcDwell = -1;
     if (dwellsForIndi) {
@@ -1308,6 +1335,25 @@ function updatePanel(force) {
     }
   }).join("");
   panelList.innerHTML = html || `<li style="color:#888;padding:14px;">No events visible.</li>`;
+  updateBanner();
+}
+
+function updateBanner() {
+  const banner = $("panelBanner"), bnm = $("bannerName"), bev = $("bannerEvent");
+  if (highlightedDwell < 0) { banner.classList.remove("shown"); return; }
+  const i = highlightedDwell;
+  const ind = lastIndividuals[dwellIndi[i]];
+  if (!ind) { banner.classList.remove("shown"); return; }
+  const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+  const isInferred = highlightInferredYear >= 0;
+  const verb = isInferred ? "lived in (inferred)" : (EVENT_TYPE_LABEL[dwellType[i]] || "event");
+  const yearShown = isInferred ? highlightInferredYear : dwellY[i];
+  const inferTag = isInferred ? `  (based on ${highlightInferredSrcYear})` : "";
+  bnm.textContent = ind.name;
+  bev.textContent = `${yearShown} - ${verb}${placeStr ? " " + placeStr : ""}${inferTag}`;
+  const rawPre = $("bannerRawPre");
+  if (rawPre) rawPre.textContent = ind.raw || "(raw GEDCOM not captured)";
+  banner.classList.add("shown");
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
