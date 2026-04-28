@@ -360,6 +360,17 @@ function applyZoom() {
   if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
 }
 
+let _drawPending = false;
+function requestDraw() {
+  if (_drawPending) return;
+  _drawPending = true;
+  requestAnimationFrame(() => {
+    _drawPending = false;
+    drawBase();
+    if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+  });
+}
+
 const zoomBehavior = d3.zoom()
   .scaleExtent([1, 64])
   .filter(e => {
@@ -388,9 +399,9 @@ const dragRotate = d3.drag()
       Math.max(-90, Math.min(90, r0[1] - (e.y - this._y) * k)),
       r0[2],
     ]);
-    drawBase();
-    projectAll();
-    fxCtx.clearRect(0, 0, W, H);
+    requestDraw();
+  })
+  .on("end", function() {
     updatePanel(true);
   });
 d3.select(fxCanvas).call(dragRotate);
@@ -2185,6 +2196,12 @@ function applyZoom(){
   applyProjectionFromZoom();
   drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
 }
+let _drawPending=false;
+function requestDraw(){
+  if (_drawPending) return;
+  _drawPending=true;
+  requestAnimationFrame(()=>{ _drawPending=false; drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); });
+}
 const zoomBehavior=d3.zoom().scaleExtent([1,64])
   .filter(e=>{ if(e.type==="wheel"){e.preventDefault(); return true;} if(e.type==="dblclick") return true; if(projectionName==="ortho") return false; return !e.button; })
   .on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
@@ -2196,8 +2213,9 @@ const dragRotate=d3.drag()
   .on("drag", function(e){
     const k=200/projection.scale(); const r0=this._r;
     projection.rotate([r0[0]+(e.x-this._x)*k, Math.max(-90,Math.min(90,r0[1]-(e.y-this._y)*k)), r0[2]]);
-    drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
-  });
+    requestDraw();
+  })
+  .on("end", function(){ updatePanel(true); });
 d3.select(fxCanvas).call(dragRotate);
 function drawBase(){
   if (!world) return;
