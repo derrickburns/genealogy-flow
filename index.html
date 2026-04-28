@@ -527,7 +527,11 @@ fxCanvas.addEventListener("gesturechange", e => {
   e.preventDefault();
   if (projectionName === "ortho" && _gestureRot0) {
     const r = _gestureRot0;
-    projection.rotate([r[0] - e.rotation, r[1], r[2]]);
+    // Damp rotation by 1/sqrt(k): at high zoom each visual degree of rotation
+    // moves more pixels, so the same physical twist should produce fewer
+    // logical degrees of rotation to keep the felt "swing" similar.
+    const damp = 1 / Math.sqrt(Math.max(1, zoomTransform.k));
+    projection.rotate([r[0] - e.rotation * damp, r[1], r[2]]);
     requestDraw();
   }
 });
