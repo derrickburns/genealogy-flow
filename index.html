@@ -995,7 +995,9 @@ function frame(activeTrailFade) {
     }
   }
 
-  if (kinLinesN > 0 && lastIndiIdxById) drawKinLines(lo, hi, y, dw);
+  // Kin lines are noisy at low zoom (lines criss-cross the whole world).
+  // Only draw when zoomed in enough that they connect nearby relatives.
+  if (kinLinesN > 0 && lastIndiIdxById && zoomTransform.k >= 4) drawKinLines(lo, hi, y, dw);
   if (highlightedDwell >= 0) drawHighlight();
 }
 
