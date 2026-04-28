@@ -725,7 +725,7 @@ function tick(now) {
   if (_baseDirty) {
     _baseDirty = false;
     drawBase();
-    if (timelineLoaded) projectAll();
+    if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
   }
   frame(parseFloat(trailSel.value));
   updatePanel(false);
@@ -2509,7 +2509,7 @@ function tick(now){
   const yint=Math.floor(curYear);
   yearLabel.textContent=yint; yearBig.textContent=yint;
   maybeUpdateHistoricalBasemap();
-  if (_baseDirty){ _baseDirty=false; drawBase(); projectAll(); }
+  if (_baseDirty){ _baseDirty=false; drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); }
   frame(parseFloat(trailSel.value));
   updatePanel(false);
   requestAnimationFrame(tick);
