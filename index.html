@@ -286,6 +286,10 @@ function ensureHiResWorld() {
     .catch(() => { worldHiLoading = false; });
 }
 function activeWorld() {
+  // LOD: while the user is interacting (drag/zoom/wheel), always use the
+  // coarse 50m topology so per-frame draw is ~10x cheaper. Hi-res 10m only
+  // kicks in when motion stops and the view settles.
+  if (_interacting) return world;
   if (zoomTransform.k >= HI_RES_ZOOM_THRESHOLD) {
     if (worldHi) return worldHi;
     ensureHiResWorld();
