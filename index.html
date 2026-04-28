@@ -1338,32 +1338,59 @@ function descendantSet(rootId, childrenOf) {
   return set;
 }
 
+function expandDescendants(seedSet, childrenOf, excludeId) {
+  // Returns the set of `seedSet` plus everyone reachable from any seed by walking children.
+  const out = new Set(seedSet);
+  const queue = [...seedSet];
+  while (queue.length) {
+    const id = queue.shift();
+    const kids = childrenOf.get(id);
+    if (!kids) continue;
+    for (const k of kids) {
+      if (out.has(k) || k === excludeId) continue;
+      out.add(k);
+      queue.push(k);
+    }
+  }
+  return out;
+}
+
 function classifySides(rootId, parentsOf, childrenOf, individuals) {
-  // 0 = paternal ancestor of root, 1 = maternal ancestor of root, 2 = everyone else
+  // 0 = paternal blood (paternal ancestors + their descendants — siblings, cousins on father's side, etc.)
+  // 1 = maternal blood (excluding anyone already in paternal)
+  // 2 = other = NOT blood-related to root (in-laws, unrelated entries; root itself stays here too)
   const sideById = new Map();
   for (const ind of individuals) sideById.set(ind.id, 2);
   if (!rootId || !parentsOf.has(rootId)) return sideById;
   const [fa, mo] = parentsOf.get(rootId);
   const pat = ancestorSet(fa, parentsOf);
   const mat = ancestorSet(mo, parentsOf);
-  for (const id of pat) sideById.set(id, 0);
-  for (const id of mat) if (!pat.has(id)) sideById.set(id, 1);
+  const patBlood = expandDescendants(pat, childrenOf, rootId);
+  const matBlood = expandDescendants(mat, childrenOf, rootId);
+  for (const id of patBlood) sideById.set(id, 0);
+  for (const id of matBlood) if (!patBlood.has(id)) sideById.set(id, 1);
+  // Root is special — remains as "other" so the legend isn't confusing,
+  // but it's the focus and rendered with the highlight rings, not the side color.
+  sideById.set(rootId, 2);
   return sideById;
 }
 
 function bloodRelatives(rootId, parentsOf, childrenOf) {
+  // True blood: paternal-line blood ∪ maternal-line blood ∪ root (and root's descendants
+  // who descend through both sides, captured via the patBlood traversal).
   const set = new Set();
-  if (!rootId) return set;
-  const stack = [rootId];
-  while (stack.length) {
-    const id = stack.pop();
-    if (set.has(id)) continue;
-    set.add(id);
-    const p = parentsOf.get(id);
-    if (p) { if (p[0]) stack.push(p[0]); if (p[1]) stack.push(p[1]); }
-    const c = childrenOf.get(id);
-    if (c) for (const k of c) stack.push(k);
+  if (!rootId || !parentsOf.has(rootId)) {
+    if (rootId) set.add(rootId);
+    return set;
   }
+  const [fa, mo] = parentsOf.get(rootId);
+  const pat = ancestorSet(fa, parentsOf);
+  const mat = ancestorSet(mo, parentsOf);
+  const patBlood = expandDescendants(pat, childrenOf, rootId);
+  const matBlood = expandDescendants(mat, childrenOf, rootId);
+  for (const id of patBlood) set.add(id);
+  for (const id of matBlood) set.add(id);
+  set.add(rootId);
   return set;
 }
 
