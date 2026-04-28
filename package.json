@@ -26,7 +26,8 @@
     "build-timeline": "dist/bin/build-timeline.js",
     "migrations": "dist/bin/migrations.js",
     "summarize-gedcom": "dist/bin/summarize.js",
-    "biographer": "dist/bin/biographer.js"
+    "biographer": "dist/bin/biographer.js",
+    "audience": "dist/bin/audience.js"
   },
   "scripts": {
     "parse-gedcom": "tsx src/bin/parse-gedcom.ts",
@@ -36,6 +37,7 @@
     "migrations": "tsx src/bin/migrations.ts",
     "summarize-gedcom": "tsx src/bin/summarize.ts",
     "biographer": "tsx src/bin/biographer.ts",
+    "audience": "tsx src/bin/audience.ts",
     "typecheck": "tsc --noEmit",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/finalize-bins.mjs",
     "prepublishOnly": "pnpm run build"

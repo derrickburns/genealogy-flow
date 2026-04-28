@@ -50,6 +50,7 @@ pnpm parse-gedcom my.ged individuals.json
 | `pnpm migrations <ged> [--out X]`          | Classify moves against historical patterns.  |
 | `pnpm summarize-gedcom <ged>`              | 1-3 sentence Claude summaries (cached).      |
 | `pnpm biographer <ged> [--mode ...]`       | Source-cited biographical prose.             |
+| `pnpm audience <ged> [--living-only]`      | Rank individuals by ancestor coverage.       |
 
 `summarize-gedcom` and `biographer` require `ANTHROPIC_API_KEY`. They use
 prompt caching and resume-safe JSON sidecars (existing entries are kept;
@@ -78,6 +79,25 @@ pnpm build-timeline individuals.json places.json timeline.json
 pnpm migrations my.ged
 pnpm biographer my.ged --mode standard
 ```
+
+### Picking the audience
+
+`pnpm audience my.ged --top 50 --living-only` ranks individuals by
+ancestor coverage. For each candidate it walks up to N generations
+(default 6) and computes:
+
+- **Score** = Σ over ancestors of `(1 / 2^gen) × richness(ancestor)`
+  where richness counts dated events plus source citations.
+- **PCI** (Pedigree Completeness Index) = ancestors found / 2^N expected.
+
+`--living-only` keeps individuals with no death year and a birth year
+within 110 years of `--as-of` (default current year). `--leaves-only`
+keeps individuals with no recorded marriages. `--format csv|json|table`
+controls output.
+
+The top of the list is whom this GEDCOM is most "about" — the people
+whose direct ancestor chain is most thoroughly documented. Distribute
+the viewer URL to them.
 
 ## Notes
 
