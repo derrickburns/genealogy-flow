@@ -20,8 +20,9 @@
     position:fixed; left:14px; right:14px; bottom:14px; z-index:10;
     background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
     padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
-    display:grid; grid-template-columns: auto 1fr auto auto auto auto; gap:12px; align-items:center;
+    display:flex; flex-wrap:wrap; gap:12px; align-items:center;
   }
+  #range { flex:1 1 200px; min-width:200px; }
   #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
   #ui button:hover { background:#1c3669; }
   #ui button[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
@@ -523,15 +524,27 @@ function drawHighlight() {
     const verb = EVENT_TYPE_LABEL[dwellType[i]] || "event";
     const line1 = ind.name;
     const line2 = `${dwellY[i]} - ${verb}${placeStr ? " " + placeStr : ""}`;
-    fxCtx.font = "bold 14px -apple-system, sans-serif";
     fxCtx.textAlign = "center"; fxCtx.textBaseline = "bottom";
+    fxCtx.font = "bold 14px -apple-system, sans-serif";
+    const w1 = fxCtx.measureText(line1).width;
+    fxCtx.font = "12px -apple-system, sans-serif";
+    const w2 = fxCtx.measureText(line2).width;
+    const maxW = Math.max(w1, w2);
+    const margin = 6;
+    let lx = sx;
+    const half = maxW / 2 + margin;
+    if (lx - half < margin) lx = half + margin;
+    if (lx + half > W - margin) lx = W - half - margin;
+    let y1 = sy - 32, y2 = sy - 16;
+    if (y1 - 14 < margin) { y1 = sy + 30; y2 = sy + 46; }
+    fxCtx.font = "bold 14px -apple-system, sans-serif";
     fxCtx.lineWidth = 4; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
-    fxCtx.strokeText(line1, sx, sy - 32);
-    fxCtx.fillStyle = "rgba(20,28,48,1)"; fxCtx.fillText(line1, sx, sy - 32);
+    fxCtx.strokeText(line1, lx, y1);
+    fxCtx.fillStyle = "rgba(20,28,48,1)"; fxCtx.fillText(line1, lx, y1);
     fxCtx.font = "12px -apple-system, sans-serif";
     fxCtx.lineWidth = 3.5; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
-    fxCtx.strokeText(line2, sx, sy - 16);
-    fxCtx.fillStyle = "rgba(60,70,90,1)"; fxCtx.fillText(line2, sx, sy - 16);
+    fxCtx.strokeText(line2, lx, y2);
+    fxCtx.fillStyle = "rgba(60,70,90,1)"; fxCtx.fillText(line2, lx, y2);
   }
 }
 
@@ -1337,7 +1350,8 @@ html, body { margin:0; padding:0; background:#cfe2ec; color:#1c2433; font:13px/1
 canvas { position:fixed; inset:0; display:block; image-rendering:pixelated; }
 #base { z-index:1; } #fx { z-index:2; }
 #yearBig { position:fixed; inset:0; z-index:3; pointer-events:none; display:flex; align-items:center; justify-content:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace; font-variant-numeric: tabular-nums; font-weight:700; font-size:42vh; line-height:0.85; color:rgba(20,30,55,0.06); letter-spacing:-0.02em; user-select:none; mix-blend-mode:multiply; }
-#ui { position:fixed; left:14px; right:14px; bottom:14px; z-index:10; background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:grid; grid-template-columns:auto 1fr auto auto auto; gap:12px; align-items:center; }
+#ui { position:fixed; left:14px; right:14px; bottom:14px; z-index:10; background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+#range { flex:1 1 200px; min-width:200px; }
 #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
 #year { font-variant-numeric:tabular-nums; font-weight:600; font-size:18px; min-width:60px; }
 #range { width:100%; -webkit-appearance:none; appearance:none; height:4px; background:#c0ccd8; border-radius:2px; }
