@@ -107,7 +107,6 @@
   <span id="stats">starting...</span>
   <button id="pick">Open .ged</button>
   <button id="export" disabled>Export HTML</button>
-  <button id="panelToggle">List</button>
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED">
   <span id="rootwrap" style="display:none;">
     <label style="margin-left:6px;">root
@@ -161,8 +160,8 @@
 <canvas id="base"></canvas>
 <canvas id="fx"></canvas>
 <div id="yearBig">----</div>
-<aside id="panel" class="hidden">
-  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span><button id="panelClose">&times;</button></div>
+<aside id="panel">
+  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span></div>
   <div id="panelInferRow">
     <label>window<span id="winYrsLabel">6</span>y</label>
     <input type="range" id="winYrs" min="1" max="50" step="1" value="6" title="show events from this many years prior">
@@ -286,10 +285,8 @@ let lastSideById = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
 
 function resize() {
-  const panelOpen = panelEl && !panelEl.classList.contains("hidden");
-  const panelW = panelOpen ? 320 : 0;
-  document.documentElement.style.setProperty("--right-margin", panelOpen ? (panelW + 14) + "px" : "14px");
-  W = window.innerWidth;
+  const panelW = 320;
+  W = window.innerWidth - panelW;
   H = window.innerHeight;
   for (const c of [baseCanvas, fxCanvas]) {
     c.width = Math.floor(W * devicePixelRatio); c.height = Math.floor(H * devicePixelRatio);
@@ -302,8 +299,8 @@ function resize() {
   const uiH = uiEl ? uiEl.offsetHeight + 24 : 110;
   document.documentElement.style.setProperty("--panel-top", titleH + "px");
   document.documentElement.style.setProperty("--panel-bottom", uiH + "px");
-  mapW = W - panelW; mapTop = titleH; mapBottom = H - uiH;
-  projection.fitExtent([[10, titleH], [mapW - 10, H - uiH]], { type: "Sphere" });
+  mapW = W; mapTop = titleH; mapBottom = H - uiH;
+  projection.fitExtent([[10, titleH], [W - 10, H - uiH]], { type: "Sphere" });
   baseScale = projection.scale();
   baseTranslate = projection.translate().slice();
   applyZoom();
@@ -1351,8 +1348,6 @@ $("projSel").addEventListener("change", e => {
 });
 
 const panelEl = $("panel"), panelList = $("panelList"), panelYear = $("panelYear");
-$("panelToggle").addEventListener("click", () => { panelEl.classList.toggle("hidden"); resize(); if (!panelEl.classList.contains("hidden")) updatePanel(true); });
-$("panelClose").addEventListener("click", () => { panelEl.classList.add("hidden"); resize(); });
 $("bannerClear").addEventListener("click", () => {
   highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
   fxCtx.clearRect(0, 0, W, H); updatePanel(true);
@@ -1609,7 +1604,6 @@ label { color:#566480; font-size:11px; }
 <body>
 <div id="title">
   <b>${label}</b>
-  <button id="panelToggle">List</button>
   <label>root <select id="rootSel"></select></label>
   <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
   <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
@@ -1627,8 +1621,8 @@ label { color:#566480; font-size:11px; }
 <canvas id="base"></canvas>
 <canvas id="fx"></canvas>
 <div id="yearBig">----</div>
-<aside id="panel" class="hidden">
-  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span><button id="panelClose">&times;</button></div>
+<aside id="panel">
+  <div id="panelHead"><span>Events at <span id="panelYear">----</span></span></div>
   <div id="panelInferRow"><label>window<span id="winYrsLabel">6</span>y</label><input type="range" id="winYrs" min="1" max="50" step="1" value="6"></div>
   <div id="panelInferRow"><label>infer<span id="inferYrsLabel">0</span>y</label><input type="range" id="inferYrs" min="0" max="50" step="1" value="0"></div>
   <div id="panelStatusRow"><span>status:</span><select id="statusFilt"><option value="all" selected>all</option><option value="living">living only</option><option value="dead">dead only</option></select></div>
@@ -1758,10 +1752,8 @@ function maybeUpdateHistoricalBasemap(){
   fetchHistoricalBasemap(snap).then(j=>{ if(activeHistoricalYear===snap){currentHistoricalWorld=j; drawBase();} });
 }
 function resize(){
-  const panelOpen=!panelEl.classList.contains("hidden");
-  const panelW=panelOpen?320:0;
-  document.documentElement.style.setProperty("--right-margin", panelOpen?(panelW+14)+"px":"14px");
-  W=window.innerWidth; H=window.innerHeight;
+  const panelW=320;
+  W=window.innerWidth-panelW; H=window.innerHeight;
   for (const c of [baseCanvas,fxCanvas]){
     c.width=Math.floor(W*devicePixelRatio); c.height=Math.floor(H*devicePixelRatio);
     c.style.width=W+"px"; c.style.height=H+"px";
@@ -1773,8 +1765,8 @@ function resize(){
   const uiH=uiEl?uiEl.offsetHeight+24:110;
   document.documentElement.style.setProperty("--panel-top",titleH+"px");
   document.documentElement.style.setProperty("--panel-bottom",uiH+"px");
-  mapW=W-panelW; mapTop=titleH; mapBottom=H-uiH;
-  projection.fitExtent([[10,titleH],[mapW-10,H-uiH]],{type:"Sphere"});
+  mapW=W; mapTop=titleH; mapBottom=H-uiH;
+  projection.fitExtent([[10,titleH],[W-10,H-uiH]],{type:"Sphere"});
   baseScale=projection.scale(); baseTranslate=projection.translate().slice();
   applyZoom();
 }
@@ -2100,8 +2092,6 @@ range.addEventListener("pointerdown",()=>{ isDraggingSlider=true; });
 range.addEventListener("pointerup",()=>{ isDraggingSlider=false; });
 range.addEventListener("pointercancel",()=>{ isDraggingSlider=false; });
 $("rot").addEventListener("input",e=>{ projection.rotate([parseFloat(e.target.value)||0,0,0]); applyZoom(); });
-$("panelToggle").addEventListener("click",()=>{ panelEl.classList.toggle("hidden"); resize(); if (!panelEl.classList.contains("hidden")) updatePanel(true); });
-$("panelClose").addEventListener("click",()=>{ panelEl.classList.add("hidden"); resize(); });
 $("bannerClear").addEventListener("click",clearHighlight);
 $("inferYrs").addEventListener("input",e=>{ inferenceYears=parseInt(e.target.value,10)||0; $("inferYrsLabel").textContent=inferenceYears; updatePanel(true); });
 $("winYrs").addEventListener("input",e=>{ dwellWindow=Math.max(1,parseInt(e.target.value,10)||6); $("winYrsLabel").textContent=dwellWindow; fxCtx.clearRect(0,0,W,H); updatePanel(true); });
