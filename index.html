@@ -470,7 +470,7 @@ function drawGreatCircle(ctx, lon0, lat0, lon1, lat1) {
   let started = false;
   ctx.beginPath();
   for (let i = 0; i <= segs; i++) {
-    const p = projection(interp(i / segs));
+    const p = safeProject(interp(i / segs));
     if (!p) { started = false; continue; }
     if (!started) { ctx.moveTo(p[0], p[1]); started = true; }
     else ctx.lineTo(p[0], p[1]);
@@ -479,16 +479,26 @@ function drawGreatCircle(ctx, lon0, lat0, lon1, lat1) {
 }
 
 function positionOnGreatCircle(lon0, lat0, lon1, lat1, t) {
-  return projection(d3.geoInterpolate([lon0, lat0], [lon1, lat1])(t));
+  return safeProject(d3.geoInterpolate([lon0, lat0], [lon1, lat1])(t));
 }
 
+function safeProject(lonlat) {
+  const p = projection(lonlat);
+  if (!p) return null;
+  if (projection.clipAngle && projection.clipAngle() < 180) {
+    const r = projection.rotate ? projection.rotate() : [0, 0, 0];
+    const center = [-r[0], -r[1]];
+    if (d3.geoDistance(lonlat, center) > Math.PI / 2 + 0.001) return null;
+  }
+  return p;
+}
 function projectAll() {
   for (let i = 0; i < dwellLat.length; i++) {
-    const p = projection([dwellLon[i], dwellLat[i]]);
+    const p = safeProject([dwellLon[i], dwellLat[i]]);
     if (p) { dwellSx[i] = p[0]; dwellSy[i] = p[1]; } else { dwellSx[i] = -9999; dwellSy[i] = -9999; }
   }
   for (let i = 0; i < flowFromLat.length; i++) {
-    const a = projection([flowFromLon[i], flowFromLat[i]]); const b = projection([flowToLon[i], flowToLat[i]]);
+    const a = safeProject([flowFromLon[i], flowFromLat[i]]); const b = safeProject([flowToLon[i], flowToLat[i]]);
     flowFromSx[i] = a ? a[0] : -9999; flowFromSy[i] = a ? a[1] : -9999;
     flowToSx[i] = b ? b[0] : -9999; flowToSy[i] = b ? b[1] : -9999;
   }
