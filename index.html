@@ -221,7 +221,7 @@ function applyZoom() {
   projection.scale(baseScale * t.k);
   projection.translate([baseTranslate[0] * t.k + t.x, baseTranslate[1] * t.k + t.y]);
   drawBase();
-  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
 }
 
 const zoomBehavior = d3.zoom()
@@ -498,13 +498,40 @@ function frame(activeTrailFade) {
     const i = highlightedDwell;
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx > -1000) {
-      const phase = (performance.now() % 1200) / 1200;
-      const rr = 8 + phase * 18;
-      fxCtx.strokeStyle = `rgba(255,180,30,${(0.85 * (1 - phase)).toFixed(3)})`;
+      const remaining = Math.max(0, (highlightUntil - performance.now()) / HIGHLIGHT_DURATION_MS);
+      const sd = dwellSide[i], ps = dwellSrc[i];
+      const dotColor = colorForFinal(sd, ps);
+      fxCtx.fillStyle = `rgba(${dotColor[0]},${dotColor[1]},${dotColor[2]},1)`;
+      drawShape(fxCtx, sx, sy, 7, ps);
+      fxCtx.strokeStyle = "rgba(255,255,255,0.9)";
       fxCtx.lineWidth = 2;
-      fxCtx.beginPath(); fxCtx.arc(sx, sy, rr, 0, Math.PI * 2); fxCtx.stroke();
-      fxCtx.strokeStyle = `rgba(255,180,30,${(0.4 * (1 - phase)).toFixed(3)})`;
-      fxCtx.beginPath(); fxCtx.arc(sx, sy, rr + 6, 0, Math.PI * 2); fxCtx.stroke();
+      if (ps === 2) fxCtx.strokeRect(sx - 7, sy - 7, 14, 14);
+      else if (ps === 1) { fxCtx.beginPath(); fxCtx.moveTo(sx, sy - 7); fxCtx.lineTo(sx + 7, sy); fxCtx.lineTo(sx, sy + 7); fxCtx.lineTo(sx - 7, sy); fxCtx.closePath(); fxCtx.stroke(); }
+      else { fxCtx.beginPath(); fxCtx.arc(sx, sy, 7, 0, Math.PI * 2); fxCtx.stroke(); }
+      const t = performance.now() / 1000;
+      for (let rr = 0; rr < 3; rr++) {
+        const phase = ((t + rr * 0.45) % 1.4) / 1.4;
+        const radius = 10 + phase * 60;
+        fxCtx.strokeStyle = `rgba(255,180,30,${(0.7 * (1 - phase) * remaining).toFixed(3)})`;
+        fxCtx.lineWidth = 2.5;
+        fxCtx.beginPath(); fxCtx.arc(sx, sy, radius, 0, Math.PI * 2); fxCtx.stroke();
+      }
+      const ind = lastIndividuals[dwellIndi[i]];
+      if (ind) {
+        const placeStr = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+        const verb = EVENT_TYPE_LABEL[dwellType[i]] || "event";
+        const line1 = ind.name;
+        const line2 = `${dwellY[i]} - ${verb}${placeStr ? " " + placeStr : ""}`;
+        fxCtx.font = "bold 13px -apple-system, sans-serif";
+        fxCtx.textAlign = "center"; fxCtx.textBaseline = "bottom";
+        fxCtx.lineWidth = 3.5; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
+        fxCtx.strokeText(line1, sx, sy - 28);
+        fxCtx.fillStyle = "rgba(20,28,48,1)"; fxCtx.fillText(line1, sx, sy - 28);
+        fxCtx.font = "11px -apple-system, sans-serif";
+        fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(255,255,255,0.95)";
+        fxCtx.strokeText(line2, sx, sy - 14);
+        fxCtx.fillStyle = "rgba(60,70,90,1)"; fxCtx.fillText(line2, sx, sy - 14);
+      }
     }
   }
 }
@@ -1203,6 +1230,8 @@ function updatePanel(force) {
     const sd = dwellSide[i];
     if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
     if (curFilter === "blood" && !dwellBlood[i]) continue;
+    const sx = dwellSx[i], sy = dwellSy[i];
+    if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
     rows.push(i);
   }
   rows.sort((a, b) => dwellY[b] - dwellY[a] || dwellSide[a] - dwellSide[b]);
@@ -1221,10 +1250,16 @@ function updatePanel(force) {
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+const HIGHLIGHT_DURATION_MS = 8000;
 panelList.addEventListener("click", e => {
   const li = e.target.closest("li[data-idx]"); if (!li) return;
-  highlightedDwell = parseInt(li.dataset.idx, 10);
-  highlightUntil = performance.now() + 4000;
+  const i = parseInt(li.dataset.idx, 10);
+  highlightedDwell = i;
+  highlightUntil = performance.now() + HIGHLIGHT_DURATION_MS;
+  curYear = dwellY[i];
+  range.value = curYear;
+  if (playing) { playing = false; playBtn.textContent = "Play"; }
+  fxCtx.clearRect(0, 0, W, H);
 });
 
 $("pick").addEventListener("click", () => fileInp.click());
