@@ -1522,23 +1522,17 @@ function tick(now) {
     updateStatusLabels(yint);
   }
   $("centerBtn").disabled = highlightedDwell < 0;
-  // While the Options menu is open, skip the heavy redraw pipeline so the
-  // main thread is free to handle <select> dropdowns and slider drags.
-  // The map state freezes visually but stays consistent; on close we
-  // mark dirty and the loop resumes.
-  if (!_menuOpen) {
-    maybeUpdateHistoricalBasemap();
-    const stillLerping = lerpDisplayTransform();
-    if (_baseDirty || stillLerping) {
-      _baseDirty = false;
-      applyProjectionFromZoom();
-      drawBase();
-      if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
-    }
-    frame(parseFloat(trailSel.value));
-    updatePanel(false);
-    updateNowMarker();
+  maybeUpdateHistoricalBasemap();
+  const stillLerping = lerpDisplayTransform();
+  if (_baseDirty || stillLerping) {
+    _baseDirty = false;
+    applyProjectionFromZoom();
+    drawBase();
+    if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
   }
+  frame(parseFloat(trailSel.value));
+  updatePanel(false);
+  updateNowMarker();
   requestAnimationFrame(tick);
 }
 
