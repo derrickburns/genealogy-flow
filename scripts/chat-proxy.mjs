@@ -59,6 +59,11 @@ function startProc(system, model) {
     }
   });
   proc.on("exit", (code, signal) => {
+    if (_proc !== proc) {
+      // A reset already replaced _proc with a newer instance; this exit
+      // event is a stale notification for the killed predecessor — ignore it.
+      return;
+    }
     console.warn(`[chat-proxy] claude exited code=${code} signal=${signal}`);
     _proc = null;
     if (_activeRequest) { _activeRequest.onError(new Error(`claude exited ${code}/${signal}`)); _activeRequest = null; }

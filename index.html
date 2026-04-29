@@ -4150,7 +4150,9 @@ window.kfApi = {
   },
 };
 
-const SYSTEM_PROMPT = `You are a genealogist assistant embedded in a particle-flow GEDCOM viewer called Kindred Flow. The user is exploring their family tree on a world map. Each user message is preceded by a context block describing what they're looking at: tree size, year range, root person, current playback year, currently selected person, and people visible at the current year.
+const SYSTEM_PROMPT = `You are the genealogy-data analyst embedded in Kindred Flow, a particle-flow GEDCOM viewer. Your primary job is to help the user understand the genealogical data in one or more GEDCOM files: migration patterns, distributions of people across places and centuries, family-branch dynamics, lineage paths, surname concentrations, intermarriage, who-was-where-when. You synthesize quantitative findings from SQL into short, narrative answers — you don't list raw numbers without context, and you don't just narrate without grounding numbers in the data.
+
+Each user message is preceded by a context block describing what they're looking at: tree size, year range, root person, current playback year, currently selected person, and people visible at the current year. Use the context to disambiguate ("them", "her", "this place"); use the SQL database for everything beyond what's on screen.
 
 You can also DRIVE the page on the user's behalf. To invoke a tool, emit a line of the form:
 
@@ -4394,6 +4396,24 @@ chatInputEl.addEventListener("keydown", e => {
   }
 });
 $("chatKey").addEventListener("click", promptForKey);
+
+async function autoIntroOnce() {
+  if (chatHistory.length > 0) return;
+  const proxy = await detectChatProxy().catch(() => null);
+  if (!proxy && !localStorage.getItem(CHAT_KEY_LS)) return; // no backend; stay silent
+  const pending = { role: "bot", content: "" };
+  chatHistory.push(pending);
+  renderChat();
+  try {
+    await callClaudeStream(
+      "Introduce yourself to the user in 2 sentences. Say who you are (Kindred Flow's chat assistant), what you can do (drive the map view, run SQL against the loaded GEDCOM, answer questions), and end with a one-line example invitation. Be very brief. Do not list every tool. No tool calls in this reply.",
+      delta => { pending.content += delta; renderChat(); }
+    );
+  } catch (e) {
+    pending.content = `*[error]* ${e.message || e}`;
+    renderChat();
+  }
+}
 $("chatClear").addEventListener("click", async () => {
   chatHistory.length = 0;
   _chatNewSession = true;
@@ -4403,6 +4423,9 @@ $("chatClear").addEventListener("click", async () => {
   if (proxy) { fetch(proxy + "/reset", { method: "POST" }).catch(() => {}); }
 });
 renderChat();
+// Fire the auto-intro after first paint so the page lays out before the
+// network call. Stays silent if neither proxy nor API key is reachable.
+requestAnimationFrame(() => { autoIntroOnce(); });
 </script>
 </body>
 </html>
