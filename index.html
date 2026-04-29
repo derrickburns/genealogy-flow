@@ -4020,13 +4020,24 @@ window.kfApi = {
     return { ok: true, person: { id: ind.id, name: ind.name }, dwellYear: dwellY[di] };
   },
   centerOn(query) {
+    // Try person first; fall back to a geocoded place string.
     const ind = _kfFindIndi(query);
-    if (!ind) return { error: "no person matched: " + query };
-    const di = _kfLatestDwellOf(ind);
-    if (di < 0) return { error: "no recorded events for " + ind.name };
-    pushHistory();
-    centerOnGeo(dwellLon[di], dwellLat[di]);
-    return { ok: true, person: { id: ind.id, name: ind.name } };
+    if (ind) {
+      const di = _kfLatestDwellOf(ind);
+      if (di < 0) return { error: "no recorded events for " + ind.name };
+      pushHistory();
+      centerOnGeo(dwellLon[di], dwellLat[di]);
+      return { ok: true, person: { id: ind.id, name: ind.name } };
+    }
+    if (geocoder) {
+      const g = geocoder(query);
+      if (g && Number.isFinite(g.lat) && Number.isFinite(g.lon)) {
+        pushHistory();
+        centerOnGeo(g.lon, g.lat);
+        return { ok: true, place: query, lat: g.lat, lon: g.lon, level: g.level };
+      }
+    }
+    return { error: "no person or place matched: " + query };
   },
   setProjection(name) {
     if (!PROJECTIONS[name]) return { error: "unknown projection. try: " + Object.keys(PROJECTIONS).join(", ") };
@@ -4136,7 +4147,7 @@ Available tools (jsonArgs is a single JSON value, usually a string or object):
 - play()  / pause()                Animation control.
 - setRoot(personIdOrName)          Change the root person.
 - selectPerson(personIdOrName)     Select that person; map highlights them, panel expands.
-- centerOn(personIdOrName)         Center the map (rotates globe / pans flat).
+- centerOn(personIdOrNameOrPlace)  Center the map. Accepts a person (rotates/pans to their latest event) OR a place string like "San Francisco, California, USA" / "Detroit, Michigan" / "France" — uses the offline geocoder to resolve places.
 - setProjection(name)              "ortho" | "mercator" | "natural" | "equal" | "equirect"
 - setKinLines(n)                   0..20 — connect each person to N nearest blood kin.
 - setClusterMode(mode)             "none" | "aggregate" | "pie" | "hull" | "heatmap" | "dispersion"
