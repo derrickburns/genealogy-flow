@@ -113,6 +113,9 @@
   #chatHistory .msg.bot { color:#1c2433; }
   #chatHistory .msg .body { white-space:pre-wrap; word-wrap:break-word; }
   #chatHistory .msg.bot .body strong { color:#0a1426; }
+  #chatHistory .msg.tool { font-size:11px; color:#888; }
+  #chatHistory .msg.tool .who { color:#9aa6bc; }
+  #chatHistory .msg.tool .body { white-space:pre-wrap; word-wrap:break-word; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
   #chatHistory .msg.bot .body a { color:#2a4a8c; }
   #chatHistory .empty { color:#888; font-style:italic; padding:18px 4px 0; }
   #chatHistory .err { color:#b3261e; }
@@ -256,6 +259,7 @@
       <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
       <div id="chatBar">
         <button type="button" id="chatKey" title="Set Anthropic API key">key</button>
+        <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools on</button>
         <button type="button" id="chatClear" title="Clear conversation">clear</button>
         <button type="submit" id="chatSend">Send</button>
       </div>
@@ -3898,13 +3902,20 @@ function renderMd(s) {
     .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
     .replace(/\n/g, "<br>");
 }
+const CHAT_TOOLS_LS = "kf-chat-show-tools";
+let _chatShowTools = localStorage.getItem(CHAT_TOOLS_LS) !== "0";
 function renderChat() {
   if (chatHistory.length === 0) {
     chatHistoryEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
     return;
   }
-  chatHistoryEl.innerHTML = chatHistory.map(m =>
-    `<div class="msg ${m.role}"><span class="who">${m.role === "user" ? "you" : "claude"}</span><div class="body">${m.role === "user" ? escChat(m.content) : renderMd(m.content)}</div></div>`
+  const visible = _chatShowTools ? chatHistory : chatHistory.filter(m => m.kind !== "tool");
+  if (visible.length === 0) {
+    chatHistoryEl.innerHTML = `<div class="empty">Tool calls hidden. Toggle "tools" to show them.</div>`;
+    return;
+  }
+  chatHistoryEl.innerHTML = visible.map(m =>
+    `<div class="msg ${m.role}${m.kind === "tool" ? " tool" : ""}"><span class="who">${m.role === "user" ? "you" : m.kind === "tool" ? "tool" : "claude"}</span><div class="body">${m.role === "user" ? escChat(m.content) : renderMd(m.content)}</div></div>`
   ).join("");
   chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 }
@@ -4360,7 +4371,7 @@ async function runChatTurn(userText) {
     renderChat();
     if (!results.length) return;  // no tool calls -> Claude is done
     const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
-    chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log });
+    chatHistory.push({ role: "bot", kind: "tool", content: "*[tool calls]*\n" + log });
     renderChat();
     nextInput = "Tool results:\n" + log + "\n\nIf you have enough to answer, write the final answer now without further tool calls. Otherwise issue more tool calls.";
   }
@@ -4396,6 +4407,14 @@ chatInputEl.addEventListener("keydown", e => {
   }
 });
 $("chatKey").addEventListener("click", promptForKey);
+function syncToolsBtn() { $("chatTools").textContent = _chatShowTools ? "tools on" : "tools off"; }
+syncToolsBtn();
+$("chatTools").addEventListener("click", () => {
+  _chatShowTools = !_chatShowTools;
+  localStorage.setItem(CHAT_TOOLS_LS, _chatShowTools ? "1" : "0");
+  syncToolsBtn();
+  renderChat();
+});
 
 async function autoIntroOnce() {
   if (chatHistory.length > 0) return;
