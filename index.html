@@ -513,30 +513,43 @@ const dragRotate = d3.drag()
   });
 d3.select(fxCanvas).call(dragRotate);
 
-// Safari GestureEvent: thumb-anchor-finger-pivot fires here with event.rotation.
-// In Chrome the same gesture surfaces only as ctrl+wheel and can't be told
-// apart from pinch.
-let _gestureRot0 = null;
+// Safari GestureEvent: thumb-anchor + finger-move on a trackpad fires this.
+// Treat the centroid's clientX/Y motion as a pan — for ortho mode that's
+// rotation around the lat/lon axes such that the geographic point under
+// the cursor stays under the cursor.
+let _gestureActive = false;
+let _gestureLastX = 0, _gestureLastY = 0;
 fxCanvas.addEventListener("gesturestart", e => {
   e.preventDefault();
-  _gestureRot0 = projection.rotate ? projection.rotate().slice() : null;
+  _gestureActive = true;
+  _gestureLastX = e.clientX;
+  _gestureLastY = e.clientY;
   _interacting = true;
   if (!_restoringView) pushHistory();
 });
 fxCanvas.addEventListener("gesturechange", e => {
   e.preventDefault();
-  if (projectionName === "ortho" && _gestureRot0) {
-    const r = _gestureRot0;
-    // Damp rotation by 1/sqrt(k): at high zoom each visual degree of rotation
-    // moves more pixels, so the same physical twist should produce fewer
-    // logical degrees of rotation to keep the felt "swing" similar.
-    const damp = 1 / Math.sqrt(Math.max(1, zoomTransform.k));
-    projection.rotate([r[0] - e.rotation * damp, r[1], r[2]]);
+  const dx = e.clientX - _gestureLastX;
+  const dy = e.clientY - _gestureLastY;
+  _gestureLastX = e.clientX;
+  _gestureLastY = e.clientY;
+  if (projectionName === "ortho") {
+    const r = projection.rotate();
+    const k = Math.max(1.0, 400 / projection.scale());
+    projection.rotate([
+      r[0] + dx * k,
+      Math.max(-90, Math.min(90, r[1] - dy * k)),
+      r[2],
+    ]);
     requestDraw();
+  } else {
+    const tx = zoomTransform.x + dx;
+    const ty = zoomTransform.y + dy;
+    d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(zoomTransform.k));
   }
 });
 fxCanvas.addEventListener("gestureend", () => {
-  _gestureRot0 = null;
+  _gestureActive = false;
   _interacting = false;
   _baseDirty = true;
 });
