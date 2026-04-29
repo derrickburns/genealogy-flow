@@ -513,21 +513,74 @@ const dragRotate = d3.drag()
   });
 d3.select(fxCanvas).call(dragRotate);
 
+// Tiny inline versor (quaternion) helpers for cursor-anchored rotation.
+const versor = {
+  fromAxisAngle(axis, angle) {
+    const c = Math.cos(angle / 2), s = Math.sin(angle / 2);
+    return [c, axis[0] * s, axis[1] * s, axis[2] * s];
+  },
+  fromEuler(e) {
+    const l = e[0] * (Math.PI / 360), sl = Math.sin(l), cl = Math.cos(l);
+    const p = e[1] * (Math.PI / 360), sp = Math.sin(p), cp = Math.cos(p);
+    const g = e[2] * (Math.PI / 360), sg = Math.sin(g), cg = Math.cos(g);
+    return [
+      cl*cp*cg + sl*sp*sg,
+      sl*cp*cg - cl*sp*sg,
+      cl*sp*cg + sl*cp*sg,
+      cl*cp*sg - sl*sp*cg,
+    ];
+  },
+  toEuler(q) {
+    return [
+      Math.atan2(2*(q[0]*q[1] + q[2]*q[3]), 1 - 2*(q[1]*q[1] + q[2]*q[2])) * (180/Math.PI),
+      Math.asin(Math.max(-1, Math.min(1, 2*(q[0]*q[2] - q[3]*q[1])))) * (180/Math.PI),
+      Math.atan2(2*(q[0]*q[3] + q[1]*q[2]), 1 - 2*(q[2]*q[2] + q[3]*q[3])) * (180/Math.PI),
+    ];
+  },
+  multiply(q1, q2) {
+    const a=q1[0], b=q1[1], c=q1[2], d=q1[3];
+    const e=q2[0], f=q2[1], g=q2[2], h=q2[3];
+    return [
+      a*e - b*f - c*g - d*h,
+      a*f + b*e + c*h - d*g,
+      a*g - b*h + c*e + d*f,
+      a*h + b*g - c*f + d*e,
+    ];
+  },
+  cartesian(lonlat) {
+    const l = lonlat[0] * (Math.PI / 180), p = lonlat[1] * (Math.PI / 180);
+    const cp = Math.cos(p);
+    return [cp * Math.cos(l), cp * Math.sin(l), Math.sin(p)];
+  },
+};
+
 // Safari GestureEvent: thumb-anchor + finger-move on a trackpad fires this.
 // Two channels:
 // - centroid clientX/Y delta -> pan (drag map under cursor)
 // - event.scale ratio        -> zoom anchored at cursor (point under cursor
 //   stays under cursor as the world scales in/out)
 let _gestureActive = false;
-let _gestureLastX = 0, _gestureLastY = 0, _gestureLastScale = 1;
+let _gestureLastX = 0, _gestureLastY = 0, _gestureLastScale = 1, _gestureLastRotation = 0;
+let _gesturePivotW = null;  // 3D unit vector for the pivot point (world coords)
 fxCanvas.addEventListener("gesturestart", e => {
   e.preventDefault();
   _gestureActive = true;
   _gestureLastX = e.clientX;
   _gestureLastY = e.clientY;
   _gestureLastScale = e.scale || 1;
+  _gestureLastRotation = e.rotation || 0;
   _interacting = true;
   if (!_restoringView) pushHistory();
+  // Pivot for two-finger rotation: geographic point currently under cursor
+  _gesturePivotW = null;
+  if (projection.invert) {
+    const rect = fxCanvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const geo = projection.invert([cx, cy]);
+    if (geo && Number.isFinite(geo[0]) && Number.isFinite(geo[1])) {
+      _gesturePivotW = versor.cartesian(geo);
+    }
+  }
 });
 fxCanvas.addEventListener("gesturechange", e => {
   e.preventDefault();
@@ -562,6 +615,16 @@ fxCanvas.addEventListener("gesturechange", e => {
     const newX = cx - (cx - zoomTransform.x) * ratio;
     const newY = cy - (cy - zoomTransform.y) * ratio;
     d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(newX, newY).scale(newK));
+  }
+  // Rotation anchored at gesture cursor: rotate the world around the pivot axis
+  if (typeof e.rotation === "number" && e.rotation !== _gestureLastRotation && _gesturePivotW && projectionName === "ortho") {
+    const dRot = (e.rotation - _gestureLastRotation) * (Math.PI / 180);
+    _gestureLastRotation = e.rotation;
+    const qDelta = versor.fromAxisAngle(_gesturePivotW, -dRot);
+    const qOld = versor.fromEuler(projection.rotate());
+    const qNew = versor.multiply(qOld, qDelta);
+    projection.rotate(versor.toEuler(qNew));
+    requestDraw();
   }
 });
 fxCanvas.addEventListener("gestureend", () => {
