@@ -20,7 +20,7 @@
 
 import http from "node:http";
 
-const PORT = Number(process.env.KF_CHAT_PROXY_PORT || 8787);
+const PORT = Number(process.env.KF_CHAT_PROXY_PORT || 8788);
 const apiKey = process.env.ANTHROPIC_API_KEY || "";
 const authToken = process.env.ANTHROPIC_AUTH_TOKEN || "";
 const upstream = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";

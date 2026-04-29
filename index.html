@@ -3957,7 +3957,7 @@ function buildChatContext() {
 const SYSTEM_PROMPT = `You are a genealogist assistant embedded in a particle-flow GEDCOM viewer called Kindred Flow. The user is exploring their family tree on a world map. You have access to live context describing what they're currently looking at: tree size, year range, root person, currently selected person, and the people visible at the current year. Use this context to answer their questions concretely. When the user asks about migration, lineage, places, or relationships, ground your answer in the context provided. Keep answers tight (3-6 sentences). Use markdown sparingly: **bold** for names, *italics* for emphasis. Do not invent facts that aren't in the context unless explicitly asked to speculate.`;
 
 const CHAT_PROXY_LS = "kf-chat-proxy";
-const CHAT_PROXY_DEFAULT = "http://localhost:8787";
+const CHAT_PROXY_DEFAULT = "http://localhost:8788";
 let _chatProxyOk = null;
 async function detectChatProxy() {
   if (_chatProxyOk !== null) return _chatProxyOk;
@@ -3992,7 +3992,7 @@ async function callClaude(userMsg) {
   } else {
     const apiKey = localStorage.getItem(CHAT_KEY_LS);
     if (!apiKey) {
-      throw new Error("No proxy at localhost:8787 (start it with `node scripts/chat-proxy.mjs`) and no API key set. Click 'key' to add one.");
+      throw new Error("No proxy at localhost:8788 (start it with `node scripts/chat-proxy.mjs`) and no API key set. Click 'key' to add one.");
     }
     resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
