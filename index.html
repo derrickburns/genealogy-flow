@@ -254,9 +254,10 @@
 <script type="module">
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 import * as topojson from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
+import earcut from "https://cdn.jsdelivr.net/npm/earcut@2.2.4/+esm";
 
 const $ = id => document.getElementById(id);
-const baseCanvas = $("base"), fxCanvas = $("fx");
+const baseCanvas = $("base"), fxCanvas = $("fx"), glCanvas = $("gl");
 const baseCtx = baseCanvas.getContext("2d"), fxCtx = fxCanvas.getContext("2d");
 const yearBig = $("yearBig");
 const yearCorners = ["yearTL", "yearTR", "yearBL", "yearBR"].map($);
@@ -380,6 +381,142 @@ function applyProjectionFromZoom() {
   const t = displayTransform;
   projection.scale(baseScale * t.k);
   projection.translate([baseTranslate[0] * t.k + t.x, baseTranslate[1] * t.k + t.y]);
+}
+
+// ----- WebGL globe (ortho-only land fill) -----
+let glCtx = null, glProgram = null, glLand = null, glLandCount = 0;
+const glAttribs = {}, glUniforms = {};
+function initGL() {
+  if (glCtx) return true;
+  const opts = { antialias: true, premultipliedAlpha: true, alpha: true };
+  glCtx = glCanvas.getContext("webgl2", opts) || glCanvas.getContext("webgl", opts);
+  if (!glCtx) return false;
+  const gl = glCtx;
+  const isGL2 = !!gl.createVertexArray;
+  const vsHead = isGL2 ? "#version 300 es\nin vec2 aLonLat;\nout vec3 vCart;\n" : "attribute vec2 aLonLat;\nvarying vec3 vCart;\n";
+  const fsHead = isGL2 ? "#version 300 es\nprecision highp float;\nin vec3 vCart;\nout vec4 oColor;\n" : "precision highp float;\nvarying vec3 vCart;\n";
+  const fsOut = isGL2 ? "oColor" : "gl_FragColor";
+  const vsSrc = vsHead + `
+    uniform vec2 uRot;       // [lambda, phi] in radians
+    uniform float uScale;
+    uniform vec2 uTranslate;
+    uniform vec2 uViewport;
+    void main() {
+      float lon = radians(aLonLat.x) + uRot.x;
+      float lat = radians(aLonLat.y);
+      float clat = cos(lat), slat = sin(lat);
+      float clon = cos(lon), slon = sin(lon);
+      vec3 p = vec3(clat*clon, clat*slon, slat);
+      float cphi = cos(uRot.y), sphi = sin(uRot.y);
+      // Rotate around Y axis by -phi (d3 convention)
+      vec3 q = vec3(p.x*cphi + p.z*sphi, p.y, -p.x*sphi + p.z*cphi);
+      vCart = q;
+      // Project: screen.x = scale*y, screen.y = -scale*z, then translate
+      vec2 px = vec2(q.y * uScale + uTranslate.x, -q.z * uScale + uTranslate.y);
+      vec2 ndc = (px / uViewport) * 2.0 - 1.0;
+      ndc.y = -ndc.y;
+      gl_Position = vec4(ndc, 0.0, 1.0);
+    }
+  `;
+  const fsSrc = fsHead + `
+    uniform vec4 uColor;
+    void main() {
+      if (vCart.x < 0.0) discard;     // back hemisphere
+      ${fsOut} = uColor;
+    }
+  `;
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.warn("GL shader fail:", gl.getShaderInfoLog(s)); return null;
+    }
+    return s;
+  }
+  const vs = compile(gl.VERTEX_SHADER, vsSrc);
+  const fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+  if (!vs || !fs) { glCtx = null; return false; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.warn("GL link fail:", gl.getProgramInfoLog(prog)); glCtx = null; return false;
+  }
+  glProgram = prog;
+  glAttribs.aLonLat = gl.getAttribLocation(prog, "aLonLat");
+  glUniforms.uRot = gl.getUniformLocation(prog, "uRot");
+  glUniforms.uScale = gl.getUniformLocation(prog, "uScale");
+  glUniforms.uTranslate = gl.getUniformLocation(prog, "uTranslate");
+  glUniforms.uViewport = gl.getUniformLocation(prog, "uViewport");
+  glUniforms.uColor = gl.getUniformLocation(prog, "uColor");
+  // Clear with ocean color so the gl layer paints both ocean and land in
+  // one pass. The base canvas (z-index:1) layers borders/labels/sphere on top.
+  gl.clearColor(0xcf / 255, 0xe2 / 255, 0xec / 255, 1.0);
+  return true;
+}
+
+function buildLandTriangles(world) {
+  if (!world) return null;
+  const land = topojson.feature(world, world.objects.countries);
+  const verts = [];
+  for (const f of land.features) {
+    const g = f.geometry; if (!g) continue;
+    const polys = g.type === "MultiPolygon" ? g.coordinates : g.type === "Polygon" ? [g.coordinates] : [];
+    for (const poly of polys) {
+      const flat = [];
+      const holes = [];
+      for (let r = 0; r < poly.length; r++) {
+        if (r > 0) holes.push(flat.length / 2);
+        const ring = poly[r];
+        for (const pt of ring) { flat.push(pt[0], pt[1]); }
+      }
+      try {
+        const tris = earcut(flat, holes, 2);
+        for (const i of tris) verts.push(flat[i*2], flat[i*2+1]);
+      } catch (e) { /* skip degenerate */ }
+    }
+  }
+  return new Float32Array(verts);
+}
+
+function uploadLand() {
+  if (!glCtx || !world) return;
+  const tris = buildLandTriangles(world);
+  if (!tris || tris.length === 0) return;
+  const gl = glCtx;
+  if (!glLand) glLand = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, glLand);
+  gl.bufferData(gl.ARRAY_BUFFER, tris, gl.STATIC_DRAW);
+  glLandCount = tris.length / 2;
+}
+
+function drawWorldGL() {
+  if (!glCtx || !glProgram || !glLand || glLandCount === 0) return false;
+  if (projectionName !== "ortho") return false;
+  const gl = glCtx;
+  const dpr = devicePixelRatio || 1;
+  if (glCanvas.width !== Math.floor(W * dpr) || glCanvas.height !== Math.floor(H * dpr)) {
+    glCanvas.width = Math.floor(W * dpr); glCanvas.height = Math.floor(H * dpr);
+    glCanvas.style.width = W + "px"; glCanvas.style.height = H + "px";
+  }
+  gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(glProgram);
+  const r = projection.rotate();
+  const t = projection.translate();
+  gl.uniform2f(glUniforms.uRot, r[0] * Math.PI / 180, -r[1] * Math.PI / 180);
+  gl.uniform1f(glUniforms.uScale, projection.scale() * dpr);
+  gl.uniform2f(glUniforms.uTranslate, t[0] * dpr, t[1] * dpr);
+  gl.uniform2f(glUniforms.uViewport, glCanvas.width, glCanvas.height);
+  gl.uniform4f(glUniforms.uColor, 0xf3 / 255, 0xec / 255, 0xd8 / 255, 1.0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, glLand);
+  gl.enableVertexAttribArray(glAttribs.aLonLat);
+  gl.vertexAttribPointer(glAttribs.aLonLat, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, glLandCount);
+  return true;
+}
+
+function clearGL() {
+  if (glCtx) glCtx.clear(glCtx.COLOR_BUFFER_BIT);
 }
 
 function resize() {
@@ -819,10 +956,20 @@ function drawBase() {
   if (!world) return;
   staticLabelRects = [];
   baseCtx.clearRect(0, 0, W, H);
-  baseCtx.fillStyle = "#cfe2ec"; baseCtx.fillRect(0, 0, W, H);
   const k = zoomTransform.k;
   const sphere = { type: "Sphere" };
   const cp = d3.geoPath(projection, baseCtx);
+  // GPU pass first: fills both ocean and land in one shot, behind base canvas.
+  // Returns false outside ortho; in that case base canvas paints ocean+land 2D.
+  const filledOnGL = drawWorldGL();
+  if (!filledOnGL) {
+    if (glCtx) {
+      glCtx.clearColor(0, 0, 0, 0);
+      glCtx.clear(glCtx.COLOR_BUFFER_BIT);
+      glCtx.clearColor(0xcf / 255, 0xe2 / 255, 0xec / 255, 1.0);
+    }
+    baseCtx.fillStyle = "#cfe2ec"; baseCtx.fillRect(0, 0, W, H);
+  }
   if (!_interacting) {
     baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
   }
@@ -831,9 +978,11 @@ function drawBase() {
   const useHistorical = borderLayer === "historical" && currentHistoricalWorld && !_interacting;
   const w = activeWorld();
   const land = cachedLand(w);
-  // Always: paint modern land parchment (so ocean reliably stays blue)
-  baseCtx.beginPath(); cp(land); baseCtx.fillStyle = "#f3ecd8"; baseCtx.fill();
-  baseCtx.strokeStyle = "rgba(80,100,120,0.55)"; baseCtx.lineWidth = 0.6; baseCtx.stroke();
+  if (!filledOnGL) {
+    // Fallback: 2D land fill for non-ortho projections.
+    baseCtx.beginPath(); cp(land); baseCtx.fillStyle = "#f3ecd8"; baseCtx.fill();
+  }
+  baseCtx.beginPath(); cp(land); baseCtx.strokeStyle = "rgba(80,100,120,0.55)"; baseCtx.lineWidth = 0.6; baseCtx.stroke();
   let countryFeatures;
   if (useHistorical) {
     const fc = currentHistoricalWorld;
@@ -3624,6 +3773,7 @@ async function bootBasemap() {
     fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(r => r.json()).catch(() => null),
   ]);
   world = w; usStates = us;
+  if (initGL()) uploadLand();
   resize();
   stats.textContent = "ready - drop or open a .ged file";
   welcome.classList.remove("hidden");
