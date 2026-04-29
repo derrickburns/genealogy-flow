@@ -623,7 +623,16 @@ const zoomBehavior = d3.zoom()
     return -e.deltaY * zoomDamp * pinchScale * (e.deltaMode === 1 ? 0.2 : e.deltaMode ? 4 : 0.008);
   })
   .on("start", () => { _interacting = true; if (!_restoringView) pushHistory(); })
-  .on("zoom", e => { zoomTransform = e.transform; applyZoom(); })
+  .on("zoom", e => {
+    zoomTransform = e.transform;
+    // Pointer drag: sync display immediately so the map tracks the cursor.
+    // Wheel/pinch: leave lerp in place for the smoothing effect.
+    const t = e.sourceEvent && e.sourceEvent.type;
+    if (t === "pointermove" || t === "mousemove" || t === "touchmove") {
+      displayTransform = { ...zoomTransform };
+    }
+    applyZoom();
+  })
   .on("end", () => { _interacting = false; _baseDirty = true; });
 d3.select(fxCanvas).call(zoomBehavior);
 d3.select(fxCanvas).on("dblclick.zoom", () => {
