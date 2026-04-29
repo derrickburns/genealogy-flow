@@ -1153,11 +1153,17 @@ function drawKinLines(lo, hi, y, dw) {
       const key = a * 1e7 + b;
       if (drawn.has(key)) continue;
       drawn.add(key);
-      const dist = relatives[r].dist;
       const alpha = Math.max(0.08, 0.55 * (1 - r / Math.max(kinLinesN, 1)));
       const c = colorForFinal(dwellSide[dwellI], 0);
       fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(2)})`;
-      drawGreatCircle(fxCtx, dwellLon[dwellI], dwellLat[dwellI], dwellLon[otherDwell], dwellLat[otherDwell]);
+      // Straight line between already-projected endpoints. At zoom >= 4 the
+      // great-circle curvature over the visible arc is sub-pixel, so the
+      // straight line is visually identical and ~100x cheaper than
+      // interpolating a great circle.
+      fxCtx.beginPath();
+      fxCtx.moveTo(dwellSx[dwellI], dwellSy[dwellI]);
+      fxCtx.lineTo(dwellSx[otherDwell], dwellSy[otherDwell]);
+      fxCtx.stroke();
     }
   }
 }
