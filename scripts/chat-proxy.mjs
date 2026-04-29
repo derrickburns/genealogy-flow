@@ -24,7 +24,7 @@ const CLAUDE_BIN = process.env.KF_CLAUDE_BIN || "claude";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key",
+  "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key, kf-new-session",
   "Access-Control-Max-Age": "600",
 };
 
