@@ -1532,8 +1532,20 @@ function computeRelations(individuals, families) {
   return { indiById, indiIdxById, parentsOf, isParent, childrenOf };
 }
 
+// Memoized closest-N relatives per individual. The DAG result only depends on
+// the family graph; year scrubbing or visibility changes don't invalidate it.
+// Cleared when a fresh GEDCOM is parsed (parentsOf/childrenOf reassigned).
+let _nearestRelCache = new Map();
+let _nearestRelCacheKey = null;
 function nearestRelativesByDag(indId, N) {
   if (!lastParentsOf || !lastChildrenOf) return [];
+  if (_nearestRelCacheKey !== lastParentsOf) {
+    _nearestRelCache = new Map();
+    _nearestRelCacheKey = lastParentsOf;
+  }
+  const cacheKey = indId + "|" + N;
+  const cached = _nearestRelCache.get(cacheKey);
+  if (cached) return cached;
   const visited = new Set([indId]);
   const queue = [[indId, 0]];
   let head = 0;
@@ -1550,6 +1562,7 @@ function nearestRelativesByDag(indId, N) {
       if (!visited.has(k)) { visited.add(k); queue.push([k, dist + 1]); }
     }
   }
+  _nearestRelCache.set(cacheKey, out);
   return out;
 }
 
