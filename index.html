@@ -1295,8 +1295,9 @@ function drawKinLines(lo, hi, y, dw) {
   for (const [indiIdx, dwellI] of visibleByIndi) {
     const ind = lastIndividuals[indiIdx];
     if (!ind) continue;
-    const relatives = nearestRelativesByDag(ind.id, kinLinesN);
-    for (let r = 0; r < relatives.length; r++) {
+    const relatives = nearestRelativesByDag(ind.id);
+    const n = Math.min(kinLinesN, relatives.length);
+    for (let r = 0; r < n; r++) {
       const relIdx = lastIndiIdxById.get(relatives[r].id);
       if (relIdx === undefined) continue;
       const otherDwell = visibleByIndi.get(relIdx);
@@ -1696,38 +1697,40 @@ function computeRelations(individuals, families) {
   return { indiById, indiIdxById, parentsOf, isParent, childrenOf };
 }
 
-// Memoized closest-N relatives per individual. The DAG result only depends on
-// the family graph; year scrubbing or visibility changes don't invalidate it.
-// Cleared when a fresh GEDCOM is parsed (parentsOf/childrenOf reassigned).
+// Memoized top-K nearest relatives per individual. The DAG result only depends
+// on the family graph; year, zoom, and slider value don't invalidate it.
+// Cache stores up to NEAREST_REL_MAX entries; callers slice to whatever N
+// they need. Cleared when a fresh GEDCOM is parsed.
+const NEAREST_REL_MAX = 20;
 let _nearestRelCache = new Map();
 let _nearestRelCacheKey = null;
-function nearestRelativesByDag(indId, N) {
+function nearestRelativesByDag(indId) {
   if (!lastParentsOf || !lastChildrenOf) return [];
   if (_nearestRelCacheKey !== lastParentsOf) {
     _nearestRelCache = new Map();
     _nearestRelCacheKey = lastParentsOf;
   }
-  const cacheKey = indId + "|" + N;
-  const cached = _nearestRelCache.get(cacheKey);
-  if (cached) return cached;
-  const visited = new Set([indId]);
-  const queue = [[indId, 0]];
-  let head = 0;
-  const out = [];
-  while (head < queue.length && out.length < N) {
-    const [id, dist] = queue[head++];
-    if (id !== indId) out.push({ id, dist });
-    const par = lastParentsOf.get(id);
-    if (par) for (const p of par) {
-      if (p && !visited.has(p)) { visited.add(p); queue.push([p, dist + 1]); }
+  let cached = _nearestRelCache.get(indId);
+  if (!cached) {
+    const visited = new Set([indId]);
+    const queue = [[indId, 0]];
+    let head = 0;
+    cached = [];
+    while (head < queue.length && cached.length < NEAREST_REL_MAX) {
+      const [id, dist] = queue[head++];
+      if (id !== indId) cached.push({ id, dist });
+      const par = lastParentsOf.get(id);
+      if (par) for (const p of par) {
+        if (p && !visited.has(p)) { visited.add(p); queue.push([p, dist + 1]); }
+      }
+      const kids = lastChildrenOf.get(id);
+      if (kids) for (const k of kids) {
+        if (!visited.has(k)) { visited.add(k); queue.push([k, dist + 1]); }
+      }
     }
-    const kids = lastChildrenOf.get(id);
-    if (kids) for (const k of kids) {
-      if (!visited.has(k)) { visited.add(k); queue.push([k, dist + 1]); }
-    }
+    _nearestRelCache.set(indId, cached);
   }
-  _nearestRelCache.set(cacheKey, out);
-  return out;
+  return cached;
 }
 
 function ancestorSet(rootId, parentsOf) {
