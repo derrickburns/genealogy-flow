@@ -970,12 +970,10 @@ function drawBase() {
     }
     baseCtx.fillStyle = "#cfe2ec"; baseCtx.fillRect(0, 0, W, H);
   }
-  if (!_interacting) {
-    baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
-  }
+  baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
   baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
 
-  const useHistorical = borderLayer === "historical" && currentHistoricalWorld && !_interacting;
+  const useHistorical = borderLayer === "historical" && currentHistoricalWorld;
   const w = activeWorld();
   const land = cachedLand(w);
   if (!filledOnGL) {
@@ -998,7 +996,7 @@ function drawBase() {
     countryFeatures = land.features;
     baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle = "rgba(120,100,80,0.55)"; baseCtx.lineWidth = 0.5; baseCtx.stroke();
   }
-  if (usStates && !_interacting) {
+  if (usStates) {
     const stateBorders = cachedStatesMesh(usStates);
     baseCtx.beginPath(); cp(stateBorders);
     baseCtx.strokeStyle = `rgba(140,120,90,${Math.min(0.7, 0.2 + k * 0.08)})`;
@@ -1006,7 +1004,7 @@ function drawBase() {
   }
 
   // Country labels (skip while interacting for snappier drag/zoom)
-  if (countryFeatures && k <= 8 && !_interacting) {
+  if (countryFeatures && k <= 8) {
     const areaCutoff = k >= 4 ? 30 : k >= 2 ? 150 : 500;
     baseCtx.font = "bold 12px -apple-system, sans-serif";
     baseCtx.textAlign = "center"; baseCtx.textBaseline = "middle";
@@ -1033,7 +1031,7 @@ function drawBase() {
     }
   }
   const cities = currentCities();
-  if (cities && cities.length && !_interacting) {
+  if (cities && cities.length) {
     const isEvents = cityLayer === "events" && eventCities && cities === eventCities;
     const popThresh = isEvents ? 0 : k >= 16 ? 50000 : k >= 8 ? 150000 : k >= 4 ? 400000 : k >= 2 ? 800000 : 1500000;
     const labelThresh = isEvents ? 0 : k >= 16 ? 200000 : k >= 8 ? 500000 : k >= 4 ? 1500000 : k >= 2 ? 3000000 : 6000000;
