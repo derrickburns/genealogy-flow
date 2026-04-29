@@ -4131,6 +4131,23 @@ window.kfApi = {
     if (!ind) return { found: false };
     return { found: true, id: ind.id, name: ind.name, birth: ind.birth_year, death: ind.death_year };
   },
+  // Run a read-only SQL query against the loaded GEDCOM database. Returns
+  // {ok, rows, truncated, totalRows}. Promise-based; the chat layer awaits
+  // before sending the result back to Claude. Results capped at 200 rows.
+  async sql(query) {
+    const proxy = await detectChatProxy();
+    if (!proxy) return { ok: false, error: "no proxy at localhost:8788" };
+    try {
+      const r = await fetch(proxy + "/sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, limit: 200 }),
+      });
+      return await r.json();
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  },
 };
 
 const SYSTEM_PROMPT = `You are a genealogist assistant embedded in a particle-flow GEDCOM viewer called Kindred Flow. The user is exploring their family tree on a world map. Each user message is preceded by a context block describing what they're looking at: tree size, year range, root person, current playback year, currently selected person, and people visible at the current year.
@@ -4160,6 +4177,39 @@ Available tools (jsonArgs is a single JSON value, usually a string or object):
 - zoomOut(factor=2)                Divide current zoom by factor.
 - getState()                       Returns current view state. Use to ground answers.
 - findPerson(name)                 Returns {id,name,birth,death,found}. Use to confirm spelling before selecting.
+- sql(query)                       Run a read-only SELECT against the SQLite database holding the GEDCOM. Returns {ok, rows, truncated, totalRows}. Results capped at 200 rows. Use this for any non-trivial question about the tree (counts, migrations, lineage paths, surname concentrations, place-time co-occurrence). Always prefer SQL over guessing from the visible context when the question is about the WHOLE tree, not just what's currently on screen.
+
+SQLite schema:
+
+  individuals(id TEXT PK, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT)
+    -- id is "@I12345@" GEDCOM xref. sex is M/F/U. famc is the family-as-child id.
+
+  events(individual_id TEXT FK, type TEXT, year INTEGER, place TEXT)
+    -- type ∈ {BIRT, DEAT, RESI, MARR, EMIG, IMMI, CENS, BAPM, BURI, CHR}.
+    -- one row per dated+placed event. place strings are GEDCOM-style ("City, County, State, USA").
+
+  families(id TEXT PK, husb_id TEXT FK, wife_id TEXT FK)
+
+  family_children(family_id TEXT FK, child_id TEXT FK)
+    -- one row per child link. To enumerate someone's children: join via families.id = family_children.family_id where husb_id or wife_id matches.
+
+Indexes: name, birth_year, type, year, place, husb_id, wife_id, family_id, child_id.
+
+Examples:
+  -- count Sun Belt destinations from Midwest after 1970
+  SELECT place, COUNT(*) FROM events
+  WHERE type='RESI' AND year >= 1970 AND place LIKE '%Florida%'
+  GROUP BY place ORDER BY 2 DESC LIMIT 20;
+
+  -- direct ancestors of root (recursive CTE):
+  WITH RECURSIVE up(id, gen) AS (
+    SELECT '@I250052527678@', 0
+    UNION ALL
+    SELECT f.husb_id, up.gen+1 FROM up JOIN individuals i ON i.id=up.id JOIN families f ON f.id=i.famc WHERE f.husb_id IS NOT NULL AND up.gen<10
+    UNION ALL
+    SELECT f.wife_id, up.gen+1 FROM up JOIN individuals i ON i.id=up.id JOIN families f ON f.id=i.famc WHERE f.wife_id IS NOT NULL AND up.gen<10
+  )
+  SELECT i.name, i.birth_year FROM up JOIN individuals i USING (id) ORDER BY up.gen, i.birth_year;
 
 Examples:
   User: "show me at 1925"        ->  <<KFCALL:setYear(1925)>>
@@ -4261,32 +4311,27 @@ function promptForKey() {
 }
 
 const KFCALL_RE = /<<KFCALL:(\w+)\((.*?)\)>>/g;
-function parseAndRunKfCalls(text) {
-  // Returns { stripped, results: [{call, result}] }. Multiple calls in one
-  // reply are processed in order.
-  const results = [];
+async function parseAndRunKfCalls(text) {
+  // Process tool-call markers in order. Methods may be sync or async.
+  const calls = [];
   const stripped = text.replace(KFCALL_RE, (_match, method, argsStr) => {
-    let args = null;
-    if (argsStr.trim()) {
-      try { args = JSON.parse(argsStr); }
-      catch (e) {
-        results.push({ call: `${method}(${argsStr})`, result: { error: "invalid json args: " + e.message } });
-        return "";
-      }
-    }
-    const fn = window.kfApi[method];
-    if (typeof fn !== "function") {
-      results.push({ call: method, result: { error: "no such method" } });
-      return "";
-    }
-    try {
-      const out = fn(args);
-      results.push({ call: `${method}(${args === null ? "" : JSON.stringify(args)})`, result: out });
-    } catch (e) {
-      results.push({ call: method, result: { error: e.message || String(e) } });
-    }
+    let args = null, err = null;
+    if (argsStr.trim()) { try { args = JSON.parse(argsStr); } catch (e) { err = "invalid json args: " + e.message; } }
+    calls.push({ method, args, err });
     return "";
   });
+  const results = [];
+  for (const c of calls) {
+    if (c.err) { results.push({ call: c.method, result: { error: c.err } }); continue; }
+    const fn = window.kfApi[c.method];
+    if (typeof fn !== "function") { results.push({ call: c.method, result: { error: "no such method" } }); continue; }
+    try {
+      const out = await fn(c.args);
+      results.push({ call: `${c.method}(${c.args === null ? "" : JSON.stringify(c.args)})`, result: out });
+    } catch (e) {
+      results.push({ call: c.method, result: { error: e.message || String(e) } });
+    }
+  }
   return { stripped: stripped.trim(), results };
 }
 
@@ -4307,13 +4352,12 @@ async function runChatTurn(userText) {
     return;
   }
   // Strip tool-call markers from the visible text and run them.
-  const { stripped, results } = parseAndRunKfCalls(reply);
+  const { stripped, results } = await parseAndRunKfCalls(reply);
   pending.content = stripped;
   if (results.length) {
     const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
     chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log });
     renderChat();
-    // Follow-up turn so Claude can react to tool results.
     pending = { role: "bot", content: "" };
     chatHistory.push(pending);
     renderChat();
@@ -4322,7 +4366,7 @@ async function runChatTurn(userText) {
         pending.content += delta;
         renderChat();
       });
-      const second = parseAndRunKfCalls(reply2);
+      const second = await parseAndRunKfCalls(reply2);
       pending.content = second.stripped;
       if (second.results.length) {
         const log2 = second.results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");

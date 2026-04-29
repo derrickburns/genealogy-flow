@@ -10,14 +10,26 @@
 
 import http from "node:http";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 
 const PORT = Number(process.env.KF_CHAT_PROXY_PORT || 8788);
 const CLAUDE_BIN = process.env.KF_CLAUDE_BIN || "claude";
+const DB_PATH = process.env.KF_DB_PATH || "";
+
+let _db = null;
+async function getDb() {
+  if (_db) return _db;
+  if (!DB_PATH) return null;
+  if (!existsSync(DB_PATH)) return null;
+  const Database = (await import("better-sqlite3")).default;
+  _db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
+  return _db;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key, kf-new-session",
+  "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key, kf-new-session, kf-sql",
   "Access-Control-Expose-Headers": "*",
   "Access-Control-Max-Age": "600",
 };
@@ -108,13 +120,41 @@ const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204, corsHeaders); res.end(); return; }
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, mode: "claude-cli-stream", running: !!_proc }));
+    res.end(JSON.stringify({ ok: true, mode: "claude-cli-stream", running: !!_proc, db: DB_PATH ? { path: DB_PATH, loaded: existsSync(DB_PATH) } : null }));
     return;
   }
   if (req.method === "POST" && req.url === "/reset") {
     resetProc();
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+  if (req.method === "POST" && req.url === "/sql") {
+    let body = "";
+    req.on("data", c => { body += c; });
+    req.on("end", async () => {
+      try {
+        const { query, limit } = JSON.parse(body);
+        if (!query || typeof query !== "string") throw new Error("query required");
+        // Read-only safety: block obvious mutation keywords. The DB is also
+        // opened with readonly:true so any UPDATE/INSERT/DELETE/DROP would
+        // fail at SQLite anyway.
+        if (/\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum)\b/i.test(query)) {
+          throw new Error("only SELECT queries are allowed");
+        }
+        const db = await getDb();
+        if (!db) throw new Error("no database loaded; set KF_DB_PATH and restart the proxy");
+        const stmt = db.prepare(query);
+        const rows = stmt.all();
+        const max = Math.min(Number(limit) || 200, 1000);
+        const truncated = rows.length > max;
+        res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, rows: rows.slice(0, max), truncated, totalRows: rows.length }));
+      } catch (e) {
+        res.writeHead(400, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message || String(e) }));
+      }
+    });
     return;
   }
   if (req.method !== "POST" || !req.url.startsWith("/v1/messages")) {
