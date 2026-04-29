@@ -2273,6 +2273,13 @@ $("optionsBtn").addEventListener("click", e => {
   e.stopPropagation();
   $("optionsMenu").classList.toggle("open");
 });
+// Pre-warm the menu's layout so the first click is paint-only. The menu is
+// visibility:hidden by default; reading offsetHeight once forces the browser
+// to compute layout for all its children up front instead of on first open.
+requestAnimationFrame(() => {
+  const m = $("optionsMenu");
+  if (m) void m.offsetHeight;
+});
 document.addEventListener("click", e => {
   const menu = $("optionsMenu");
   if (!menu.classList.contains("open")) return;
