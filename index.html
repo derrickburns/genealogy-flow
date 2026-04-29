@@ -4335,47 +4335,34 @@ async function parseAndRunKfCalls(text) {
   return { stripped: stripped.trim(), results };
 }
 
+const MAX_TOOL_ROUNDS = 10;
 async function runChatTurn(userText) {
-  // Push a placeholder bot message and stream into it.
-  let pending = { role: "bot", content: "" };
-  chatHistory.push(pending);
-  renderChat();
-  let reply = "";
-  try {
-    reply = await callClaudeStream(userText, delta => {
-      pending.content += delta;
-      renderChat();
-    });
-  } catch (e) {
-    pending.content = `*[error]* ${e.message || e}`;
-    renderChat();
-    return;
-  }
-  // Strip tool-call markers from the visible text and run them.
-  const { stripped, results } = await parseAndRunKfCalls(reply);
-  pending.content = stripped;
-  if (results.length) {
-    const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
-    chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log });
-    renderChat();
-    pending = { role: "bot", content: "" };
+  let nextInput = userText;
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const pending = { role: "bot", content: "" };
     chatHistory.push(pending);
     renderChat();
+    let reply;
     try {
-      const reply2 = await callClaudeStream("Tool results:\n" + log, delta => {
+      reply = await callClaudeStream(nextInput, delta => {
         pending.content += delta;
         renderChat();
       });
-      const second = await parseAndRunKfCalls(reply2);
-      pending.content = second.stripped;
-      if (second.results.length) {
-        const log2 = second.results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
-        chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log2 });
-      }
     } catch (e) {
       pending.content = `*[error]* ${e.message || e}`;
+      renderChat();
+      return;
     }
+    const { stripped, results } = await parseAndRunKfCalls(reply);
+    pending.content = stripped;
+    renderChat();
+    if (!results.length) return;  // no tool calls -> Claude is done
+    const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
+    chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log });
+    renderChat();
+    nextInput = "Tool results:\n" + log + "\n\nIf you have enough to answer, write the final answer now without further tool calls. Otherwise issue more tool calls.";
   }
+  chatHistory.push({ role: "bot", content: `*[stopped after ${MAX_TOOL_ROUNDS} tool rounds — ask Claude to summarize what it has so far]*` });
   renderChat();
 }
 
