@@ -1702,6 +1702,26 @@ function computeRelations(individuals, families) {
 const NEAREST_REL_MAX = 20;
 let _nearestRelCache = new Map();
 let _nearestRelCacheKey = null;
+// Background cache pre-warmer: walks every individual and primes the BFS
+// cache during browser idle time, so the first time the user moves the
+// kin-lines slider above 0 there's no startup cost.
+function prewarmKinCache() {
+  if (!lastIndividuals) return;
+  const arr = lastIndividuals;
+  let i = 0;
+  const schedule = window.requestIdleCallback
+    ? (fn) => window.requestIdleCallback(fn, { timeout: 1000 })
+    : (fn) => setTimeout(() => fn({ timeRemaining: () => 5 }), 16);
+  function step(deadline) {
+    while (i < arr.length && (deadline.timeRemaining ? deadline.timeRemaining() > 1 : true)) {
+      nearestRelativesByDag(arr[i].id);
+      i++;
+    }
+    if (i < arr.length) schedule(step);
+  }
+  schedule(step);
+}
+
 function nearestRelativesByDag(indId) {
   if (!lastParentsOf || !lastChildrenOf) return [];
   if (_nearestRelCacheKey !== lastParentsOf) {
@@ -2354,6 +2374,7 @@ async function processFile(file) {
   const { indiById, indiIdxById, parentsOf, isParent, childrenOf } = computeRelations(individuals, families);
   lastIndividuals = individuals; lastIndiById = indiById; lastIndiIdxById = indiIdxById;
   lastParentsOf = parentsOf; lastIsParent = isParent; lastChildrenOf = childrenOf;
+  prewarmKinCache();
   stats.textContent = `geocoding ${individuals.length.toLocaleString()} people...`;
   await new Promise(r => requestAnimationFrame(r));
   const tl = buildTimeline(individuals, geocoder, parentsOf);
