@@ -68,8 +68,8 @@
   #optionsWrap { position:relative; }
   #optionsBtn { background:#1a2238; color:#fff; border:1px solid #2a3654; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
   #optionsBtn:hover { background:#243056; }
-  #optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:300px; max-width:340px; max-height:80vh; overflow-y:auto; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 14px; display:none; flex-direction:column; gap:6px; z-index:30; }
-  #optionsMenu.open { display:flex; }
+  #optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:300px; max-width:340px; max-height:80vh; overflow-y:auto; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 14px; display:flex; flex-direction:column; gap:6px; z-index:30; visibility:hidden; opacity:0; pointer-events:none; transition:opacity 0.08s; }
+  #optionsMenu.open { visibility:visible; opacity:1; pointer-events:auto; }
   #optionsMenu label { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; color:#566480; }
   #optionsMenu select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:3px 6px; font:inherit; }
   #optionsMenu input[type=range] { -webkit-appearance:none; appearance:none; width:120px; height:3px; background:#c0ccd8; border-radius:2px; outline:none; }
