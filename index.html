@@ -1356,17 +1356,23 @@ function tick(now) {
     updateStatusLabels(yint);
   }
   $("centerBtn").disabled = highlightedDwell < 0;
-  maybeUpdateHistoricalBasemap();
-  const stillLerping = lerpDisplayTransform();
-  if (_baseDirty || stillLerping) {
-    _baseDirty = false;
-    applyProjectionFromZoom();
-    drawBase();
-    if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+  // While the Options menu is open, skip the heavy redraw pipeline so the
+  // main thread is free to handle <select> dropdowns and slider drags.
+  // The map state freezes visually but stays consistent; on close we
+  // mark dirty and the loop resumes.
+  if (!_menuOpen) {
+    maybeUpdateHistoricalBasemap();
+    const stillLerping = lerpDisplayTransform();
+    if (_baseDirty || stillLerping) {
+      _baseDirty = false;
+      applyProjectionFromZoom();
+      drawBase();
+      if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); }
+    }
+    frame(parseFloat(trailSel.value));
+    updatePanel(false);
+    updateNowMarker();
   }
-  frame(parseFloat(trailSel.value));
-  updatePanel(false);
-  updateNowMarker();
   requestAnimationFrame(tick);
 }
 
@@ -2269,9 +2275,13 @@ $("rootSel").addEventListener("change", e => {
     applyRoot(e.target.value);
   }
 });
+let _menuOpen = false;
 $("optionsBtn").addEventListener("click", e => {
   e.stopPropagation();
-  $("optionsMenu").classList.toggle("open");
+  const m = $("optionsMenu");
+  m.classList.toggle("open");
+  _menuOpen = m.classList.contains("open");
+  if (!_menuOpen) _baseDirty = true; // wake the redraw loop
 });
 // Pre-warm the menu's layout so the first click is paint-only. The menu is
 // visibility:hidden by default; reading offsetHeight once forces the browser
@@ -2283,7 +2293,11 @@ requestAnimationFrame(() => {
 document.addEventListener("click", e => {
   const menu = $("optionsMenu");
   if (!menu.classList.contains("open")) return;
-  if (!$("optionsWrap").contains(e.target)) menu.classList.remove("open");
+  if (!$("optionsWrap").contains(e.target)) {
+    menu.classList.remove("open");
+    _menuOpen = false;
+    _baseDirty = true;
+  }
 });
 $("filt").addEventListener("change", e => {
   curFilter = e.target.value;
