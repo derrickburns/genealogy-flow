@@ -1,33 +1,25 @@
 #!/usr/bin/env node
-// Local proxy for the Kindred Flow side-panel chat.
+// Local proxy for the Kindred Flow side-panel chat that wraps the `claude`
+// CLI so requests bill against the user's Claude Max subscription instead of
+// console.anthropic.com API credits.
 //
-// The static page (GitHub Pages) calls Anthropic from the browser. For users
-// who don't want to paste a raw API key into localStorage, this proxy holds
-// the credential server-side and forwards POST /v1/messages to Anthropic.
-//
-// Auth modes (set one before starting):
-//   ANTHROPIC_API_KEY=sk-ant-...        -> sent as x-api-key header
-//   ANTHROPIC_AUTH_TOKEN=<oauth-token>  -> sent as Authorization: Bearer ...
+// The browser sends a standard Anthropic Messages-API request to
+// http://localhost:8788/v1/messages. This proxy reformats the conversation
+// as a single text prompt, spawns `claude --print --output-format json`,
+// captures the JSON output, and returns it shaped like a Messages-API
+// response so the browser side doesn't need to know about the CLI.
 //
 // Run:
 //   node scripts/chat-proxy.mjs
-//   ANTHROPIC_API_KEY=sk-ant-... node scripts/chat-proxy.mjs
 //
-// Then open the page; the chat panel auto-detects the proxy at
-// http://localhost:8787 and routes requests through it. Browsers treat
-// http://localhost as a secure origin, so this works even when the page
-// itself is served from https://*.github.io.
+// Requires: `claude` CLI installed and `claude login` already run with a
+// Max-subscription account.
 
 import http from "node:http";
+import { spawn } from "node:child_process";
 
 const PORT = Number(process.env.KF_CHAT_PROXY_PORT || 8788);
-const apiKey = process.env.ANTHROPIC_API_KEY || "";
-const authToken = process.env.ANTHROPIC_AUTH_TOKEN || "";
-const upstream = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-
-if (!apiKey && !authToken) {
-  console.warn("[chat-proxy] No ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN set; the upstream will reject requests until one is configured.");
-}
+const CLAUDE_BIN = process.env.KF_CLAUDE_BIN || "claude";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -35,6 +27,50 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key",
   "Access-Control-Max-Age": "600",
 };
+
+function buildPrompt(messages) {
+  // Conversation history -> single string. Claude understands the pattern
+  // and continues from the latest USER turn.
+  const lines = [];
+  for (const m of messages) {
+    const role = m.role === "user" ? "USER" : "ASSISTANT";
+    const content = typeof m.content === "string"
+      ? m.content
+      : Array.isArray(m.content)
+        ? m.content.filter(b => b.type === "text").map(b => b.text).join("")
+        : String(m.content || "");
+    lines.push(`${role}: ${content}`);
+  }
+  return lines.join("\n\n");
+}
+
+function callClaudeCLI({ system, messages, model }) {
+  return new Promise((resolve, reject) => {
+    const args = ["--print", "--output-format", "json"];
+    if (model) args.push("--model", model);
+    if (system) args.push("--system-prompt", system);
+    const prompt = buildPrompt(messages);
+    const child = spawn(CLAUDE_BIN, args, { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", c => { stdout += c; });
+    child.stderr.on("data", c => { stderr += c; });
+    child.on("error", reject);
+    child.on("close", code => {
+      if (code !== 0) {
+        return reject(new Error(`claude exited ${code}: ${stderr.slice(0, 800)}`));
+      }
+      try {
+        const j = JSON.parse(stdout);
+        if (j.is_error) return reject(new Error(j.result || stderr || "claude reported an error"));
+        resolve(j);
+      } catch (e) {
+        reject(new Error(`could not parse claude json: ${e.message}\n${stdout.slice(0, 400)}`));
+      }
+    });
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+}
 
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
@@ -44,7 +80,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, hasAuth: !!(apiKey || authToken) }));
+    res.end(JSON.stringify({ ok: true, mode: "claude-cli" }));
     return;
   }
   if (req.method !== "POST" || !req.url.startsWith("/v1/messages")) {
@@ -55,29 +91,44 @@ const server = http.createServer(async (req, res) => {
   let body = "";
   req.on("data", chunk => { body += chunk; });
   req.on("end", async () => {
-    const headers = {
-      "Content-Type": "application/json",
-      "anthropic-version": "2023-06-01",
-    };
-    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-    else if (apiKey) headers["x-api-key"] = apiKey;
+    let parsed;
+    try { parsed = JSON.parse(body); }
+    catch (e) {
+      res.writeHead(400, { ...corsHeaders, "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { type: "invalid_request", message: "body is not JSON" } }));
+      return;
+    }
     try {
-      const r = await fetch(`${upstream}/v1/messages`, { method: "POST", headers, body });
-      const text = await r.text();
-      res.writeHead(r.status, {
-        ...corsHeaders,
-        "Content-Type": r.headers.get("content-type") || "application/json",
-      });
-      res.end(text);
+      const { system, messages, model } = parsed;
+      const cliResult = await callClaudeCLI({ system, messages: messages || [], model });
+      const text = cliResult.result || "";
+      // Reshape to Anthropic Messages-API response so browser doesn't change.
+      const apiResp = {
+        id: "kf_" + Date.now(),
+        type: "message",
+        role: "assistant",
+        model: model || "claude-opus-4-7",
+        content: [{ type: "text", text }],
+        stop_reason: cliResult.stop_reason || "end_turn",
+        usage: cliResult.usage ? {
+          input_tokens: cliResult.usage.input_tokens || 0,
+          output_tokens: cliResult.usage.output_tokens || 0,
+          cache_read_input_tokens: cliResult.usage.cache_read_input_tokens || 0,
+          cache_creation_input_tokens: cliResult.usage.cache_creation_input_tokens || 0,
+        } : { input_tokens: 0, output_tokens: 0 },
+      };
+      res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+      res.end(JSON.stringify(apiResp));
     } catch (e) {
+      console.error("[chat-proxy] error:", e.message);
       res.writeHead(502, { ...corsHeaders, "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: { type: "proxy_upstream_error", message: String(e) } }));
+      res.end(JSON.stringify({ error: { type: "claude_cli_error", message: e.message } }));
     }
   });
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  const mode = authToken ? "Bearer (ANTHROPIC_AUTH_TOKEN)" : apiKey ? "x-api-key (ANTHROPIC_API_KEY)" : "no auth — set one";
-  console.log(`[chat-proxy] listening on http://localhost:${PORT}  upstream=${upstream}  auth=${mode}`);
+  console.log(`[chat-proxy] listening on http://localhost:${PORT}  mode=claude-cli  bin=${CLAUDE_BIN}`);
+  console.log(`[chat-proxy] each /v1/messages spawns the claude CLI; bills against the Max subscription you logged into with claude login.`);
   console.log(`[chat-proxy] health: curl http://localhost:${PORT}/health`);
 });
