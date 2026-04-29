@@ -44,12 +44,27 @@ function buildPrompt(messages) {
   return lines.join("\n\n");
 }
 
-function callClaudeCLI({ system, messages, model }) {
+// Single global session id. First request starts a fresh session; subsequent
+// requests pass --resume <id> so Claude keeps its own context across turns.
+// The browser can force a reset by sending the kf-new-session: 1 header.
+let _currentSession = null;
+
+function callClaudeCLI({ system, messages, model, resetSession }) {
   return new Promise((resolve, reject) => {
+    if (resetSession) _currentSession = null;
     const args = ["--print", "--output-format", "json"];
     if (model) args.push("--model", model);
     if (system) args.push("--system-prompt", system);
-    const prompt = buildPrompt(messages);
+    if (_currentSession) args.push("--resume", _currentSession);
+    // With --resume, send only the latest user turn; Claude already has the
+    // earlier history in its session. Without --resume, send the full history.
+    const useResume = !!_currentSession;
+    const lastUser = messages.filter(m => m.role === "user").slice(-1)[0];
+    const prompt = useResume && lastUser
+      ? (typeof lastUser.content === "string" ? lastUser.content
+          : Array.isArray(lastUser.content) ? lastUser.content.filter(b => b.type === "text").map(b => b.text).join("")
+          : String(lastUser.content || ""))
+      : buildPrompt(messages);
     const child = spawn(CLAUDE_BIN, args, { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     child.stdout.on("data", c => { stdout += c; });
@@ -62,6 +77,7 @@ function callClaudeCLI({ system, messages, model }) {
       try {
         const j = JSON.parse(stdout);
         if (j.is_error) return reject(new Error(j.result || stderr || "claude reported an error"));
+        if (j.session_id) _currentSession = j.session_id;
         resolve(j);
       } catch (e) {
         reject(new Error(`could not parse claude json: ${e.message}\n${stdout.slice(0, 400)}`));
@@ -80,7 +96,13 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, mode: "claude-cli" }));
+    res.end(JSON.stringify({ ok: true, mode: "claude-cli", session: _currentSession }));
+    return;
+  }
+  if (req.method === "POST" && req.url === "/reset") {
+    _currentSession = null;
+    res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
   if (req.method !== "POST" || !req.url.startsWith("/v1/messages")) {
@@ -100,7 +122,8 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const { system, messages, model } = parsed;
-      const cliResult = await callClaudeCLI({ system, messages: messages || [], model });
+      const resetSession = req.headers["kf-new-session"] === "1";
+      const cliResult = await callClaudeCLI({ system, messages: messages || [], model, resetSession });
       const text = cliResult.result || "";
       // Reshape to Anthropic Messages-API response so browser doesn't change.
       const apiResp = {

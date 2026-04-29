@@ -3954,11 +3954,179 @@ function buildChatContext() {
   return lines.join("\n");
 }
 
-const SYSTEM_PROMPT = `You are a genealogist assistant embedded in a particle-flow GEDCOM viewer called Kindred Flow. The user is exploring their family tree on a world map. You have access to live context describing what they're currently looking at: tree size, year range, root person, currently selected person, and the people visible at the current year. Use this context to answer their questions concretely. When the user asks about migration, lineage, places, or relationships, ground your answer in the context provided. Keep answers tight (3-6 sentences). Use markdown sparingly: **bold** for names, *italics* for emphasis. Do not invent facts that aren't in the context unless explicitly asked to speculate.`;
+// Page-control API for Claude. Each method returns a small status object that
+// is sent back to Claude as tool-call output. To invoke a method, Claude
+// emits a single line in its response of the form:
+//   <<KFCALL:methodName({"arg":"value"})>>
+// The browser parses these lines, calls the corresponding method, strips the
+// markers from the displayed text, and (if any results came back) follows up
+// with a context message containing the results.
+function _kfFindIndi(query) {
+  if (!lastIndividuals) return null;
+  if (query?.startsWith("@") && query.endsWith("@") && lastIndiById?.has(query)) return lastIndiById.get(query);
+  const q = String(query || "").toLowerCase().trim();
+  if (!q) return null;
+  for (const ind of lastIndividuals) {
+    if (ind.name && ind.name.toLowerCase() === q) return ind;
+  }
+  for (const ind of lastIndividuals) {
+    if (ind.name && ind.name.toLowerCase().includes(q)) return ind;
+  }
+  return null;
+}
+function _kfLatestDwellOf(ind) {
+  if (!ind || !lastIndiIdxById) return -1;
+  const idx = lastIndiIdxById.get(ind.id);
+  if (idx === undefined) return -1;
+  const dwells = indiDwells.get(idx);
+  if (!dwells || !dwells.length) return -1;
+  let latest = dwells[0];
+  for (const di of dwells) if (dwellY[di] > dwellY[latest]) latest = di;
+  return latest;
+}
+window.kfApi = {
+  setYear(year) {
+    const y = Math.max(minYear, Math.min(maxYear, Number(year)));
+    if (!Number.isFinite(y)) return { error: "year not a number" };
+    pushHistory();
+    curYear = y;
+    range.value = y;
+    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    updatePanel(true);
+    return { ok: true, year: Math.floor(y) };
+  },
+  play() { if (!playing) playBtn.click(); return { ok: true, playing: true }; },
+  pause() { if (playing) playBtn.click(); return { ok: true, playing: false }; },
+  setRoot(query) {
+    const ind = _kfFindIndi(query);
+    if (!ind) return { error: "no person matched: " + query };
+    pushHistory();
+    applyRoot(ind.id);
+    return { ok: true, root: { id: ind.id, name: ind.name } };
+  },
+  selectPerson(query) {
+    const ind = _kfFindIndi(query);
+    if (!ind) return { error: "no person matched: " + query };
+    const di = _kfLatestDwellOf(ind);
+    if (di < 0) return { error: "no recorded events for " + ind.name };
+    pushHistory();
+    highlightedDwell = di;
+    highlightInferredYear = -1;
+    highlightInferredSrcYear = -1;
+    curYear = dwellY[di];
+    range.value = curYear;
+    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    updatePanel(true);
+    return { ok: true, person: { id: ind.id, name: ind.name }, dwellYear: dwellY[di] };
+  },
+  centerOn(query) {
+    const ind = _kfFindIndi(query);
+    if (!ind) return { error: "no person matched: " + query };
+    const di = _kfLatestDwellOf(ind);
+    if (di < 0) return { error: "no recorded events for " + ind.name };
+    pushHistory();
+    centerOnGeo(dwellLon[di], dwellLat[di]);
+    return { ok: true, person: { id: ind.id, name: ind.name } };
+  },
+  setProjection(name) {
+    if (!PROJECTIONS[name]) return { error: "unknown projection. try: " + Object.keys(PROJECTIONS).join(", ") };
+    $("projSel").value = name;
+    $("projSel").dispatchEvent(new Event("change", { bubbles: true }));
+    return { ok: true, projection: name };
+  },
+  setKinLines(n) {
+    n = Math.max(0, Math.min(20, parseInt(n, 10) || 0));
+    $("kinN").value = n;
+    $("kinN").dispatchEvent(new Event("input", { bubbles: true }));
+    return { ok: true, kinLines: n };
+  },
+  setClusterMode(mode) {
+    const valid = ["none", "aggregate", "pie", "hull", "heatmap", "dispersion"];
+    if (!valid.includes(mode)) return { error: "valid modes: " + valid.join(", ") };
+    $("clusterMode").value = mode;
+    $("clusterMode").dispatchEvent(new Event("change", { bubbles: true }));
+    return { ok: true, clusterMode: mode };
+  },
+  setWindow(years) {
+    const y = Math.max(1, Math.min(50, parseInt(years, 10) || 6));
+    $("winYrs").value = y;
+    $("winYrs").dispatchEvent(new Event("input", { bubbles: true }));
+    return { ok: true, window: y };
+  },
+  setStatusFilter(filter) {
+    const valid = ["all", "living", "dead"];
+    if (!valid.includes(filter)) return { error: "valid: " + valid.join(", ") };
+    $("statusFilt").value = filter;
+    $("statusFilt").dispatchEvent(new Event("change", { bubbles: true }));
+    return { ok: true, status: filter };
+  },
+  setShowFilter(filter) {
+    const valid = ["all", "blood", "ancestors"];
+    if (!valid.includes(filter)) return { error: "valid: " + valid.join(", ") };
+    $("filt").value = filter;
+    $("filt").dispatchEvent(new Event("change", { bubbles: true }));
+    return { ok: true, show: filter };
+  },
+  back() { backOneStep(); return { ok: true }; },
+  getState() {
+    return {
+      ok: true,
+      year: Math.floor(curYear),
+      window: dwellWindow,
+      root: lastRootId ? { id: lastRootId, name: lastIndiById?.get(lastRootId)?.name } : null,
+      selected: highlightedDwell >= 0 && lastIndividuals
+        ? { name: lastIndividuals[dwellIndi[highlightedDwell]]?.name, year: dwellY[highlightedDwell] }
+        : null,
+      projection: projectionName,
+      kinLines: kinLinesN,
+      clusterMode,
+      total: lastIndividuals?.length || 0,
+    };
+  },
+  findPerson(query) {
+    const ind = _kfFindIndi(query);
+    if (!ind) return { found: false };
+    return { found: true, id: ind.id, name: ind.name, birth: ind.birth_year, death: ind.death_year };
+  },
+};
+
+const SYSTEM_PROMPT = `You are a genealogist assistant embedded in a particle-flow GEDCOM viewer called Kindred Flow. The user is exploring their family tree on a world map. Each user message is preceded by a context block describing what they're looking at: tree size, year range, root person, current playback year, currently selected person, and people visible at the current year.
+
+You can also DRIVE the page on the user's behalf. To invoke a tool, emit a line of the form:
+
+<<KFCALL:methodName(jsonArgs)>>
+
+The browser will parse the line, call the method, strip it from the visible reply, and follow up with the result for you to read on the next turn. Use as many calls in one reply as you need.
+
+Available tools (jsonArgs is a single JSON value, usually a string or object):
+
+- setYear(yearNumber)              Jump the playback year. Pause if playing.
+- play()  / pause()                Animation control.
+- setRoot(personIdOrName)          Change the root person.
+- selectPerson(personIdOrName)     Select that person; map highlights them, panel expands.
+- centerOn(personIdOrName)         Center the map (rotates globe / pans flat).
+- setProjection(name)              "ortho" | "mercator" | "natural" | "equal" | "equirect"
+- setKinLines(n)                   0..20 — connect each person to N nearest blood kin.
+- setClusterMode(mode)             "none" | "aggregate" | "pie" | "hull" | "heatmap" | "dispersion"
+- setWindow(years)                 1..50 — visible-event window in years.
+- setStatusFilter(filter)          "all" | "living" | "dead"
+- setShowFilter(filter)            "all" | "blood" | "ancestors"
+- back()                           Undo the most recent view change.
+- getState()                       Returns current view state. Use to ground answers.
+- findPerson(name)                 Returns {id,name,birth,death,found}. Use to confirm spelling before selecting.
+
+Examples:
+  User: "show me at 1925"        ->  <<KFCALL:setYear(1925)>>
+  User: "select grandma Helen"   ->  <<KFCALL:selectPerson("Helen")>>
+  User: "where is Eugene Rosenberg?"  ->  <<KFCALL:centerOn("Eugene Rosenberg")>>
+  User: "switch to a flat map"   ->  <<KFCALL:setProjection("equal")>>
+
+Style: keep prose short. After a tool call, you don't need to repeat what you did unless the user asked. If a call errored, explain briefly and try a sensible fallback. Never invent facts not in the context. **Bold** names; *italics* sparingly.`;
 
 const CHAT_PROXY_LS = "kf-chat-proxy";
 const CHAT_PROXY_DEFAULT = "http://localhost:8788";
 let _chatProxyOk = null;
+let _chatNewSession = true;
 async function detectChatProxy() {
   if (_chatProxyOk !== null) return _chatProxyOk;
   const url = (localStorage.getItem(CHAT_PROXY_LS) || CHAT_PROXY_DEFAULT).replace(/\/+$/, "");
@@ -3984,11 +4152,9 @@ async function callClaude(userMsg) {
   const proxy = await detectChatProxy();
   let resp;
   if (proxy) {
-    resp = await fetch(proxy + "/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
-      body: requestBody,
-    });
+    const headers = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
+    if (_chatNewSession) { headers["kf-new-session"] = "1"; _chatNewSession = false; }
+    resp = await fetch(proxy + "/v1/messages", { method: "POST", headers, body: requestBody });
   } else {
     const apiKey = localStorage.getItem(CHAT_KEY_LS);
     if (!apiKey) {
@@ -4022,6 +4188,58 @@ function promptForKey() {
   else localStorage.removeItem(CHAT_KEY_LS);
 }
 
+const KFCALL_RE = /<<KFCALL:(\w+)\((.*?)\)>>/g;
+function parseAndRunKfCalls(text) {
+  // Returns { stripped, results: [{call, result}] }. Multiple calls in one
+  // reply are processed in order.
+  const results = [];
+  const stripped = text.replace(KFCALL_RE, (_match, method, argsStr) => {
+    let args = null;
+    if (argsStr.trim()) {
+      try { args = JSON.parse(argsStr); }
+      catch (e) {
+        results.push({ call: `${method}(${argsStr})`, result: { error: "invalid json args: " + e.message } });
+        return "";
+      }
+    }
+    const fn = window.kfApi[method];
+    if (typeof fn !== "function") {
+      results.push({ call: method, result: { error: "no such method" } });
+      return "";
+    }
+    try {
+      const out = fn(args);
+      results.push({ call: `${method}(${args === null ? "" : JSON.stringify(args)})`, result: out });
+    } catch (e) {
+      results.push({ call: method, result: { error: e.message || String(e) } });
+    }
+    return "";
+  });
+  return { stripped: stripped.trim(), results };
+}
+
+async function runChatTurn(userText) {
+  const reply = await callClaude(userText);
+  const { stripped, results } = parseAndRunKfCalls(reply);
+  if (stripped) chatHistory.push({ role: "bot", content: stripped });
+  if (results.length) {
+    // Render a compact tool log into the chat for transparency.
+    const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
+    chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log });
+    // Tell Claude what happened so a follow-up reply can use the results.
+    const follow = "Tool results:\n" + log;
+    renderChat();
+    const reply2 = await callClaude(follow);
+    const second = parseAndRunKfCalls(reply2);
+    if (second.stripped) chatHistory.push({ role: "bot", content: second.stripped });
+    if (second.results.length) {
+      const log2 = second.results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
+      chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log2 });
+    }
+  }
+  renderChat();
+}
+
 chatFormEl.addEventListener("submit", async e => {
   e.preventDefault();
   if (_chatBusy) return;
@@ -4034,9 +4252,7 @@ chatFormEl.addEventListener("submit", async e => {
   chatSendBtn.disabled = true;
   chatSendBtn.textContent = "...";
   try {
-    const reply = await callClaude(text);
-    chatHistory.push({ role: "bot", content: reply });
-    renderChat();
+    await runChatTurn(text);
   } catch (err) {
     appendError(err.message || String(err));
   } finally {
@@ -4052,7 +4268,14 @@ chatInputEl.addEventListener("keydown", e => {
   }
 });
 $("chatKey").addEventListener("click", promptForKey);
-$("chatClear").addEventListener("click", () => { chatHistory.length = 0; renderChat(); });
+$("chatClear").addEventListener("click", async () => {
+  chatHistory.length = 0;
+  _chatNewSession = true;
+  renderChat();
+  // Best-effort: tell the proxy to drop its session id too.
+  const proxy = await detectChatProxy();
+  if (proxy) { fetch(proxy + "/reset", { method: "POST" }).catch(() => {}); }
+});
 renderChat();
 </script>
 </body>
