@@ -497,7 +497,7 @@ const dragRotate = d3.drag()
     this._x = e.x; this._y = e.y;
   })
   .on("drag", function(e) {
-    const k = Math.max(1.0, 400 / projection.scale());
+    const k = 57.295779513 / projection.scale();
     const r0 = this._r;
     projection.rotate([
       r0[0] + (e.x - this._x) * k,
@@ -514,16 +514,18 @@ const dragRotate = d3.drag()
 d3.select(fxCanvas).call(dragRotate);
 
 // Safari GestureEvent: thumb-anchor + finger-move on a trackpad fires this.
-// Treat the centroid's clientX/Y motion as a pan — for ortho mode that's
-// rotation around the lat/lon axes such that the geographic point under
-// the cursor stays under the cursor.
+// Two channels:
+// - centroid clientX/Y delta -> pan (drag map under cursor)
+// - event.scale ratio        -> zoom anchored at cursor (point under cursor
+//   stays under cursor as the world scales in/out)
 let _gestureActive = false;
-let _gestureLastX = 0, _gestureLastY = 0;
+let _gestureLastX = 0, _gestureLastY = 0, _gestureLastScale = 1;
 fxCanvas.addEventListener("gesturestart", e => {
   e.preventDefault();
   _gestureActive = true;
   _gestureLastX = e.clientX;
   _gestureLastY = e.clientY;
+  _gestureLastScale = e.scale || 1;
   _interacting = true;
   if (!_restoringView) pushHistory();
 });
@@ -533,9 +535,10 @@ fxCanvas.addEventListener("gesturechange", e => {
   const dy = e.clientY - _gestureLastY;
   _gestureLastX = e.clientX;
   _gestureLastY = e.clientY;
+  // Pan
   if (projectionName === "ortho") {
     const r = projection.rotate();
-    const k = Math.max(1.0, 400 / projection.scale());
+    const k = 57.295779513 / projection.scale();
     projection.rotate([
       r[0] + dx * k,
       Math.max(-90, Math.min(90, r[1] - dy * k)),
@@ -546,6 +549,19 @@ fxCanvas.addEventListener("gesturechange", e => {
     const tx = zoomTransform.x + dx;
     const ty = zoomTransform.y + dy;
     d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(zoomTransform.k));
+  }
+  // Zoom anchored at gesture cursor
+  if (e.scale && e.scale !== _gestureLastScale) {
+    const factor = e.scale / _gestureLastScale;
+    _gestureLastScale = e.scale;
+    const newK = Math.max(1, Math.min(64, zoomTransform.k * factor));
+    const ratio = newK / zoomTransform.k;
+    const rect = fxCanvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const newX = cx - (cx - zoomTransform.x) * ratio;
+    const newY = cy - (cy - zoomTransform.y) * ratio;
+    d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(newX, newY).scale(newK));
   }
 });
 fxCanvas.addEventListener("gestureend", () => {
