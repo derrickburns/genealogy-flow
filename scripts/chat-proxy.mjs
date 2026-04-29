@@ -1,19 +1,12 @@
 #!/usr/bin/env node
-// Local proxy for the Kindred Flow side-panel chat that wraps the `claude`
-// CLI so requests bill against the user's Claude Max subscription instead of
-// console.anthropic.com API credits.
-//
-// The browser sends a standard Anthropic Messages-API request to
-// http://localhost:8788/v1/messages. This proxy reformats the conversation
-// as a single text prompt, spawns `claude --print --output-format json`,
-// captures the JSON output, and returns it shaped like a Messages-API
-// response so the browser side doesn't need to know about the CLI.
+// Local proxy for the Kindred Flow side-panel chat. One long-running
+// `claude` process handles all turns via stream-json, and assistant text
+// is streamed back to the browser as Server-Sent Events so the UI can
+// render tokens as they arrive.
 //
 // Run:
 //   node scripts/chat-proxy.mjs
-//
-// Requires: `claude` CLI installed and `claude login` already run with a
-// Max-subscription account.
+// Requires: `claude` CLI installed and `claude login` already done.
 
 import http from "node:http";
 import { spawn } from "node:child_process";
@@ -25,82 +18,101 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key, kf-new-session",
+  "Access-Control-Expose-Headers": "*",
   "Access-Control-Max-Age": "600",
 };
 
-function buildPrompt(messages) {
-  // Conversation history -> single string. Claude understands the pattern
-  // and continues from the latest USER turn.
-  const lines = [];
-  for (const m of messages) {
-    const role = m.role === "user" ? "USER" : "ASSISTANT";
-    const content = typeof m.content === "string"
-      ? m.content
-      : Array.isArray(m.content)
-        ? m.content.filter(b => b.type === "text").map(b => b.text).join("")
-        : String(m.content || "");
-    lines.push(`${role}: ${content}`);
-  }
-  return lines.join("\n\n");
-}
+let _proc = null;
+let _procSystemPrompt = null;
+let _procModel = null;
+let _stdoutBuf = "";
+let _activeRequest = null;
+const _queue = [];
 
-// Single global session id. First request starts a fresh session; subsequent
-// requests pass --resume <id> so Claude keeps its own context across turns.
-// The browser can force a reset by sending the kf-new-session: 1 header.
-let _currentSession = null;
-
-function callClaudeCLI({ system, messages, model, resetSession }) {
-  return new Promise((resolve, reject) => {
-    if (resetSession) _currentSession = null;
-    const args = ["--print", "--output-format", "json"];
-    if (model) args.push("--model", model);
-    if (system) args.push("--system-prompt", system);
-    if (_currentSession) args.push("--resume", _currentSession);
-    // With --resume, send only the latest user turn; Claude already has the
-    // earlier history in its session. Without --resume, send the full history.
-    const useResume = !!_currentSession;
-    const lastUser = messages.filter(m => m.role === "user").slice(-1)[0];
-    const prompt = useResume && lastUser
-      ? (typeof lastUser.content === "string" ? lastUser.content
-          : Array.isArray(lastUser.content) ? lastUser.content.filter(b => b.type === "text").map(b => b.text).join("")
-          : String(lastUser.content || ""))
-      : buildPrompt(messages);
-    const child = spawn(CLAUDE_BIN, args, { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "", stderr = "";
-    child.stdout.on("data", c => { stdout += c; });
-    child.stderr.on("data", c => { stderr += c; });
-    child.on("error", reject);
-    child.on("close", code => {
-      if (code !== 0) {
-        return reject(new Error(`claude exited ${code}: ${stderr.slice(0, 800)}`));
-      }
-      try {
-        const j = JSON.parse(stdout);
-        if (j.is_error) return reject(new Error(j.result || stderr || "claude reported an error"));
-        if (j.session_id) _currentSession = j.session_id;
-        resolve(j);
-      } catch (e) {
-        reject(new Error(`could not parse claude json: ${e.message}\n${stdout.slice(0, 400)}`));
-      }
-    });
-    child.stdin.write(prompt);
-    child.stdin.end();
+function startProc(system, model) {
+  const args = ["--print", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"];
+  if (model) args.push("--model", model);
+  if (system) args.push("--system-prompt", system);
+  const proc = spawn(CLAUDE_BIN, args, { stdio: ["pipe", "pipe", "pipe"] });
+  proc.stderr.on("data", c => process.stderr.write(`[claude.stderr] ${c}`));
+  proc.stdout.on("data", c => {
+    _stdoutBuf += c;
+    let nl;
+    while ((nl = _stdoutBuf.indexOf("\n")) >= 0) {
+      const line = _stdoutBuf.slice(0, nl).trim();
+      _stdoutBuf = _stdoutBuf.slice(nl + 1);
+      if (!line) continue;
+      try { handleStreamLine(JSON.parse(line)); }
+      catch (_) { /* non-JSON */ }
+    }
   });
+  proc.on("exit", (code, signal) => {
+    console.warn(`[chat-proxy] claude exited code=${code} signal=${signal}`);
+    _proc = null;
+    if (_activeRequest) { _activeRequest.onError(new Error(`claude exited ${code}/${signal}`)); _activeRequest = null; }
+    drainQueue();
+  });
+  _proc = proc;
+  _procSystemPrompt = system || null;
+  _procModel = model || null;
 }
 
-const server = http.createServer(async (req, res) => {
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, corsHeaders);
-    res.end();
-    return;
+function ensureProc(system, model) {
+  if (_proc && _procSystemPrompt === (system || null) && _procModel === (model || null)) return;
+  if (_proc) { try { _proc.kill("SIGTERM"); } catch (_) {} _proc = null; }
+  startProc(system, model);
+}
+
+function handleStreamLine(msg) {
+  if (!_activeRequest) return;
+  if (msg.type === "assistant" && msg.message && Array.isArray(msg.message.content)) {
+    for (const block of msg.message.content) {
+      if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
+        _activeRequest.onDelta(block.text);
+      }
+    }
+  } else if (msg.type === "result") {
+    if (msg.is_error) {
+      _activeRequest.onError(new Error(msg.result || "claude reported an error"));
+    } else {
+      _activeRequest.onDone({ usage: msg.usage || null, stop_reason: msg.stop_reason || "end_turn" });
+    }
+    _activeRequest = null;
+    drainQueue();
   }
+}
+
+function drainQueue() {
+  if (_activeRequest) return;
+  const next = _queue.shift();
+  if (!next) return;
+  ensureProc(next.system, next.model);
+  _activeRequest = { onDelta: next.onDelta, onDone: next.onDone, onError: next.onError };
+  const line = JSON.stringify({ type: "user", message: { role: "user", content: next.content } }) + "\n";
+  try { _proc.stdin.write(line); }
+  catch (e) { _activeRequest.onError(e); _activeRequest = null; drainQueue(); }
+}
+
+function streamClaude({ system, model, content, onDelta, onDone, onError }) {
+  _queue.push({ system, model, content, onDelta, onDone, onError });
+  drainQueue();
+}
+
+function resetProc() {
+  if (_proc) { try { _proc.kill("SIGTERM"); } catch (_) {} _proc = null; }
+  _stdoutBuf = "";
+  if (_activeRequest) { _activeRequest.onError(new Error("session reset")); _activeRequest = null; }
+}
+
+const server = http.createServer((req, res) => {
+  if (req.method === "OPTIONS") { res.writeHead(204, corsHeaders); res.end(); return; }
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, mode: "claude-cli", session: _currentSession }));
+    res.end(JSON.stringify({ ok: true, mode: "claude-cli-stream", running: !!_proc }));
     return;
   }
   if (req.method === "POST" && req.url === "/reset") {
-    _currentSession = null;
+    resetProc();
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -112,46 +124,42 @@ const server = http.createServer(async (req, res) => {
   }
   let body = "";
   req.on("data", chunk => { body += chunk; });
-  req.on("end", async () => {
+  req.on("end", () => {
     let parsed;
     try { parsed = JSON.parse(body); }
-    catch (e) {
+    catch (_) {
       res.writeHead(400, { ...corsHeaders, "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: { type: "invalid_request", message: "body is not JSON" } }));
       return;
     }
-    try {
-      const { system, messages, model } = parsed;
-      const resetSession = req.headers["kf-new-session"] === "1";
-      const cliResult = await callClaudeCLI({ system, messages: messages || [], model, resetSession });
-      const text = cliResult.result || "";
-      // Reshape to Anthropic Messages-API response so browser doesn't change.
-      const apiResp = {
-        id: "kf_" + Date.now(),
-        type: "message",
-        role: "assistant",
-        model: model || "claude-opus-4-7",
-        content: [{ type: "text", text }],
-        stop_reason: cliResult.stop_reason || "end_turn",
-        usage: cliResult.usage ? {
-          input_tokens: cliResult.usage.input_tokens || 0,
-          output_tokens: cliResult.usage.output_tokens || 0,
-          cache_read_input_tokens: cliResult.usage.cache_read_input_tokens || 0,
-          cache_creation_input_tokens: cliResult.usage.cache_creation_input_tokens || 0,
-        } : { input_tokens: 0, output_tokens: 0 },
-      };
-      res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
-      res.end(JSON.stringify(apiResp));
-    } catch (e) {
-      console.error("[chat-proxy] error:", e.message);
-      res.writeHead(502, { ...corsHeaders, "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: { type: "claude_cli_error", message: e.message } }));
-    }
+    if (req.headers["kf-new-session"] === "1") resetProc();
+    const { system, messages, model } = parsed;
+    const lastUser = (messages || []).filter(m => m.role === "user").slice(-1)[0];
+    const content = lastUser
+      ? (typeof lastUser.content === "string" ? lastUser.content
+          : Array.isArray(lastUser.content) ? lastUser.content.filter(b => b.type === "text").map(b => b.text).join("")
+          : String(lastUser.content || ""))
+      : "";
+    res.writeHead(200, {
+      ...corsHeaders,
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    function send(obj) { res.write(`data: ${JSON.stringify(obj)}\n\n`); }
+    streamClaude({
+      system, model, content,
+      onDelta: text => send({ delta: text }),
+      onDone: ({ usage, stop_reason }) => { send({ done: true, usage, stop_reason }); res.end(); },
+      onError: err => { send({ error: err.message || String(err) }); res.end(); },
+    });
+    req.on("close", () => { /* client disconnected; let claude finish silently */ });
   });
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`[chat-proxy] listening on http://localhost:${PORT}  mode=claude-cli  bin=${CLAUDE_BIN}`);
-  console.log(`[chat-proxy] each /v1/messages spawns the claude CLI; bills against the Max subscription you logged into with claude login.`);
+  console.log(`[chat-proxy] listening on http://localhost:${PORT}  mode=claude-cli-stream  bin=${CLAUDE_BIN}`);
+  console.log(`[chat-proxy] one persistent claude process serves all turns; replies stream back via SSE.`);
   console.log(`[chat-proxy] health: curl http://localhost:${PORT}/health`);
 });

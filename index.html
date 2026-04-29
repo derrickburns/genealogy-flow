@@ -4184,7 +4184,7 @@ async function detectChatProxy() {
   return false;
 }
 
-async function callClaude(userMsg) {
+async function callClaudeStream(userMsg, onDelta) {
   const ctx = buildChatContext();
   const messages = chatHistory.map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }));
   messages.push({ role: "user", content: ctx ? `Context for current view:\n${ctx}\n\nQuestion: ${userMsg}` : userMsg });
@@ -4193,8 +4193,8 @@ async function callClaude(userMsg) {
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
     messages,
+    stream: true,
   });
-  // Try the local proxy first (no API key needed in browser).
   const proxy = await detectChatProxy();
   let resp;
   if (proxy) {
@@ -4203,9 +4203,7 @@ async function callClaude(userMsg) {
     resp = await fetch(proxy + "/v1/messages", { method: "POST", headers, body: requestBody });
   } else {
     const apiKey = localStorage.getItem(CHAT_KEY_LS);
-    if (!apiKey) {
-      throw new Error("No proxy at localhost:8788 (start it with `node scripts/chat-proxy.mjs`) and no API key set. Click 'key' to add one.");
-    }
+    if (!apiKey) throw new Error("No proxy at localhost:8788 and no API key set. Click 'key' to add one.");
     resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -4221,9 +4219,37 @@ async function callClaude(userMsg) {
     const txt = await resp.text().catch(() => "");
     throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
   }
-  const j = await resp.json();
-  const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-  return text.trim();
+  const ct = resp.headers.get("content-type") || "";
+  let full = "";
+  if (ct.includes("event-stream")) {
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n\n")) >= 0) {
+        const evt = buf.slice(0, nl);
+        buf = buf.slice(nl + 2);
+        const dataLine = evt.split("\n").find(l => l.startsWith("data:"));
+        if (!dataLine) continue;
+        try {
+          const obj = JSON.parse(dataLine.slice(5).trim());
+          if (obj.delta) { full += obj.delta; onDelta(obj.delta); }
+          else if (obj.error) throw new Error(obj.error);
+          // obj.done — ignore here, end of stream signals completion
+        } catch (e) { /* unparsed event */ }
+      }
+    }
+  } else {
+    // Non-streaming JSON response (e.g. direct Anthropic API).
+    const j = await resp.json();
+    full = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+    if (full) onDelta(full);
+  }
+  return full.trim();
 }
 
 function promptForKey() {
@@ -4265,22 +4291,45 @@ function parseAndRunKfCalls(text) {
 }
 
 async function runChatTurn(userText) {
-  const reply = await callClaude(userText);
+  // Push a placeholder bot message and stream into it.
+  let pending = { role: "bot", content: "" };
+  chatHistory.push(pending);
+  renderChat();
+  let reply = "";
+  try {
+    reply = await callClaudeStream(userText, delta => {
+      pending.content += delta;
+      renderChat();
+    });
+  } catch (e) {
+    pending.content = `*[error]* ${e.message || e}`;
+    renderChat();
+    return;
+  }
+  // Strip tool-call markers from the visible text and run them.
   const { stripped, results } = parseAndRunKfCalls(reply);
-  if (stripped) chatHistory.push({ role: "bot", content: stripped });
+  pending.content = stripped;
   if (results.length) {
-    // Render a compact tool log into the chat for transparency.
     const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
     chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log });
-    // Tell Claude what happened so a follow-up reply can use the results.
-    const follow = "Tool results:\n" + log;
     renderChat();
-    const reply2 = await callClaude(follow);
-    const second = parseAndRunKfCalls(reply2);
-    if (second.stripped) chatHistory.push({ role: "bot", content: second.stripped });
-    if (second.results.length) {
-      const log2 = second.results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
-      chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log2 });
+    // Follow-up turn so Claude can react to tool results.
+    pending = { role: "bot", content: "" };
+    chatHistory.push(pending);
+    renderChat();
+    try {
+      const reply2 = await callClaudeStream("Tool results:\n" + log, delta => {
+        pending.content += delta;
+        renderChat();
+      });
+      const second = parseAndRunKfCalls(reply2);
+      pending.content = second.stripped;
+      if (second.results.length) {
+        const log2 = second.results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
+        chatHistory.push({ role: "bot", content: "*[tool calls]*\n" + log2 });
+      }
+    } catch (e) {
+      pending.content = `*[error]* ${e.message || e}`;
     }
   }
   renderChat();
