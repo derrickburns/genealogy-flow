@@ -14,6 +14,9 @@
   }
   #mapWrap { position:relative; min-width:0; min-height:0; overflow:hidden; border-radius:10px; }
   canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixelated; touch-action:none; }
+  canvas#gl { z-index:0; }
+  canvas#base { z-index:1; background:transparent; }
+  canvas#fx { z-index:2; }
   #base { z-index:1; } #fx { z-index:2; }
   .yearCorner { position:absolute; z-index:3; pointer-events:none; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric:tabular-nums; font-weight:700; font-size:20px; line-height:1; color:rgba(20,30,55,0.55); padding:6px 10px; background:rgba(255,255,255,0.7); border-radius:6px; user-select:none; }
   #yearTL { top:10px; left:10px; }
@@ -221,7 +224,7 @@
   </span>
 </div>
 <div id="middle">
-<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><button id="backBtn" class="mapBtn" disabled style="top:50px; right:auto; left:10px;">&larr; Back</button><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
+<div id="mapWrap"><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><button id="backBtn" class="mapBtn" disabled style="top:50px; right:auto; left:10px;">&larr; Back</button><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
 <aside id="panel">
   <div id="panelScroll">
   <ul id="panelList"></ul>
