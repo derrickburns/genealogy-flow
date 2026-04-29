@@ -104,6 +104,27 @@
   #welcome h1 { margin:0 0 8px; font-size:18px; }
   #welcome p { margin:6px 0 14px; color:#566480; }
   #welcome.hidden { display:none; }
+  #chatPanel { display:flex; flex-direction:column; flex:1; min-height:0; }
+  #chatHistory { flex:1; overflow-y:auto; padding:10px 12px; font-size:12px; line-height:1.5; color:#1c2433; }
+  #chatHistory .msg { margin-bottom:10px; }
+  #chatHistory .msg.user { color:#1c2433; }
+  #chatHistory .msg.user .who { color:#2a4a8c; font-weight:700; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; display:block; margin-bottom:2px; }
+  #chatHistory .msg.bot .who { color:#566480; font-weight:700; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; display:block; margin-bottom:2px; }
+  #chatHistory .msg.bot { color:#1c2433; }
+  #chatHistory .msg .body { white-space:pre-wrap; word-wrap:break-word; }
+  #chatHistory .msg.bot .body strong { color:#0a1426; }
+  #chatHistory .msg.bot .body a { color:#2a4a8c; }
+  #chatHistory .empty { color:#888; font-style:italic; padding:18px 4px 0; }
+  #chatHistory .err { color:#b3261e; }
+  #chatForm { border-top:1px solid #e0e6ee; padding:8px 10px; display:flex; flex-direction:column; gap:6px; background:#fbfbfd; }
+  #chatInput { resize:vertical; border:1px solid #c0ccd8; border-radius:6px; padding:6px 8px; font:inherit; font-size:12px; background:#fff; color:#1c2433; min-height:48px; max-height:200px; }
+  #chatInput:focus { outline:none; border-color:#2a4a8c; }
+  #chatBar { display:flex; gap:6px; align-items:center; }
+  #chatBar button { font:inherit; font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer; border:1px solid #c0ccd8; background:#fff; color:#566480; }
+  #chatBar button:hover { background:#f0f4f8; }
+  #chatSend { margin-left:auto; background:#2a4a8c !important; color:#fff !important; border-color:#1c3669 !important; padding:5px 14px !important; }
+  #chatSend:hover { background:#1c3669 !important; }
+  #chatSend:disabled { background:#9aa6bc !important; cursor:default; border-color:#7c8aa3 !important; }
   #panel {
     background:rgba(255,255,255,0.98); border:1px solid #c0ccd8; border-radius:10px;
     box-shadow:0 2px 12px rgba(0,0,0,0.08);
@@ -226,8 +247,19 @@
 <div id="middle">
 <div id="mapWrap"><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><button id="backBtn" class="mapBtn" disabled style="top:50px; right:auto; left:10px;">&larr; Back</button><button id="centerBtn" class="mapBtn" disabled>Center on selection</button><div id="hoverTip" class="hoverTip"></div></div>
 <aside id="panel">
-  <div id="panelScroll">
+  <div id="panelScroll" style="display:none;">
   <ul id="panelList"></ul>
+  </div>
+  <div id="chatPanel">
+    <div id="chatHistory"></div>
+    <form id="chatForm">
+      <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
+      <div id="chatBar">
+        <button type="button" id="chatKey" title="Set Anthropic API key">key</button>
+        <button type="button" id="chatClear" title="Clear conversation">clear</button>
+        <button type="submit" id="chatSend">Send</button>
+      </div>
+    </form>
   </div>
 </aside>
 </div>
@@ -3848,6 +3880,156 @@ function maybeUpdateHistoricalBasemap() {
   });
 }
 bootBasemap().catch(e => { stats.textContent = "boot error: " + e.message; });
+
+// ---------- Chat ----------
+const chatHistoryEl = $("chatHistory");
+const chatInputEl = $("chatInput");
+const chatFormEl = $("chatForm");
+const chatSendBtn = $("chatSend");
+const chatHistory = []; // [{ role, content }]
+const CHAT_KEY_LS = "kf-anthropic-key";
+let _chatBusy = false;
+
+function escChat(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+function renderMd(s) {
+  return escChat(s)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+    .replace(/\n/g, "<br>");
+}
+function renderChat() {
+  if (chatHistory.length === 0) {
+    chatHistoryEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
+    return;
+  }
+  chatHistoryEl.innerHTML = chatHistory.map(m =>
+    `<div class="msg ${m.role}"><span class="who">${m.role === "user" ? "you" : "claude"}</span><div class="body">${m.role === "user" ? escChat(m.content) : renderMd(m.content)}</div></div>`
+  ).join("");
+  chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+}
+function appendError(text) {
+  chatHistoryEl.insertAdjacentHTML("beforeend", `<div class="msg bot err"><span class="who">error</span><div class="body">${escChat(text)}</div></div>`);
+  chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+}
+
+function buildChatContext() {
+  const lines = [];
+  if (lastIndividuals) {
+    lines.push(`Tree: ${lastIndividuals.length.toLocaleString()} individuals, ${dwellY ? dwellY.length.toLocaleString() : 0} events.`);
+    lines.push(`Year range: ${minYear}-${maxYear}.`);
+  }
+  if (lastRootId) {
+    const root = lastIndiById?.get(lastRootId);
+    if (root) lines.push(`Root: ${root.name} (${root.birth_year ?? "?"}-${root.death_year ?? "?"}).`);
+  }
+  lines.push(`Currently viewing year: ${Math.floor(curYear)}, year-window: ${dwellWindow}y back.`);
+  if (highlightedDwell >= 0 && lastIndividuals) {
+    const sel = lastIndividuals[dwellIndi[highlightedDwell]];
+    if (sel) {
+      const place = dwellPlace[highlightedDwell] >= 0 ? placesList[dwellPlace[highlightedDwell]] : "";
+      lines.push(`Selected: ${sel.name} (${sel.birth_year ?? "?"}-${sel.death_year ?? "?"})${place ? ", at " + place : ""}, dwell year ${dwellY[highlightedDwell]}.`);
+    }
+  }
+  // Visible people in current year window
+  if (timelineLoaded) {
+    const yint = Math.floor(curYear);
+    const lo = lowerBound(dwellY, dwellOrder, yint - dwellWindow);
+    const hi = lowerBound(dwellY, dwellOrder, yint + 1);
+    const visible = new Map();
+    for (let k = lo; k < hi; k++) {
+      const i = dwellOrder[k];
+      const ind = lastIndividuals[dwellIndi[i]];
+      if (!ind) continue;
+      if (!visible.has(ind.id)) {
+        const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
+        visible.set(ind.id, `${ind.name} (${dwellY[i]}, ${place})`);
+      }
+      if (visible.size >= 80) break;
+    }
+    if (visible.size > 0) {
+      lines.push(`Visible at this year (max 80): ${[...visible.values()].join("; ")}.`);
+    }
+  }
+  return lines.join("\n");
+}
+
+const SYSTEM_PROMPT = `You are a genealogist assistant embedded in a particle-flow GEDCOM viewer called Kindred Flow. The user is exploring their family tree on a world map. You have access to live context describing what they're currently looking at: tree size, year range, root person, currently selected person, and the people visible at the current year. Use this context to answer their questions concretely. When the user asks about migration, lineage, places, or relationships, ground your answer in the context provided. Keep answers tight (3-6 sentences). Use markdown sparingly: **bold** for names, *italics* for emphasis. Do not invent facts that aren't in the context unless explicitly asked to speculate.`;
+
+async function callClaude(userMsg) {
+  const apiKey = localStorage.getItem(CHAT_KEY_LS);
+  if (!apiKey) {
+    promptForKey();
+    appendError("No API key set. Click 'key' to add one.");
+    return;
+  }
+  const ctx = buildChatContext();
+  const messages = chatHistory.map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }));
+  messages.push({ role: "user", content: ctx ? `Context for current view:\n${ctx}\n\nQuestion: ${userMsg}` : userMsg });
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-opus-4-7",
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages,
+    }),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
+  }
+  const j = await resp.json();
+  const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+  return text.trim();
+}
+
+function promptForKey() {
+  const cur = localStorage.getItem(CHAT_KEY_LS) || "";
+  const k = prompt("Anthropic API key (sk-ant-...). Stored in localStorage on this device only.", cur);
+  if (k === null) return;
+  if (k.trim()) localStorage.setItem(CHAT_KEY_LS, k.trim());
+  else localStorage.removeItem(CHAT_KEY_LS);
+}
+
+chatFormEl.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (_chatBusy) return;
+  const text = chatInputEl.value.trim();
+  if (!text) return;
+  chatInputEl.value = "";
+  chatHistory.push({ role: "user", content: text });
+  renderChat();
+  _chatBusy = true;
+  chatSendBtn.disabled = true;
+  chatSendBtn.textContent = "...";
+  try {
+    const reply = await callClaude(text);
+    chatHistory.push({ role: "bot", content: reply });
+    renderChat();
+  } catch (err) {
+    appendError(err.message || String(err));
+  } finally {
+    _chatBusy = false;
+    chatSendBtn.disabled = false;
+    chatSendBtn.textContent = "Send";
+  }
+});
+chatInputEl.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    chatFormEl.requestSubmit();
+  }
+});
+$("chatKey").addEventListener("click", promptForKey);
+$("chatClear").addEventListener("click", () => { chatHistory.length = 0; renderChat(); });
+renderChat();
 </script>
 </body>
 </html>
