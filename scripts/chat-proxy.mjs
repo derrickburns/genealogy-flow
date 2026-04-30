@@ -10,11 +10,78 @@
 
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync, unlinkSync, statSync, createReadStream } from "node:fs";
+import { dirname, join, resolve as pathResolve, extname, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const PORT = Number(process.env.KF_CHAT_PROXY_PORT || 8788);
+const PORT = Number(process.env.KF_CHAT_PROXY_PORT || 8789);
 const CLAUDE_BIN = process.env.KF_CLAUDE_BIN || "claude";
 const DB_PATH = process.env.KF_DB_PATH || "";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const STATIC_ROOT = pathResolve(HERE, "..");
+const GEDCOM_TO_SQLITE = join(HERE, "gedcom-to-sqlite.mjs");
+const LINK_RECORDS = join(HERE, "link-records.mjs");
+const CHECK_DATA_QUALITY = join(HERE, "check-data-quality.mjs");
+const MAX_GED_BYTES = 50 * 1024 * 1024;
+
+// Content-Type lookup for the few file kinds the page actually serves. Files
+// outside this list still serve, just as octet-stream.
+const STATIC_MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".htm":  "text/html; charset=utf-8",
+  ".js":   "application/javascript; charset=utf-8",
+  ".mjs":  "application/javascript; charset=utf-8",
+  ".css":  "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".geojson": "application/geo+json; charset=utf-8",
+  ".svg":  "image/svg+xml",
+  ".png":  "image/png",
+  ".jpg":  "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif":  "image/gif",
+  ".webp": "image/webp",
+  ".ico":  "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".map":  "application/json; charset=utf-8",
+  ".txt":  "text/plain; charset=utf-8",
+  ".ged":  "text/plain; charset=utf-8",
+};
+
+// Try to serve a file from STATIC_ROOT. Returns true if it sent a response,
+// false if the request didn't match a real file (so the caller can fall
+// through to the 404). GET/HEAD only; rejects path traversal.
+function tryServeStatic(req, res) {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  let urlPath;
+  try { urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname); }
+  catch (_) { return false; }
+  if (urlPath === "/") urlPath = "/index.html";
+  // normalize() collapses .. so we can detect traversal by checking the
+  // resolved absolute path stays under STATIC_ROOT.
+  const rel = normalize(urlPath).replace(/^\/+/, "");
+  const abs = pathResolve(STATIC_ROOT, rel);
+  if (!abs.startsWith(STATIC_ROOT + "/") && abs !== STATIC_ROOT) return false;
+  let st;
+  try { st = statSync(abs); } catch (_) { return false; }
+  if (!st.isFile()) return false;
+  const ext = extname(abs).toLowerCase();
+  const headers = {
+    ...corsHeaders,
+    "Content-Type": STATIC_MIME[ext] || "application/octet-stream",
+    "Content-Length": String(st.size),
+    // Avoid stale gazetteer / page after edits during development.
+    "Cache-Control": "no-cache",
+  };
+  res.writeHead(200, headers);
+  if (req.method === "HEAD") { res.end(); return true; }
+  createReadStream(abs).on("error", e => {
+    console.warn("[chat-proxy] static read error:", abs, e.message);
+    try { res.destroy(); } catch (_) {}
+  }).pipe(res);
+  return true;
+}
 
 let _db = null;
 async function getDb() {
@@ -26,10 +93,90 @@ async function getDb() {
   return _db;
 }
 
+// Open the DB read-write, run a transaction, close, and null out _db so the
+// next read reopens fresh. Used for source deletes from the proxy.
+async function withWritableDb(fn) {
+  if (_db) { try { _db.close(); } catch (_) {} _db = null; }
+  if (!DB_PATH || !existsSync(DB_PATH)) throw new Error("no DB to mutate");
+  const Database = (await import("better-sqlite3")).default;
+  const w = new Database(DB_PATH, { readonly: false, fileMustExist: true });
+  try { return fn(w); }
+  finally { try { w.close(); } catch (_) {} }
+}
+
+// Cascade-delete a source by id. Returns the deleted row, or null if missing.
+async function deleteSourceById(id) {
+  return withWritableDb(db => {
+    const row = db.prepare("SELECT id, name, n_individuals, n_events, n_families FROM sources WHERE id = ?").get(id);
+    if (!row) return null;
+    const tx = db.transaction(() => {
+      db.prepare("DELETE FROM events_geo WHERE rowid IN (SELECT rowid FROM events WHERE source_id = ?)").run(id);
+      db.prepare("DELETE FROM events WHERE source_id = ?").run(id);
+      db.prepare("DELETE FROM individuals WHERE source_id = ?").run(id);
+      db.prepare("DELETE FROM families WHERE source_id = ?").run(id);
+      db.prepare("DELETE FROM family_children WHERE source_id = ?").run(id);
+      db.prepare("DELETE FROM sources WHERE id = ?").run(id);
+    });
+    tx();
+    return row;
+  });
+}
+
+// Spawn a Node child against the shared DB. Closes the read-only handle
+// first so the child can take an exclusive write lock; nulls out _db so the
+// next SQL request reopens fresh.
+function runChild(scriptPath) {
+  return new Promise(resolve => {
+    if (!DB_PATH || !existsSync(DB_PATH)) { resolve({ ok: false, error: "no DB" }); return; }
+    if (_db) { try { _db.close(); } catch (_) {} _db = null; }
+    const t0 = Date.now();
+    const child = spawn(process.execPath, [scriptPath, DB_PATH], {
+      cwd: HERE,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let log = "";
+    child.stderr.on("data", c => { log += c; });
+    child.on("error", e => resolve({ ok: false, error: e.message }));
+    child.on("exit", code => {
+      if (code !== 0) resolve({ ok: false, error: `${scriptPath} exited ${code}`, log });
+      else resolve({ ok: true, ms: Date.now() - t0, log });
+    });
+  });
+}
+
+// Run data-quality check first, then the linker. Both are best-effort.
+async function runQualityAndLink() {
+  const quality = await runChild(CHECK_DATA_QUALITY);
+  const link = await runChild(LINK_RECORDS);
+  return {
+    ok: link.ok,
+    link_ms: link.ms,
+    quality_ms: quality.ms,
+    log: (quality.log || "") + (link.log || ""),
+  };
+}
+
+async function deleteSourceByName(name) {
+  return withWritableDb(db => {
+    const row = db.prepare("SELECT id FROM sources WHERE name = ?").get(name);
+    if (!row) return null;
+    const tx = db.transaction(() => {
+      db.prepare("DELETE FROM events_geo WHERE rowid IN (SELECT rowid FROM events WHERE source_id = ?)").run(row.id);
+      db.prepare("DELETE FROM events WHERE source_id = ?").run(row.id);
+      db.prepare("DELETE FROM individuals WHERE source_id = ?").run(row.id);
+      db.prepare("DELETE FROM families WHERE source_id = ?").run(row.id);
+      db.prepare("DELETE FROM family_children WHERE source_id = ?").run(row.id);
+      db.prepare("DELETE FROM sources WHERE id = ?").run(row.id);
+    });
+    tx();
+    return row;
+  });
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key, kf-new-session, kf-sql",
+  "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, anthropic-version, anthropic-dangerous-direct-browser-access, x-api-key, kf-new-session, kf-sql, kf-filename",
   "Access-Control-Expose-Headers": "*",
   "Access-Control-Max-Age": "600",
 };
@@ -122,6 +269,7 @@ function resetProc() {
 }
 
 const server = http.createServer((req, res) => {
+  console.log(`[chat-proxy] ${req.method} ${req.url}`);
   if (req.method === "OPTIONS") { res.writeHead(204, corsHeaders); res.end(); return; }
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
@@ -133,6 +281,324 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
     return;
+  }
+  if (req.method === "POST" && req.url.startsWith("/load-gedcom")) {
+    if (!DB_PATH) {
+      res.writeHead(400, { ...corsHeaders, "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "no KF_DB_PATH configured; restart proxy with KF_DB_PATH=/some/path.db" }));
+      return;
+    }
+    const u = new URL(req.url, "http://x");
+    const mode = (u.searchParams.get("mode") || "add").toLowerCase();
+    if (mode !== "add" && mode !== "replace") {
+      res.writeHead(400, { ...corsHeaders, "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: `mode must be "add" or "replace" (got "${mode}")` }));
+      return;
+    }
+    const rawName = decodeURIComponent(req.headers["kf-filename"] || "").replace(/\.(ged|gedcom)$/i, "").trim();
+    const sourceName = rawName || "untitled-" + new Date().toISOString().slice(0, 19).replace(/[:T-]/g, "");
+    const chunks = [];
+    let bytes = 0, tooBig = false;
+    req.on("data", c => {
+      bytes += c.length;
+      if (bytes > MAX_GED_BYTES) { tooBig = true; return; }
+      chunks.push(c);
+    });
+    req.on("end", async () => {
+      if (tooBig) {
+        res.writeHead(413, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: `GEDCOM exceeds ${MAX_GED_BYTES} bytes` }));
+        return;
+      }
+      const buf = Buffer.concat(chunks);
+      const tmpGed = DB_PATH + ".ged.tmp";
+      try {
+        writeFileSync(tmpGed, buf);
+      } catch (e) {
+        res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "write failed: " + (e.message || e) }));
+        return;
+      }
+      // For "replace": delete any existing rows for this source name BEFORE
+      // running the script, since the script errors on duplicate-name.
+      if (mode === "replace") {
+        try { await deleteSourceByName(sourceName); }
+        catch (e) {
+          try { unlinkSync(tmpGed); } catch (_) {}
+          res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "replace pre-delete failed: " + (e.message || e) }));
+          return;
+        }
+      }
+      // Close the read-only handle so the build script can take exclusive write access.
+      if (_db) { try { _db.close(); } catch (_) {} _db = null; }
+      const t0 = Date.now();
+      const child = spawn(process.execPath, [GEDCOM_TO_SQLITE, DB_PATH, tmpGed, sourceName], {
+        cwd: HERE,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", c => { stderr += c; });
+      child.on("error", err => {
+        try { unlinkSync(tmpGed); } catch (_) {}
+        res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "spawn failed: " + err.message }));
+      });
+      child.on("exit", async code => {
+        try { unlinkSync(tmpGed); } catch (_) {}
+        if (code !== 0) {
+          // exit code 3 = duplicate source name; everything else is a build failure.
+          const status = code === 3 ? 409 : 500;
+          res.writeHead(status, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: `gedcom-to-sqlite exited ${code}`, stderr }));
+          return;
+        }
+        // _db will reopen on next SQL request and see the new source.
+        // Conversation history may now reference a tree that no longer exists
+        // (replace) or a tree the user didn't have when they spoke (add); reset.
+        resetProc();
+        const buildMs = Date.now() - t0;
+        // Re-run the cross-source record linker. Idempotent (auto links wiped,
+        // manual confirms preserved). Failure here is non-fatal — the load
+        // itself succeeded; user just won't see updated link suggestions.
+        const link = await runQualityAndLink();
+        res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, path: DB_PATH, source_name: sourceName, mode, build_ms: buildMs, link, stderr }));
+      });
+    });
+    return;
+  }
+  if (req.method === "GET" && req.url === "/sources") {
+    (async () => {
+      try {
+        const db = await getDb();
+        if (!db) {
+          res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, sources: [] }));
+          return;
+        }
+        // sources table may not exist yet on a fresh DB.
+        const has = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sources'").get();
+        const rows = has ? db.prepare("SELECT id, name, loaded_at, n_individuals, n_events, n_families FROM sources ORDER BY id").all() : [];
+        res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, sources: rows }));
+      } catch (e) {
+        res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message || String(e) }));
+      }
+    })();
+    return;
+  }
+  if (req.method === "GET" && req.url.startsWith("/links")) {
+    (async () => {
+      try {
+        const u = new URL(req.url, "http://x");
+        const filters = ["1=1"];
+        const params = [];
+        const sa = u.searchParams.get("source_a");
+        const sb = u.searchParams.get("source_b");
+        const src = u.searchParams.get("source");
+        if (sa) { filters.push("l.source_a = ?"); params.push(Number(sa)); }
+        if (sb) { filters.push("l.source_b = ?"); params.push(Number(sb)); }
+        if (src) { filters.push("(l.source_a = ? OR l.source_b = ?)"); params.push(Number(src), Number(src)); }
+        const minScore = parseFloat(u.searchParams.get("min_score") || "0");
+        const maxScore = parseFloat(u.searchParams.get("max_score") || "1");
+        filters.push("l.score BETWEEN ? AND ?"); params.push(minScore, maxScore);
+        const origin = u.searchParams.get("origin");
+        if (origin === "auto") filters.push("l.origin LIKE 'auto:%'");
+        else if (origin === "confirmed") filters.push("l.origin = 'manual:confirmed'");
+        else if (origin === "rejected") filters.push("l.origin = 'manual:rejected'");
+        else if (origin === "ambiguous") filters.push("l.origin = 'manual:ambiguous'");
+        else if (origin === "manual") filters.push("l.origin LIKE 'manual:%'");
+        else if (origin === "unlabeled") filters.push("l.origin LIKE 'auto:%'");
+        else if (origin === "review") filters.push("l.origin LIKE 'auto:%' AND l.score < 0.85");
+        const limit = Math.min(parseInt(u.searchParams.get("limit") || "100", 10), 500);
+        const db = await getDb();
+        if (!db) {
+          res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, links: [] }));
+          return;
+        }
+        const has = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='person_links'").get();
+        if (!has) {
+          res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, links: [] }));
+          return;
+        }
+        const sql = `
+          SELECT l.link_id, l.source_a, l.indi_a, ia.name AS name_a, ia.birth_year AS birth_a, ia.death_year AS death_a, ia.sex AS sex_a,
+                 l.source_b, l.indi_b, ib.name AS name_b, ib.birth_year AS birth_b, ib.death_year AS death_b, ib.sex AS sex_b,
+                 l.score, l.evidence, l.origin, l.created_at, l.label_reason, l.label_confidence,
+                 sa.name AS source_a_name, sb.name AS source_b_name
+          FROM person_links l
+          JOIN individuals ia ON ia.source_id = l.source_a AND ia.id = l.indi_a
+          JOIN individuals ib ON ib.source_id = l.source_b AND ib.id = l.indi_b
+          JOIN sources sa ON sa.id = l.source_a
+          JOIN sources sb ON sb.id = l.source_b
+          WHERE ${filters.join(" AND ")}
+          ORDER BY l.score DESC, l.link_id ASC
+          LIMIT ?
+        `;
+        params.push(limit);
+        const rows = db.prepare(sql).all(...params);
+        for (const r of rows) {
+          if (r.evidence) { try { r.evidence = JSON.parse(r.evidence); } catch (_) {} }
+        }
+        if (u.searchParams.get("include") === "family" && rows.length > 0) {
+          // Hydrate parents + children + per-person anomaly flags. One pass
+          // per shape, keyed by (source_id, indi_id), to keep the cost linear.
+          const persons = new Map();
+          for (const r of rows) {
+            persons.set(`${r.source_a}|${r.indi_a}`, { src: r.source_a, id: r.indi_a, side: "a", row: r });
+            persons.set(`${r.source_b}|${r.indi_b}`, { src: r.source_b, id: r.indi_b, side: "b", row: r });
+          }
+          const lite = (i) => i && { id: i.id, name: i.name, birth_year: i.birth_year, death_year: i.death_year };
+          // parents: famc → husb_id/wife_id
+          const parentsBy = new Map();
+          for (const p of persons.values()) parentsBy.set(`${p.src}|${p.id}`, { father: null, mother: null });
+          const parentRows = db.prepare(`
+            SELECT i.source_id, i.id AS child_id,
+                   fa.id AS fa_id, fa.name AS fa_name, fa.birth_year AS fa_birth, fa.death_year AS fa_death,
+                   mo.id AS mo_id, mo.name AS mo_name, mo.birth_year AS mo_birth, mo.death_year AS mo_death
+            FROM individuals i
+            LEFT JOIN families  f  ON f.source_id  = i.source_id AND f.id  = i.famc
+            LEFT JOIN individuals fa ON fa.source_id = f.source_id AND fa.id = f.husb_id
+            LEFT JOIN individuals mo ON mo.source_id = f.source_id AND mo.id = f.wife_id
+            WHERE i.famc IS NOT NULL
+          `).all();
+          for (const pr of parentRows) {
+            const k = `${pr.source_id}|${pr.child_id}`;
+            if (!parentsBy.has(k)) continue;
+            parentsBy.set(k, {
+              father: pr.fa_id ? { id: pr.fa_id, name: pr.fa_name, birth_year: pr.fa_birth, death_year: pr.fa_death } : null,
+              mother: pr.mo_id ? { id: pr.mo_id, name: pr.mo_name, birth_year: pr.mo_birth, death_year: pr.mo_death } : null,
+            });
+          }
+          // children: families where person is husb or wife → family_children → individuals
+          const childrenBy = new Map();
+          for (const p of persons.values()) childrenBy.set(`${p.src}|${p.id}`, []);
+          const childRows = db.prepare(`
+            SELECT f.source_id, f.husb_id AS h_parent, f.wife_id AS w_parent,
+                   ci.id AS child_id, ci.name AS child_name, ci.birth_year AS child_birth, ci.death_year AS child_death
+            FROM families f
+            JOIN family_children fc ON fc.source_id = f.source_id AND fc.family_id = f.id
+            JOIN individuals ci    ON ci.source_id = f.source_id AND ci.id = fc.child_id
+          `).all();
+          for (const cr of childRows) {
+            for (const parentId of [cr.h_parent, cr.w_parent]) {
+              if (!parentId) continue;
+              const k = `${cr.source_id}|${parentId}`;
+              const arr = childrenBy.get(k);
+              if (!arr) continue;
+              arr.push({ id: cr.child_id, name: cr.child_name, birth_year: cr.child_birth, death_year: cr.child_death });
+            }
+          }
+          // anomalies for any person in the batch
+          const haveAnoms = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='data_anomalies'").get();
+          const anomBy = new Map();
+          if (haveAnoms) {
+            const anomRows = db.prepare(
+              "SELECT source_id, indi_id, kind, severity, detail FROM data_anomalies"
+            ).all();
+            for (const a of anomRows) {
+              const k = `${a.source_id}|${a.indi_id}`;
+              if (!persons.has(k)) continue;
+              let arr = anomBy.get(k);
+              if (!arr) { arr = []; anomBy.set(k, arr); }
+              let detail = null;
+              try { detail = a.detail ? JSON.parse(a.detail) : null; } catch (_) {}
+              arr.push({ kind: a.kind, severity: a.severity, detail });
+            }
+          }
+          for (const r of rows) {
+            const ka = `${r.source_a}|${r.indi_a}`;
+            const kb = `${r.source_b}|${r.indi_b}`;
+            r.parents_a  = parentsBy.get(ka)  || { father: null, mother: null };
+            r.parents_b  = parentsBy.get(kb)  || { father: null, mother: null };
+            r.children_a = (childrenBy.get(ka) || []).sort((x, y) => (x.birth_year ?? 9999) - (y.birth_year ?? 9999));
+            r.children_b = (childrenBy.get(kb) || []).sort((x, y) => (x.birth_year ?? 9999) - (y.birth_year ?? 9999));
+            r.anomalies_a = anomBy.get(ka) || [];
+            r.anomalies_b = anomBy.get(kb) || [];
+          }
+        }
+        res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, links: rows }));
+      } catch (e) {
+        res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message || String(e) }));
+      }
+    })();
+    return;
+  }
+  {
+    const m = req.method === "POST" && req.url.match(/^\/links\/(\d+)\/(confirm|reject|ambiguous)$/);
+    if (m) {
+      const id = Number(m[1]);
+      const action = m[2];
+      let body = "";
+      req.on("data", c => { body += c; if (body.length > 8192) body = body.slice(0, 8192); });
+      req.on("end", async () => {
+        try {
+          let reason = null, confidence = null;
+          if (body) {
+            try {
+              const parsed = JSON.parse(body);
+              if (typeof parsed.reason === "string") reason = parsed.reason.slice(0, 500) || null;
+              if (Number.isFinite(parsed.confidence)) confidence = Math.max(1, Math.min(3, Math.floor(parsed.confidence)));
+            } catch (_) { /* ignore body parse errors; treat as no metadata */ }
+          }
+          const newOrigin =
+            action === "confirm" ? "manual:confirmed" :
+            action === "reject"  ? "manual:rejected"  :
+                                   "manual:ambiguous";
+          const updated = await withWritableDb(db => {
+            const row = db.prepare("SELECT link_id FROM person_links WHERE link_id = ?").get(id);
+            if (!row) return null;
+            db.prepare(
+              "UPDATE person_links SET origin = ?, label_reason = ?, label_confidence = ? WHERE link_id = ?"
+            ).run(newOrigin, reason, confidence, id);
+            return { id, origin: newOrigin, reason, confidence };
+          });
+          if (!updated) {
+            res.writeHead(404, { ...corsHeaders, "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "link not found" }));
+            return;
+          }
+          res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, ...updated }));
+        } catch (e) {
+          res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: e.message || String(e) }));
+        }
+      });
+      return;
+    }
+  }
+  {
+    const m = req.method === "DELETE" && req.url.match(/^\/sources\/(\d+)$/);
+    if (m) {
+      const id = Number(m[1]);
+      (async () => {
+        try {
+          const removed = await deleteSourceById(id);
+          if (!removed) {
+            res.writeHead(404, { ...corsHeaders, "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: `source id ${id} not found` }));
+            return;
+          }
+          // Old conversation may reference removed data.
+          resetProc();
+          // Re-link: prior auto links involving this source are now stale.
+          const link = await runQualityAndLink();
+          res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, deleted: removed, link }));
+        } catch (e) {
+          res.writeHead(500, { ...corsHeaders, "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: e.message || String(e) }));
+        }
+      })();
+      return;
+    }
   }
   if (req.method === "POST" && req.url === "/sql") {
     let body = "";
@@ -163,6 +629,10 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (req.method !== "POST" || !req.url.startsWith("/v1/messages")) {
+    // Fall through to static file serving (index.html, gazetteer.json, etc.)
+    // so the user can open http://localhost:PORT/index.html and skip running
+    // a separate static server. Returns true once it has written a response.
+    if (tryServeStatic(req, res)) return;
     res.writeHead(404, { ...corsHeaders, "Content-Type": "text/plain" });
     res.end("not found");
     return;
@@ -206,5 +676,6 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`[chat-proxy] listening on http://localhost:${PORT}  mode=claude-cli-stream  bin=${CLAUDE_BIN}`);
   console.log(`[chat-proxy] one persistent claude process serves all turns; replies stream back via SSE.`);
+  console.log(`[chat-proxy] static root: ${STATIC_ROOT}  ->  open http://localhost:${PORT}/index.html`);
   console.log(`[chat-proxy] health: curl http://localhost:${PORT}/health`);
 });
