@@ -25,7 +25,10 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build output directory
-        run: mkdir -p public && cp index.html public/index.html
+        run: |
+          mkdir -p public
+          SHORT_SHA="${GITHUB_SHA::7}"
+          sed "s/__COMMIT_SHA__/${SHORT_SHA}/g" index.html > public/index.html
 
       - name: Deploy to Cloudflare Pages
         env:

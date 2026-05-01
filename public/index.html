@@ -418,6 +418,7 @@
     <button id="apiKeySave">Save</button>
   </span>
   <span class="authSpacer"></span>
+  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">__COMMIT_SHA__</span>
   <button id="authBtn">Sign in</button>
 </div>
 <div id="app">
@@ -7834,6 +7835,8 @@ async function updateAuthUI(user) {
   const apiKeyRowEl = document.getElementById("apiKeyRow");
   const uploadCloudBtn = document.getElementById("uploadCloud");
 
+  const versionEl = document.getElementById("buildVersion");
+
   if (!user) {
     _clerkToken = null;
     _clerkUserTier = "anon";
@@ -7843,6 +7846,7 @@ async function updateAuthUI(user) {
     btnEl.textContent = "Sign in";
     apiKeyRowEl.style.display = "none";
     if (uploadCloudBtn) uploadCloudBtn.style.display = "none";
+    if (versionEl) versionEl.style.display = "none";
     applyChatAccess("anon");
     return;
   }
@@ -7861,6 +7865,7 @@ async function updateAuthUI(user) {
   btnEl.textContent = "Sign out";
   apiKeyRowEl.style.display = _clerkUserTier === "regular" ? "flex" : "none";
   if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
+  if (versionEl) versionEl.style.display = "inline";
   applyChatAccess(_clerkUserTier);
 
   // Auto-load any previously uploaded GEDCOM for this user
