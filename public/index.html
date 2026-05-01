@@ -7749,28 +7749,24 @@ $("chatTools").addEventListener("click", () => {
   renderChat();
 });
 
-async function autoIntroOnce() {
+function autoIntroOnce() {
   if (chatHistory.length > 0) return;
-  const proxy = await detectChatProxy().catch(() => null);
-  const hasAccess = proxy || _clerkUserTier === "vip" || !!localStorage.getItem(CHAT_KEY_LS);
-  if (!hasAccess) return; // no backend; stay silent
-  const pending = { role: "bot", content: "" };
-  chatHistory.push(pending);
+  const msg = {
+    role: "bot",
+    content: "Here are some visualizations to explore:",
+    chips: [
+      { label: "Lineage clusters",   method: "setClusterMode", args: { mode: "pie" } },
+      { label: "Family density",     method: "setClusterMode", args: { mode: "aggregate" } },
+      { label: "By US state",        method: "setClusterMode", args: { mode: "state" } },
+      { label: "Parent knowledge",   method: "setClusterMode", args: { mode: "parents" } },
+      { label: "Gender breakdown",   method: "setClusterMode", args: { mode: "gender" } },
+      { label: "Connect blood kin",  method: "setKinLines",    args: { n: 5 } },
+      { label: "Summarize my tree",  method: "sendChat",       args: { text: "Summarize this tree: key ancestors, geographic spread, and time range." } },
+      { label: "Migration patterns", method: "sendChat",       args: { text: "What migration patterns do you see in this tree?" } },
+    ],
+  };
+  chatHistory.push(msg);
   renderChat();
-  try {
-    await callClaudeStream(
-      "Introduce yourself in one sentence. Then offer 3 things the user can ask about their tree as KFCHIP buttons using method \"sendChat\". Example format: <<KFCHIP:{\"label\":\"Migration map\",\"method\":\"sendChat\",\"args\":{\"text\":\"Show me a migration map\"}}>>. Keep it short.",
-      delta => { pending.content += delta; renderChat(); }
-    );
-    // Extract chips from the streamed greeting so the buttons render.
-    const cp = parseChips(pending.content);
-    pending.content = cp.stripped;
-    if (cp.chips.length) pending.chips = cp.chips;
-    renderChat();
-  } catch (e) {
-    pending.content = `*[error]* ${e.message || e}`;
-    renderChat();
-  }
 }
 $("chatClear").addEventListener("click", async () => {
   chatHistory.length = 0;
