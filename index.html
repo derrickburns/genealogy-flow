@@ -592,7 +592,12 @@
       <input type="range" id="kinNMain" min="0" max="20" step="1" value="0" style="width:72px; vertical-align:middle;">
       <b id="kinNMainLabel" style="font-size:11px; min-width:14px; text-align:left; color:#566480;">0</b>
     </span>
-    <span class="chipGroup" data-grp="surname"></span>
+    <span class="chipGroup" data-grp="surname" style="display:none;align-items:center;gap:4px;">
+      <span class="chipLabel">surname:</span>
+      <select id="surnameSelect" style="font-size:11px;padding:2px 4px;border:1px solid #c0ccd8;border-radius:4px;background:#fff;color:#1c2433;max-width:140px;">
+        <option value="">all</option>
+      </select>
+    </span>
   </div>
   <div class="uirow primary">
     <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
@@ -5042,39 +5047,28 @@ function _kfBuildSurnameTopN(n = 12) {
 
 function _kfRenderSurnameChips() {
   const grp = document.querySelector("#quickChips .chipGroup[data-grp='surname']");
-  if (!grp) return;
+  const sel = document.getElementById("surnameSelect");
+  if (!grp || !sel) return;
   if (!_kfSurnamesTop || !_kfSurnamesTop.length) {
-    grp.innerHTML = "";
+    grp.style.display = "none";
+    sel.innerHTML = '<option value="">all</option>';
+    _kfSurnameFilter = null;
     return;
   }
-  // Hash-based color so each surname has a stable identity across the UI —
-  // chip color matches the by-tree palette so when a lens later splits by
-  // surname, the colors line up.
-  const html = [`<span class="chipLabel">surname:</span>`];
-  // Background tint scales with relative frequency so the chip strip itself
-  // reads as a small histogram — the most common surname has a visibly
-  // tinted chip, the rarest are nearly white.
-  const maxCount = _kfSurnamesTop[0].count;
+  grp.style.display = "";
+  const current = _kfSurnameFilter ? [..._kfSurnameFilter][0] : "";
+  const opts = ['<option value="">all</option>'];
   for (const { surname, count } of _kfSurnamesTop) {
-    const c = TREE_PALETTE[_kfTreeColorFromName(surname)];
-    const rgb = `rgb(${c[0]},${c[1]},${c[2]})`;
-    const w = Math.round((count / maxCount) * 12);  // 0..12% tint — kept subtle so on/off contrast wins
-    html.push(`<button class="quickChip tinted" data-surname="${escHtml(surname)}" title="Show only people with surname ${escHtml(surname)} (${count} on the map). Click multiple to OR them; click again to clear." style="--c:${rgb}; --w:${w};">${escHtml(surname)}<span class="chipMeta">${count}</span></button>`);
+    const sel2 = surname === current ? " selected" : "";
+    opts.push(`<option value="${escHtml(surname)}"${sel2}>${escHtml(surname)} (${count})</option>`);
   }
-  grp.innerHTML = html.join("");
-  grp.querySelectorAll(".quickChip").forEach(el => {
-    el.addEventListener("click", () => {
-      const sn = el.dataset.surname;
-      if (!sn) return;
-      if (!_kfSurnameFilter) _kfSurnameFilter = new Set();
-      if (_kfSurnameFilter.has(sn)) _kfSurnameFilter.delete(sn);
-      else _kfSurnameFilter.add(sn);
-      if (_kfSurnameFilter.size === 0) _kfSurnameFilter = null;
-      _kfPersonsCacheYear = "";
-      if (_kfDeckOverlay) updateDeckDwellLayer();
-      _kfRefreshQuickChips();
-    });
-  });
+  sel.innerHTML = opts.join("");
+  sel.onchange = () => {
+    const val = sel.value;
+    _kfSurnameFilter = val ? new Set([val]) : null;
+    _kfPersonsCacheYear = "";
+    if (_kfDeckOverlay) updateDeckDwellLayer();
+  };
 }
 
 function _kfRefreshQuickChips() {
@@ -5093,9 +5087,6 @@ function _kfRefreshQuickChips() {
       on = !!_kfMatchOverlayOn;
       // Mark the chip as loading (visual cue) while the SQL fetch is in flight.
       el.style.opacity = _kfMatchFetching ? "0.55" : "";
-    }
-    else if (el.dataset.surname) {
-      on = !!(_kfSurnameFilter && _kfSurnameFilter.has(el.dataset.surname));
     }
     el.classList.toggle("on", on);
   });
