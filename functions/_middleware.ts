@@ -17,8 +17,8 @@ export interface Env {
 }
 
 declare module "@cloudflare/workers-types" {
-  interface ExecutionContext {
-    user?: UserContext;
+  interface EventPluginContext<Env, P extends string, Data extends Record<string, unknown>> {
+    data: Data & { user?: UserContext };
   }
 }
 
@@ -88,7 +88,7 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
         .bind(userId, email, now, now + 7 * 86400, now)
         .run();
 
-      (ctx as unknown as { user: UserContext }).user = { type, id: userId, email };
+      ctx.data.user = { type, id: userId, email };
       return next();
     } catch {
       // Invalid token - fall through to anon
@@ -104,7 +104,7 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
   }
 
   await ensureSession(sessionId, env);
-  (ctx as unknown as { user: UserContext }).user = { type: "anon", id: sessionId };
+  ctx.data.user = { type: "anon", id: sessionId };
 
   const response = await next();
   const mutable = new Response(response.body, response);

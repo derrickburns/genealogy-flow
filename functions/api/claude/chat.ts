@@ -104,7 +104,7 @@ const RUN_SQL_TOOL: Anthropic.Tool = {
 };
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
+  const user = ctx.data.user as UserContext;
 
   // Only VIP users use this endpoint. Regular users call Anthropic directly
   // from the browser (their key never touches the server) and use

@@ -18,7 +18,7 @@ ${q}`;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
+  const user = ctx.data.user as UserContext;
   if (user.type === "anon") {
     return new Response(JSON.stringify({ error: "Sign in required" }), {
       status: 401,

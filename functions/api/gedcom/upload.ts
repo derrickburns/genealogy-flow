@@ -3,7 +3,7 @@ import type { Env, UserContext } from "../../_middleware";
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
+  const user = ctx.data.user as UserContext;
 
   const contentLength = Number(ctx.request.headers.get("Content-Length") ?? 0);
   if (contentLength > MAX_BYTES) {

@@ -44,7 +44,7 @@ async function validateAnthropicKey(apiKey: string): Promise<boolean> {
 }
 
 export const onRequestPut: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
+  const user = ctx.data.user as UserContext;
 
   if (user.type === "anon") {
     return new Response(JSON.stringify({ error: "Authentication required" }), {

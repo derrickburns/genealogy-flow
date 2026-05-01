@@ -60,7 +60,7 @@ async function resolveApiKey(user: UserContext, env: Env): Promise<string | null
 }
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
+  const user = ctx.data.user as UserContext;
   if (user.type === "anon") {
     return new Response(JSON.stringify({ error: "Sign in to use AI features" }), {
       status: 401, headers: { "Content-Type": "application/json" },

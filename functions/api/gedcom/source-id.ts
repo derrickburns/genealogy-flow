@@ -1,7 +1,7 @@
 import type { Env, UserContext } from "../../_middleware";
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
+  const user = ctx.data.user as UserContext;
   if (user.type === "anon") {
     return new Response(JSON.stringify({ source_id: null }), {
       headers: { "Content-Type": "application/json" },

@@ -7,18 +7,25 @@ function gedcomKey(user: UserContext): string {
 }
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
-  const obj = await ctx.env.STORAGE.get(gedcomKey(user));
-  if (!obj) {
-    return new Response(null, { status: 404 });
+  const user = ctx.data.user as UserContext;
+  try {
+    const obj = await ctx.env.STORAGE.get(gedcomKey(user));
+    if (!obj) {
+      return new Response(null, { status: 404 });
+    }
+    return new Response(obj.body, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  return new Response(obj.body, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
 };
 
 export const onRequestDelete: PagesFunction<Env> = async (ctx) => {
-  const user = (ctx as unknown as { user: UserContext }).user;
+  const user = ctx.data.user as UserContext;
   await ctx.env.STORAGE.delete(gedcomKey(user));
 
   if (user.type === "anon") {
