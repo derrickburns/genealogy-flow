@@ -40,12 +40,7 @@
   canvas#base { z-index:1; background:transparent; }
   canvas#fx { z-index:2; }
   #base { z-index:1; } #fx { z-index:2; }
-  .yearCorner { position:absolute; z-index:3; pointer-events:none; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric:tabular-nums; font-weight:700; font-size:20px; line-height:1; color:rgba(20,30,55,0.55); padding:6px 10px; background:rgba(255,255,255,0.7); border-radius:6px; user-select:none; }
-  #yearTL { top:10px; left:10px; }
-  #yearTR { top:10px; right:10px; }
-  #yearBL { bottom:10px; left:10px; }
-  #yearBR { bottom:10px; right:10px; }
-  #yearBig { display:none; }
+  #yearWatermark { position:absolute; z-index:3; pointer-events:none; top:10px; left:0; right:0; text-align:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric:tabular-nums; font-weight:800; font-size:48px; line-height:1; color:rgba(20,30,55,0.18); user-select:none; letter-spacing:0.05em; }
   #ui {
     background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
     padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
@@ -476,7 +471,6 @@
         <h4>Animation</h4>
         <label>speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
         <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
-        <label title="When off (default), playback stops at the last year instead of wrapping to the first"><input type="checkbox" id="loopChk"> loop</label>
         <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0"></label>
       </div>
       <div class="section">
@@ -495,7 +489,7 @@
 <div id="middle">
 <div id="vizArea">
 <div id="vizTabBar"><button class="vizTab on" data-tab="map">Map</button></div>
-<div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div><div id="yearTL" class="yearCorner"></div><div id="yearTR" class="yearCorner"></div><div id="yearBL" class="yearCorner"></div><div id="yearBR" class="yearCorner"></div><div id="hoverTip" class="hoverTip"></div>
+<div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div>
 <div id="vizPane">
   <div id="vizPaneHeader">
     <button id="vizSpecToggle" title="Toggle between rendered visualization and the raw spec Claude sent" style="background:none; border:1px solid #c0ccd8; border-radius:3px; padding:2px 8px; cursor:pointer; font:inherit; font-size:11px; color:#566480; margin-right:6px;">spec</button>
@@ -599,10 +593,12 @@
     <span class="chipGroup" data-grp="surname"></span>
   </div>
   <div class="uirow primary">
+    <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
     <button id="play" disabled>Play</button>
-    <div class="rangeWrap">
+    <div class="rangeWrap" style="position:relative;">
       <canvas id="yearHist"></canvas>
       <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
+      <div id="yearThumbLabel" style="position:absolute; top:-18px; left:0; font-size:11px; font-weight:700; color:#2a4a8c; pointer-events:none; white-space:nowrap; transform:translateX(-50%);"></div>
       <div class="rangeMark" id="markBlood" style="display:none;"></div>
       <div class="rangeMark ancestor" id="markAncestor" style="display:none;"></div>
     </div>
@@ -619,8 +615,6 @@ import earcut from "https://cdn.jsdelivr.net/npm/earcut@2.2.4/+esm";
 const $ = id => document.getElementById(id);
 const baseCanvas = $("base"), fxCanvas = $("fx"), glCanvas = $("gl");
 const baseCtx = baseCanvas.getContext("2d"), fxCtx = fxCanvas.getContext("2d");
-const yearBig = $("yearBig");
-const yearCorners = ["yearTL", "yearTR", "yearBL", "yearBR"].map($);
 const playBtn = $("play"), range = $("range");
 const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
 const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
@@ -3167,13 +3161,7 @@ function tick(now) {
       const sp = parseFloat(speedSel.value);
       curYear += sp * dt;
       if (curYear > maxYear) {
-        if (loopChk.checked) {
-          curYear = minYear;
-        } else {
-          curYear = maxYear;
-          playing = false;
-          playBtn.textContent = "Play";
-        }
+        curYear = minYear;
       }
       range.value = curYear;
       // Auto-stop for kfApi.playRange — once we've crossed the requested end
@@ -3190,7 +3178,15 @@ function tick(now) {
     }
     const yint = Math.floor(curYear);
     const ystr = String(yint);
-    for (const el of yearCorners) if (el) el.textContent = ystr;
+    const _ywm = document.getElementById("yearWatermark");
+    if (_ywm) _ywm.textContent = ystr;
+    // Position year thumb label above the slider thumb
+    const _ytl = document.getElementById("yearThumbLabel");
+    if (_ytl && range) {
+      _ytl.textContent = ystr;
+      const pct = (curYear - parseFloat(range.min)) / Math.max(1, parseFloat(range.max) - parseFloat(range.min));
+      _ytl.style.left = (pct * 100) + "%";
+    }
     updateStatusLabels(yint);
   }
   // MapLibre owns the basemap and projection state — no more lerp/transform
@@ -3221,11 +3217,6 @@ playBtn.addEventListener("click", () => {
   if (playing) clearHighlight();
 });
 
-// Loop toggle. When off, playback clamps to maxYear and pauses instead of wrapping.
-const loopChk = $("loopChk");
-const LOOP_LS = "kf-loop";
-loopChk.checked = (localStorage.getItem(LOOP_LS) ?? "0") !== "0";
-loopChk.addEventListener("change", () => { localStorage.setItem(LOOP_LS, loopChk.checked ? "1" : "0"); });
 
 const middleEl = $("middle");
 function clearHighlight() {
@@ -4021,6 +4012,8 @@ function loadTimelineArrays(t, sideForIdx) {
   minYear = t.min_year; maxYear = t.max_year;
   range.min = minYear; range.max = maxYear; range.step = 0.1;
   range.value = Math.max(minYear, 1700);
+  const _syl = document.getElementById("startYearLabel");
+  if (_syl) _syl.textContent = String(minYear);
   curYear = parseFloat(range.value);
   timelineLoaded = true; projectAll();
   fxCtx.clearRect(0, 0, W, H); playBtn.disabled = false;
@@ -5635,6 +5628,8 @@ if (DEMO_GED_URL) {
   const _pick = $("pick"); if (_pick) _pick.style.display = "none";
   const _pick2 = $("pick2"); if (_pick2) _pick2.style.display = "none";
   (async () => {
+    // Clear any proxy trees from prior sessions so only the demo tree appears
+    detectChatProxy().then(p => { if (p) fetch(p + "/reset", { method: "POST" }).catch(() => {}); });
     try {
       stats.textContent = "loading demo tree...";
       const resp = await fetch(DEMO_GED_URL);
@@ -5659,735 +5654,8 @@ if (DEMO_GED_URL) {
   });
 }
 
-// ---------- Export shareable HTML ----------
-function buildExportHtml(tl, worldData, label, candidatesData, individualsData, places) {
-  const exportTl = {
-    dwells: tl.dwells, flows: tl.flows,
-    dwellIndi: tl.dwellIndi, flowIndi: tl.flowIndi,
-    dwellSrc: tl.dwellSrc, flowSrc: tl.flowSrc,
-    dwellExact: tl.dwellExact, flowExact: tl.flowExact,
-    dwellType: tl.dwellType, dwellPlace: tl.dwellPlace,
-    candidates: candidatesData,
-    cities: majorCities ? majorCities.slice(0, 4000) : [],
-    eventCities: tl.eventCities || [],
-    individuals: individualsData,
-    places: places || [],
-    min_year: tl.min_year, max_year: tl.max_year,
-  };
-  const tlJson = JSON.stringify(exportTl).replace(/<\//g, "<\\/");
-  const worldJson = JSON.stringify(worldData).replace(/<\//g, "<\\/");
-  const usStatesJson = (usStates ? JSON.stringify(usStates) : "null").replace(/<\//g, "<\\/");
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>${label} - Kindred Flow</title>
-<style>
-html, body { margin:0; padding:0; background:#cfe2ec; color:#1c2433; font:13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; overflow:hidden; height:100%; }
-#app { display:grid; grid-template-rows: auto 1fr auto; height:100vh; gap:8px; padding:8px; box-sizing:border-box; }
-#middle { display:grid; grid-template-columns: 1fr 320px; gap:8px; min-height:0; }
-@media (max-width: 900px) { #middle { grid-template-columns: 1fr 260px; } }
-@media (max-width: 700px) { #middle { grid-template-columns: 1fr; grid-template-rows: 1fr 320px; } }
-#mapWrap { position:relative; min-width:0; min-height:0; overflow:hidden; border-radius:10px; }
-canvas { position:absolute; left:0; top:0; display:block; image-rendering:pixelated; touch-action:none; }
-#base { z-index:1; } #fx { z-index:2; }
-#yearBig { position:absolute; left:0; top:0; right:0; bottom:0; z-index:3; pointer-events:none; display:flex; align-items:center; justify-content:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; font-weight:700; font-size:42vh; line-height:0.85; color:rgba(20,30,55,0.06); letter-spacing:-0.02em; user-select:none; mix-blend-mode:multiply; }
-#ui { background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; flex-direction:column; gap:8px; }
-#ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-#ui .uirow.primary { flex-wrap:nowrap; }
-#ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
-#range { -webkit-appearance:none; appearance:none; height:6px; background:#c0ccd8; border-radius:3px; outline:none; flex:1 1 auto; min-width:120px; }
-#range::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
-#range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
-#title { font-size:14px; background:rgba(255,255,255,0.85); padding:6px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-#optionsWrap { position:relative; }
-#optionsBtn { background:#1a2238; color:#fff; border:1px solid #2a3654; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
-#optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:240px; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 12px; display:none; flex-direction:column; gap:8px; z-index:30; }
-#optionsMenu.open { display:flex; }
-#optionsMenu label { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; color:#566480; }
-.legend { font-size:11px; color:#566480; display:flex; gap:10px; align-items:center; }
-.legend .swatch { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle; }
-.legend .square { border-radius:0; }
-.legend .diamond { width:12px; height:12px; border-radius:2px; transform:rotate(45deg); }
-select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
-label { color:#566480; font-size:11px; }
-#panel { background:rgba(255,255,255,0.98); border:1px solid #c0ccd8; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,0.08); display:flex; flex-direction:column; overflow:hidden; min-height:0; min-width:0; }
-#panel.hidden { display:none; }
-#panelInferRow { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid #e0e6ee; font-size:11px; color:#566480; }
-#panelInferRow input[type=range] { flex:1; min-width:0; }
-#panelInferRow label { display:flex; align-items:center; gap:4px; min-width:70px; }
-#panelInferRow label > span { font-weight:600; color:#2a4a8c; min-width:18px; text-align:right; }
-#panelStatusRow { padding:6px 12px; border-bottom:1px solid #e0e6ee; font-size:11px; color:#566480; display:flex; align-items:center; gap:8px; }
-#panelStatusRow select { background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:2px 6px; font:inherit; }
-#panelTypeRow { padding:6px 12px; border-bottom:1px solid #e0e6ee; display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; color:#566480; }
-#panelTypeRow .pill { padding:2px 7px; border:1px solid #c0ccd8; border-radius:10px; background:#f5f5f8; color:#888; font-size:11px; cursor:pointer; user-select:none; }
-#panelTypeRow .pill.on { background:#e0e9ff; color:#2a4a8c; border-color:#9fb6e0; font-weight:500; }
-#panelBanner { display:none; padding:10px 12px; border-bottom:1px solid #e0e6ee; background:#fff8e0; }
-#panelBanner.shown { display:block; }
-#panelBanner .bnm { font-weight:700; color:#1c2433; font-size:13px; }
-#panelBanner .bev { color:#566480; font-size:11px; margin-top:2px; }
-#panelBanner .bcl { float:right; background:none; border:none; color:#888; cursor:pointer; font-size:14px; margin-top:-2px; }
-#panelList { list-style:none; margin:0; padding:0; overflow-y:auto; flex:1; }
-#panelList li { padding:6px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid #f0f4f8; line-height:1.35; }
-#panelList li:hover { background:#f0f4f8; }
-#panelList li.selected { background:#fff3d4; box-shadow:inset 3px 0 0 #ffb930; }
-#panelList li.inferred { background:#fafbfd; font-style:italic; }
-#panelList li.inferred .nm { color:#566480; }
-#panelList .yr { font-variant-numeric:tabular-nums; color:#888; margin-right:6px; font-size:11px; }
-#panelList .nm { font-weight:600; color:#1c2433; }
-#panelList .ev { color:#566480; font-size:11px; }
-#panelList .pm { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:middle; }
-#panelList .sq { border-radius:0; }
-#panelList .di { border-radius:1px; transform:rotate(45deg); width:8px; height:8px; }
-#panelList .tag { display:inline-block; background:#e0e6ee; color:#566480; font-size:10px; padding:0 4px; border-radius:3px; margin-left:4px; vertical-align:middle; font-style:normal; }
-</style>
-</head>
-<body>
-<div id="app">
-<div id="title">
-  <b>${label}</b>
-  <label>root <select id="rootSel"></select></label>
-  <span class="legend" style="margin-left:auto;">
-    <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
-    <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
-    <span><span class="swatch" style="background:#50a064;"></span>other</span>
-    <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span>1 parent missing</span>
-    <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span>both parents missing</span>
-  </span>
-  <span id="optionsWrap">
-    <button id="optionsBtn">Options ▾</button>
-    <div id="optionsMenu">
-      <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
-      <label>cities <select id="cityLayer"><option value="major" selected>major cities</option><option value="events">in events only</option></select></label>
-      <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
-      <label>migration <select id="migViz"><option value="lines">arrival arcs</option><option value="pulse">arrival pulse</option><option value="discrete">no transit</option><option value="continuous" selected>continuous</option></select></label>
-      <label>projection <select id="projSel"><option value="natural">Natural Earth</option><option value="equal">Equal Earth</option><option value="equirect">Equirectangular</option><option value="mercator">Mercator</option><option value="ortho" selected>Globe</option></select></label>
-      <label>cluster <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="hull">region rings</option><option value="dispersion">on zoom</option></select></label>
-      <label>cluster radius <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"> <b id="clusterRadiusLabel">30</b>px</label>
-    </div>
-  </span>
-</div>
-<div id="middle">
-<div id="mapWrap"><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearBig"></div></div>
-<aside id="panel">
-  <div id="panelControls">
-    <label>window <input type="range" id="winYrs" min="1" max="50" step="1" value="6"> <b id="winYrsLabel">6</b>y</label>
-    <label>infer <input type="range" id="inferYrs" min="0" max="50" step="1" value="0"> <b id="inferYrsLabel">0</b>y</label>
-    <label>status <select id="statusFilt"><option value="all" selected>all</option><option value="living">alive in YYYY</option><option value="dead">died by YYYY</option></select></label>
-  </div>
-  <div id="panelScroll">
-  <div id="panelTypeRow"><span>events:</span>
-    <button data-t="0" class="pill on">born</button><button data-t="1" class="pill on">died</button>
-    <button data-t="2" class="pill on">lived</button><button data-t="3" class="pill on">married</button>
-    <button data-t="4" class="pill on">emig</button><button data-t="5" class="pill on">immig</button>
-    <button data-t="6" class="pill on">census</button><button data-t="7" class="pill on">baptized</button>
-    <button data-t="8" class="pill on">buried</button><button data-t="9" class="pill on">christened</button>
-    <button data-t="10" class="pill on">other</button>
-  </div>
-  <div id="panelBanner"><button class="bcl" id="bannerClear">&times;</button><div class="bnm" id="bannerName"></div><div class="bev" id="bannerEvent"></div></div>
-  <ul id="panelList"></ul>
-  </div>
-</aside>
-</div>
-<div id="ui">
-  <div class="uirow primary">
-    <button id="play">Play</button>
-    <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
-  </div>
-  <div class="uirow">
-    <label>speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
-    <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
-    <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0" style="width:120px;"></label>
-  </div>
-</div>
-</div><!-- /#app -->
-<script id="tl" type="application/json">${tlJson}<\/script>
-<script id="world" type="application/json">${worldJson}<\/script>
-<script id="us" type="application/json">${usStatesJson}<\/script>
-<script type="module">
-import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
-import * as topojson from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
-const tl = JSON.parse(document.getElementById("tl").textContent);
-const world = JSON.parse(document.getElementById("world").textContent);
-const usStates = JSON.parse(document.getElementById("us").textContent);
-const majorCities = tl.cities || [];
-const eventCities = tl.eventCities || [];
-const individuals = tl.individuals || [];
-const places = tl.places || [];
-const $ = id => document.getElementById(id);
-const baseCanvas=$("base"), fxCanvas=$("fx"), baseCtx=baseCanvas.getContext("2d"), fxCtx=fxCanvas.getContext("2d");
-const yearBig=$("yearBig"), playBtn=$("play"), range=$("range");
-const speedSel=$("speed"), trailSel=$("trail"), rootSel=$("rootSel"), filtSel=$("filt");
-const cityLayerSel=$("cityLayer"), borderSel=$("borderLayer"), migSel=$("migViz"), projSel=$("projSel");
-const panelEl=$("panel"), panelList=$("panelList");
-const PROJECTIONS={natural:()=>d3.geoNaturalEarth1(),equal:()=>d3.geoEqualEarth(),equirect:()=>d3.geoEquirectangular(),mercator:()=>d3.geoMercator(),ortho:()=>d3.geoOrthographic().clipAngle(90)};
-let projection=PROJECTIONS.ortho();
-let projectionName="ortho";
-let W=0,H=0,mapW=0,mapTop=0,mapBottom=0; let baseScale=1, baseTranslate=[0,0]; let zoomTransform={k:1,x:0,y:0};
-let cityLayer="major", borderLayer="historical", migrationViz="continuous", curFilter="all", isDraggingSlider=false;
-let dwellWindow=6, inferenceYears=0, statusFilter="all";
-let typeFilter=new Set([0,1,2,3,4,5,6,7,8,9,10]);
-let highlightedDwell=-1, highlightInferredYear=-1, highlightInferredSrcYear=-1;
-let staticLabelRects=[];
-function rectsOverlap(a,b){return !(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);}
-const EVENT_TYPE_LABEL=["born","died","lived in","married in","emigrated from","immigrated to","census in","baptized in","buried in","christened in","event in"];
-const N=tl.dwells.length, F=tl.flows.length;
-const candidates = tl.candidates || [];
-let curCandidate = candidates[0] || null;
-for (const c of candidates) {
-  const opt = document.createElement("option");
-  opt.value = c.id;
-  const yrs = (c.birth ?? "?") + "-" + (c.death ?? "?");
-  const tag = c.label ? c.label + "  " : "";
-  opt.textContent = tag + c.name + "  (" + yrs + ")  - " + c.count + " ancestors";
-  rootSel.appendChild(opt);
-}
-const dwellY=new Int16Array(N), dwellLat=new Float32Array(N), dwellLon=new Float32Array(N);
-const dwellSide=new Uint8Array(N), dwellSrc=new Uint8Array(N), dwellBlood=new Uint8Array(N), dwellExact=new Uint8Array(N);
-const dwellType=new Uint8Array(N), dwellPlace=new Int32Array(N);
-const dwellIndi=new Int32Array(N); let dwellCity=new Int32Array(N);
-const dwellSx=new Float32Array(N), dwellSy=new Float32Array(N);
-for (let i=0;i<N;i++){const d=tl.dwells[i]; dwellY[i]=d[0]; dwellLat[i]=d[1]; dwellLon[i]=d[2]; dwellSrc[i]=tl.dwellSrc[i]; dwellIndi[i]=tl.dwellIndi[i]; dwellExact[i]=tl.dwellExact?tl.dwellExact[i]:0; dwellType[i]=tl.dwellType?tl.dwellType[i]:10; dwellPlace[i]=tl.dwellPlace?tl.dwellPlace[i]:-1;}
-const flowFromY=new Int16Array(F), flowToY=new Int16Array(F);
-const flowFromLat=new Float32Array(F), flowFromLon=new Float32Array(F), flowToLat=new Float32Array(F), flowToLon=new Float32Array(F);
-const flowSide=new Uint8Array(F), flowSrc=new Uint8Array(F), flowBlood=new Uint8Array(F), flowExact=new Uint8Array(F);
-const flowIndi=new Int32Array(F);
-const flowFromSx=new Float32Array(F), flowFromSy=new Float32Array(F), flowToSx=new Float32Array(F), flowToSy=new Float32Array(F);
-for (let i=0;i<F;i++){const f=tl.flows[i]; flowFromY[i]=f[0]; flowToY[i]=f[1]; flowFromLat[i]=f[2]; flowFromLon[i]=f[3]; flowToLat[i]=f[4]; flowToLon[i]=f[5]; flowSrc[i]=tl.flowSrc[i]; flowIndi[i]=tl.flowIndi[i]; flowExact[i]=tl.flowExact?tl.flowExact[i]:0;}
-function currentCities(){ return cityLayer==="events"&&eventCities&&eventCities.length?eventCities:majorCities; }
-let cityCanonicalByName=new Map(), cityTree=null;
-function rebuildCanonical(){
-  cityCanonicalByName=new Map();
-  const list=currentCities(); if(!list) return;
-  for (const c of list){ const ex=cityCanonicalByName.get(c.name); const w=c.pop!=null?c.pop:c.count||0;
-    if (!ex||(ex.pop!=null?ex.pop:ex.count||0)<w) cityCanonicalByName.set(c.name,c); }
-}
-function precomputeDwellCity(){
-  const list=currentCities();
-  if (!list||!list.length){ dwellCity.fill(-1); return; }
-  for (let i=0;i<list.length;i++) list[i]._idx=i;
-  cityTree=d3.quadtree().x(c=>c.lon).y(c=>c.lat).addAll(list);
-  for (let i=0;i<N;i++){ const c=cityTree.find(dwellLon[i],dwellLat[i]); dwellCity[i]=c?c._idx:-1; }
-  rebuildCanonical();
-}
-precomputeDwellCity();
-function applyCandidate(c){
-  curCandidate = c; if (!c) return;
-  const sf=c.sideForIdx, bf=c.bloodForIdx;
-  for (let i=0;i<N;i++){ dwellSide[i]=sf[dwellIndi[i]]??2; dwellBlood[i]=bf[dwellIndi[i]]||0; }
-  for (let i=0;i<F;i++){ flowSide[i]=sf[flowIndi[i]]??2; flowBlood[i]=bf[flowIndi[i]]||0; }
-  fxCtx.clearRect(0,0,W,H);
-}
-applyCandidate(curCandidate);
-const dwellOrder=new Int32Array(N); for(let i=0;i<N;i++) dwellOrder[i]=i; dwellOrder.sort((a,b)=>dwellY[a]-dwellY[b]);
-const flowFromOrder=new Int32Array(F); for(let i=0;i<F;i++) flowFromOrder[i]=i; flowFromOrder.sort((a,b)=>flowFromY[a]-flowFromY[b]);
-const minYear=tl.min_year, maxYear=tl.max_year;
-range.min=minYear; range.max=maxYear; range.step=0.1; range.value=Math.max(minYear,1700);
-let curYear=parseFloat(range.value), playing=false;
-const HISTORICAL_SNAPSHOTS=[1000,1279,1492,1530,1600,1650,1700,1715,1783,1815,1880,1914,1920,1938,1945,1960,1994,2000];
-let activeHistoricalYear=-1, currentHistoricalWorld=null; const historicalBasemaps=new Map();
-function pickSnapshotYear(y){ let p=HISTORICAL_SNAPSHOTS[0]; for(const s of HISTORICAL_SNAPSHOTS) if(s<=y) p=s; return p; }
-async function fetchHistoricalBasemap(y){
-  if (historicalBasemaps.has(y)) return historicalBasemaps.get(y);
-  try { const r=await fetch("https://cdn.jsdelivr.net/gh/aourednik/historical-basemaps/geojson/world_"+y+".geojson");
-    if (!r.ok) throw new Error("status "+r.status);
-    const j=await r.json(); historicalBasemaps.set(y,j); return j;
-  } catch(e){ historicalBasemaps.set(y,null); return null; }
-}
-function maybeUpdateHistoricalBasemap(){
-  if (borderLayer!=="historical"){ if(activeHistoricalYear!==-1){activeHistoricalYear=-1; currentHistoricalWorld=null; drawBase();} return; }
-  const snap=pickSnapshotYear(curYear);
-  if (snap===activeHistoricalYear) return;
-  activeHistoricalYear=snap;
-  const cached=historicalBasemaps.get(snap);
-  if (cached){ currentHistoricalWorld=cached; drawBase(); return; }
-  fetchHistoricalBasemap(snap).then(j=>{ if(activeHistoricalYear===snap){currentHistoricalWorld=j; drawBase();} });
-}
-function applyProjectionFromZoom(){
-  const t=zoomTransform;
-  projection.scale(baseScale*t.k);
-  projection.translate([baseTranslate[0]*t.k+t.x, baseTranslate[1]*t.k+t.y]);
-}
-function resize(){
-  const wrap=$("mapWrap"); if (!wrap) return;
-  const r=wrap.getBoundingClientRect();
-  let centerLL=null;
-  if (W>0 && H>0 && projection.invert){
-    try { const p=projection.invert([W/2,H/2]); if (p && Number.isFinite(p[0]) && Number.isFinite(p[1])) centerLL=p; } catch(_) {}
-  }
-  W=Math.max(50,Math.floor(r.width)); H=Math.max(50,Math.floor(r.height));
-  for (const c of [baseCanvas,fxCanvas]){
-    c.width=Math.floor(W*devicePixelRatio); c.height=Math.floor(H*devicePixelRatio);
-    c.style.width=W+"px"; c.style.height=H+"px";
-    c.getContext("2d").setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-  }
-  mapW=W; mapTop=0; mapBottom=H;
-  projection.fitExtent([[10,10],[W-10,H-10]],{type:"Sphere"});
-  baseScale=projection.scale(); baseTranslate=projection.translate().slice();
-  applyProjectionFromZoom();
-  if (centerLL) {
-    const np=projection(centerLL);
-    if (np && Number.isFinite(np[0]) && Number.isFinite(np[1])) {
-      const dx=W/2-np[0], dy=H/2-np[1];
-      zoomTransform={k:zoomTransform.k, x:zoomTransform.x+dx, y:zoomTransform.y+dy};
-      d3.select(fxCanvas).call(zoomBehavior.transform, d3.zoomIdentity.translate(zoomTransform.x,zoomTransform.y).scale(zoomTransform.k));
-      applyProjectionFromZoom();
-    }
-  }
-  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H);
-}
-window.addEventListener("resize",resize);
-const _ro=new ResizeObserver(()=>resize());
-queueMicrotask(()=>{ const w=$("mapWrap"); if (w) _ro.observe(w); });
-function applyZoom(){
-  applyProjectionFromZoom();
-  drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); updatePanel(true);
-}
-let _baseDirty=false;
-function requestDraw(){ _baseDirty=true; }
-const zoomBehavior=d3.zoom().scaleExtent([1,16])
-  .filter(e=>{ if(e.type==="wheel"){e.preventDefault(); return true;} if(e.type==="dblclick") return true; if(projectionName==="ortho") return false; return !e.button; })
-  .on("zoom",e=>{ zoomTransform=e.transform; applyZoom(); });
-d3.select(fxCanvas).call(zoomBehavior);
-d3.select(fxCanvas).on("dblclick.zoom",()=>{ d3.select(fxCanvas).transition().duration(400).call(zoomBehavior.transform,d3.zoomIdentity); });
-const dragRotate=d3.drag()
-  .filter(()=>projectionName==="ortho")
-  .on("start", function(e){ this._r=projection.rotate(); this._x=e.x; this._y=e.y; })
-  .on("drag", function(e){
-    const k=Math.max(1.0, 400/projection.scale()); const r0=this._r;
-    projection.rotate([r0[0]+(e.x-this._x)*k, Math.max(-90,Math.min(90,r0[1]-(e.y-this._y)*k)), r0[2]]);
-    requestDraw();
-  })
-  .on("end", function(){ updatePanel(true); });
-d3.select(fxCanvas).call(dragRotate);
-($("mapWrap")).addEventListener("click", e => {
-  const x=e.offsetX, y=e.offsetY;
-  const HIT_R2=14*14;
-  const dw=dwellWindow;
-  const yint=Math.floor(curYear);
-  const lo=lowerBound(dwellY,dwellOrder,yint-dw);
-  const hi=lowerBound(dwellY,dwellOrder,yint+1);
-  let bestI=-1, bestDist=Infinity;
-  for (let k=lo;k<hi;k++){
-    const i=dwellOrder[k];
-    if (curFilter==="ancestors" && dwellSide[i]!==0 && dwellSide[i]!==1) continue;
-    if (curFilter==="blood" && !dwellBlood[i]) continue;
-    if (!typeFilter.has(dwellType[i])) continue;
-    if (!passesStatus(dwellIndi[i])) continue;
-    const sx=dwellSx[i], sy=dwellSy[i];
-    if (sx<0||sx>W||sy<0||sy>H) continue;
-    const ddx=sx-x, ddy=sy-y; const d=ddx*ddx+ddy*ddy;
-    if (d<bestDist){ bestDist=d; bestI=i; }
-  }
-  if (bestI<0||bestDist>HIT_R2) return;
-  if (highlightedDwell===bestI && highlightInferredYear<0){ clearHighlight(); return; }
-  highlightedDwell=bestI; highlightInferredYear=-1; highlightInferredSrcYear=-1;
-  if (playing){ playing=false; playBtn.textContent="Play"; }
-  fxCtx.clearRect(0,0,W,H); updatePanel(true);
-});
-function drawBase(){
-  if (!world) return;
-  staticLabelRects=[];
-  baseCtx.clearRect(0,0,W,H); baseCtx.fillStyle="#cfe2ec"; baseCtx.fillRect(0,0,W,H);
-  const k=zoomTransform.k;
-  const sphere={type:"Sphere"}; const cp=d3.geoPath(projection,baseCtx);
-  baseCtx.beginPath(); cp(d3.geoGraticule10()); baseCtx.strokeStyle="rgba(120,150,180,0.25)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
-  baseCtx.beginPath(); cp(sphere); baseCtx.strokeStyle="rgba(60,90,130,0.6)"; baseCtx.lineWidth=1.2; baseCtx.stroke();
-  const useHist = borderLayer==="historical" && currentHistoricalWorld;
-  let countryFeatures=null;
-  if (useHist) {
-    countryFeatures=currentHistoricalWorld.features||[];
-    baseCtx.beginPath(); cp(currentHistoricalWorld); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill();
-    baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
-  } else {
-    const land=topojson.feature(world,world.objects.countries);
-    const borders=topojson.mesh(world,world.objects.countries,(a,b)=>a!==b);
-    countryFeatures=land.features;
-    baseCtx.beginPath(); cp(land); baseCtx.fillStyle="#f3ecd8"; baseCtx.fill(); baseCtx.strokeStyle="rgba(80,100,120,0.55)"; baseCtx.lineWidth=0.6; baseCtx.stroke();
-    baseCtx.beginPath(); cp(borders); baseCtx.strokeStyle="rgba(120,100,80,0.55)"; baseCtx.lineWidth=0.5; baseCtx.stroke();
-  }
-  if (usStates && !useHist) {
-    const sb=topojson.mesh(usStates,usStates.objects.states,(a,b)=>a!==b);
-    baseCtx.beginPath(); cp(sb);
-    baseCtx.strokeStyle="rgba(140,120,90,"+Math.min(0.7,0.2+k*0.08)+")";
-    baseCtx.lineWidth=0.35; baseCtx.stroke();
-  }
-  if (countryFeatures && k<=8) {
-    const areaCutoff=k>=4?30:k>=2?150:500;
-    baseCtx.font="bold 12px -apple-system, sans-serif";
-    baseCtx.textAlign="center"; baseCtx.textBaseline="middle";
-    const cpProj=d3.geoPath(projection);
-    for (const f of countryFeatures) {
-      const props=f.properties||{};
-      const name=props.NAME||props.name||props.SOVEREIGNT||"";
-      if (!name) continue;
-      const a=cpProj.area(f); if (a<areaCutoff) continue;
-      const c=cpProj.centroid(f); if(!c||isNaN(c[0])) continue;
-      if (c[0]<0||c[0]>W||c[1]<0||c[1]>H) continue;
-      const tw=baseCtx.measureText(name).width;
-      const rect={x:c[0]-tw/2-2,y:c[1]-8,w:tw+4,h:16};
-      let coll=false; for (const ex of staticLabelRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
-      if (coll) continue; staticLabelRects.push(rect);
-      baseCtx.fillStyle="rgba(255,255,255,0.7)"; baseCtx.fillText(name,c[0]+1,c[1]+1);
-      baseCtx.fillStyle="rgba(70,55,30,0.75)"; baseCtx.fillText(name,c[0],c[1]);
-    }
-  }
-  const cities=currentCities();
-  if (cities && cities.length) {
-    const isEvents=cityLayer==="events"&&eventCities&&cities===eventCities;
-    const popThresh=isEvents?0:k>=16?50000:k>=8?150000:k>=4?400000:k>=2?800000:1500000;
-    const labelThresh=isEvents?0:k>=16?200000:k>=8?500000:k>=4?1500000:k>=2?3000000:6000000;
-    baseCtx.font="11px -apple-system, sans-serif";
-    baseCtx.textAlign="left"; baseCtx.textBaseline="middle";
-    const labeled=new Set();
-    const ordered=cities.slice().sort((a,b)=>(b.pop||b.count||0)-(a.pop||a.count||0));
-    for (const c of ordered) {
-      const w=isEvents?c.count:c.pop;
-      if (w<popThresh) continue;
-      const p=safeProject([c.lon,c.lat]); if(!p) continue;
-      if (p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10) continue;
-      const r=isEvents?Math.min(3,1+Math.log2(c.count+1)*0.4):(c.pop>=5000000?2.5:c.pop>=1000000?2:1.5);
-      baseCtx.fillStyle="rgba(60,60,70,0.85)";
-      baseCtx.beginPath(); baseCtx.arc(p[0],p[1],r,0,Math.PI*2); baseCtx.fill();
-      baseCtx.strokeStyle="rgba(255,255,255,0.9)"; baseCtx.lineWidth=0.7; baseCtx.stroke();
-      if (w>=labelThresh && !labeled.has(c.name)) {
-        const tw=baseCtx.measureText(c.name).width;
-        const rect={x:p[0]+r+2,y:p[1]-7,w:tw+4,h:14};
-        let coll=false; for (const ex of staticLabelRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
-        if (coll) continue; labeled.add(c.name); staticLabelRects.push(rect);
-        baseCtx.fillStyle="rgba(255,255,255,0.85)"; baseCtx.fillText(c.name,p[0]+r+3,p[1]+0.5);
-        baseCtx.fillStyle="rgba(40,40,55,0.95)"; baseCtx.fillText(c.name,p[0]+r+2,p[1]);
-      }
-    }
-  }
-}
-function safeProject(lonlat){
-  const p=projection(lonlat); if(!p) return null;
-  if (projectionName==="ortho"){
-    const r=projection.rotate();
-    if (d3.geoDistance(lonlat,[-r[0],-r[1]])>Math.PI/2+0.001) return null;
-  }
-  return p;
-}
-function projectAll(){
-  for (let i=0;i<N;i++){const p=safeProject([dwellLon[i],dwellLat[i]]); if(p){dwellSx[i]=p[0]; dwellSy[i]=p[1];} else {dwellSx[i]=-9999; dwellSy[i]=-9999;}}
-  for (let i=0;i<F;i++){const a=safeProject([flowFromLon[i],flowFromLat[i]]); const b=safeProject([flowToLon[i],flowToLat[i]]);
-    flowFromSx[i]=a?a[0]:-9999; flowFromSy[i]=a?a[1]:-9999; flowToSx[i]=b?b[0]:-9999; flowToSy[i]=b?b[1]:-9999;}
-}
-const COLOR=[[40,100,220],[220,60,90],[80,160,100]];
-const COLOR_NO=[0,0,0], COLOR_ONE=[110,110,115];
-function colorForFinal(side, _ps){ return COLOR[side]||COLOR[2]; }
-function drawShape(ctx,x,y,r,ps){
-  if(ps===2){ ctx.fillRect(x-r,y-r,r*2,r*2); }
-  else if(ps===1){ ctx.beginPath(); ctx.moveTo(x,y-r); ctx.lineTo(x+r,y); ctx.lineTo(x,y+r); ctx.lineTo(x-r,y); ctx.closePath(); ctx.fill(); }
-  else { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
-}
-function lowerBound(arr,order,target){let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>>1; if(arr[order[m]]<target) lo=m+1; else hi=m;} return lo;}
-function drawGreatCircle(ctx,lon0,lat0,lon1,lat1){
-  const dist=d3.geoDistance([lon0,lat0],[lon1,lat1]); if(dist<1e-6) return;
-  const interp=d3.geoInterpolate([lon0,lat0],[lon1,lat1]);
-  const segs=Math.max(2,Math.min(40,Math.ceil(dist*30)));
-  let started=false; ctx.beginPath();
-  for (let i=0;i<=segs;i++){ const p=safeProject(interp(i/segs)); if(!p){started=false; continue;}
-    if(!started){ ctx.moveTo(p[0],p[1]); started=true; } else ctx.lineTo(p[0],p[1]); }
-  ctx.stroke();
-}
-function positionOnGreatCircle(lon0,lat0,lon1,lat1,t){ return safeProject(d3.geoInterpolate([lon0,lat0],[lon1,lat1])(t)); }
-let lastStatusYear=-Infinity;
-function updateStatusLabels(yint){
-  if (yint===lastStatusYear) return;
-  lastStatusYear=yint;
-  const sel=$("statusFilt"); if (!sel) return;
-  for (const opt of sel.options){
-    if (opt.value==="living") opt.textContent="alive in "+yint;
-    else if (opt.value==="dead") opt.textContent="died by "+yint;
-  }
-}
-function passesStatus(indi){
-  if (statusFilter==="all") return true;
-  const ind=individuals[indi]; if (!ind) return true;
-  const by=ind.by, dy=ind.dy, T=curYear;
-  const isAlive=(by==null||by<=T)&&(dy==null||dy>T);
-  const isDead=dy!=null&&dy<=T;
-  if (statusFilter==="living") return isAlive;
-  if (statusFilter==="dead") return isDead;
-  return true;
-}
-function drawHighlight(){
-  const i=highlightedDwell; if (i<0) return;
-  const sx=dwellSx[i], sy=dwellSy[i]; if (sx<=-1000) return;
-  const sd=dwellSide[i], ps=dwellSrc[i];
-  const dotColor=colorForFinal(sd,ps);
-  fxCtx.fillStyle="rgba("+dotColor[0]+","+dotColor[1]+","+dotColor[2]+",1)";
-  drawShape(fxCtx,sx,sy,9,ps);
-  fxCtx.strokeStyle="rgba(255,255,255,0.95)"; fxCtx.lineWidth=2.5;
-  if (ps===2) fxCtx.strokeRect(sx-9,sy-9,18,18);
-  else if (ps===1){ fxCtx.beginPath(); fxCtx.moveTo(sx,sy-9); fxCtx.lineTo(sx+9,sy); fxCtx.lineTo(sx,sy+9); fxCtx.lineTo(sx-9,sy); fxCtx.closePath(); fxCtx.stroke(); }
-  else { fxCtx.beginPath(); fxCtx.arc(sx,sy,9,0,Math.PI*2); fxCtx.stroke(); }
-  const t=performance.now()/1000;
-  for (let rr=0;rr<3;rr++){
-    const phase=((t+rr*0.45)%1.4)/1.4; const radius=12+phase*70;
-    fxCtx.strokeStyle="rgba(255,180,30,"+(0.7*(1-phase)).toFixed(3)+")"; fxCtx.lineWidth=3;
-    fxCtx.beginPath(); fxCtx.arc(sx,sy,radius,0,Math.PI*2); fxCtx.stroke();
-  }
-}
-function frame(fade){
-  if (migrationViz==="lines"||highlightedDwell>=0) fxCtx.clearRect(0,0,W,H);
-  else { fxCtx.globalCompositeOperation="destination-out"; fxCtx.fillStyle="rgba(0,0,0,"+fade+")"; fxCtx.fillRect(0,0,W,H); fxCtx.globalCompositeOperation="source-over"; }
-  const y=curYear, dw=dwellWindow;
-  const lo=lowerBound(dwellY,dwellOrder,y-dw), hi=lowerBound(dwellY,dwellOrder,y+1);
-  const labeledNames=new Set(); const dynRects=[];
-  fxCtx.textAlign="left"; fxCtx.textBaseline="middle";
-  for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const dy=y-dwellY[i]; if(dy<0) continue;
-    const sd=dwellSide[i], ps=dwellSrc[i];
-    if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
-    if (curFilter==="blood" && !dwellBlood[i]) continue;
-    if (!typeFilter.has(dwellType[i])) continue;
-    if (!passesStatus(dwellIndi[i])) continue;
-    const a=Math.max(0,1-dy/dw)*0.85; const c=colorForFinal(sd,ps);
-    fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+a.toFixed(3)+")";
-    const exact=dwellExact[i]; const r=(2.6+(1-dy/dw)*2.0)*(exact?1.4:1);
-    drawShape(fxCtx,dwellSx[i],dwellSy[i],r,ps);
-    if (dwellCity[i]>=0 && dy<3){
-      const rawCity=currentCities()[dwellCity[i]]; if (!rawCity) continue;
-      const canonical=cityCanonicalByName.get(rawCity.name)||rawCity;
-      if (labeledNames.has(canonical.name)) continue;
-      const p=safeProject([canonical.lon,canonical.lat]); if (!p) continue;
-      fxCtx.font=(exact?"bold ":"")+"10px -apple-system, sans-serif";
-      const tw=fxCtx.measureText(canonical.name).width;
-      const rect={x:p[0]+3,y:p[1]-6,w:tw+4,h:13};
-      let coll=false;
-      for (const ex of staticLabelRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
-      if (!coll) for (const ex of dynRects){ if(rectsOverlap(rect,ex)){coll=true;break;} }
-      if (coll) continue;
-      labeledNames.add(canonical.name); dynRects.push(rect);
-      fxCtx.fillStyle="rgba(255,255,255,"+(0.75*a).toFixed(3)+")"; fxCtx.fillText(canonical.name,p[0]+4,p[1]+0.5);
-      fxCtx.fillStyle="rgba(20,28,48,"+(0.95*a).toFixed(3)+")"; fxCtx.fillText(canonical.name,p[0]+3,p[1]);
-    }
-  }
-  if (migrationViz==="lines"){
-    for (let i=0;i<F;i++){
-      if (flowToY[i]>y) continue;
-      const age=y-flowToY[i]; if (age>200) continue;
-      const fs=flowSide[i], fp=flowSrc[i];
-      if (curFilter==="ancestors" && fs!==0 && fs!==1) continue;
-      if (curFilter==="blood" && !flowBlood[i]) continue;
-      const lon0=flowFromLon[i], lat0=flowFromLat[i], lon1=flowToLon[i], lat1=flowToLat[i];
-      if (lon0===lon1 && lat0===lat1) continue;
-      const c=colorForFinal(fs,fp);
-      const alpha=Math.max(0.08,1-age/80)*0.55;
-      fxCtx.strokeStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+alpha.toFixed(3)+")";
-      fxCtx.lineWidth=age<3?1.2:0.5;
-      drawGreatCircle(fxCtx,lon0,lat0,lon1,lat1);
-    }
-  } else if (migrationViz!=="discrete"){
-    const fHi=lowerBound(flowFromY,flowFromOrder,y+1);
-    for (let k=0;k<fHi;k++){const i=flowFromOrder[k]; if(flowToY[i]<y-1) continue;
-      let t;
-      if (migrationViz==="pulse"){ const win=1; if(y<flowToY[i]-win||y>flowToY[i]+0.1) continue; t=Math.max(0,Math.min(1,(y-(flowToY[i]-win))/win)); }
-      else { const span=Math.max(1,flowToY[i]-flowFromY[i]); t=Math.max(0,Math.min(1,(y-flowFromY[i])/span)); }
-      if (t<=0||t>=1) continue;
-      const fs=flowSide[i], fp=flowSrc[i];
-      if (curFilter==="ancestors" && fs!==0 && fs!==1) continue;
-      if (curFilter==="blood" && !flowBlood[i]) continue;
-      const p=positionOnGreatCircle(flowFromLon[i],flowFromLat[i],flowToLon[i],flowToLat[i],t);
-      if (!p) continue;
-      const c=colorForFinal(fs,fp);
-      fxCtx.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+",0.95)";
-      drawShape(fxCtx,p[0],p[1],flowExact[i]?2.6:1.9,fp);
-    }
-  }
-  if (highlightedDwell>=0) drawHighlight();
-}
-function escHtml(s){ const map={"&":"&amp;","<":"&lt;",">":"&gt;"}; map['"']="&quot;"; map["'"]="&#39;"; return String(s).replace(/[&<>"']/g, c => map[c]); }
-let lastPanelYear=-9999, lastPanelTime=0;
-function updatePanel(force){
-  if (panelEl.classList.contains("hidden")) return;
-  const now=performance.now(); const yint=Math.floor(curYear);
-  if (!force && yint===lastPanelYear && now-lastPanelTime<250) return;
-  lastPanelYear=yint; lastPanelTime=now;
-  const dw=dwellWindow;
-  const lo=lowerBound(dwellY,dwellOrder,yint-dw); const hi=lowerBound(dwellY,dwellOrder,yint+1);
-  const rows=[]; const visibleIndis=new Set();
-  for (let k=lo;k<hi;k++){const i=dwellOrder[k]; const sd=dwellSide[i];
-    if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
-    if (curFilter==="blood" && !dwellBlood[i]) continue;
-    if (!typeFilter.has(dwellType[i])) continue;
-    if (!passesStatus(dwellIndi[i])) continue;
-    const sx=dwellSx[i], sy=dwellSy[i];
-    if (sx<-10||sx>mapW+10||sy<mapTop-10||sy>mapBottom+10) continue;
-    rows.push({kind:"real",i,year:dwellY[i]});
-    visibleIndis.add(dwellIndi[i]);
-  }
-  const MAX_LIFESPAN=100;
-  if (inferenceYears>0 && typeFilter.has(2) && statusFilter!=="dead") {
-    for (let idx=0; idx<individuals.length; idx++) {
-      if (visibleIndis.has(idx)) continue;
-      const ind=individuals[idx]; if (!ind || !ind.dws || !ind.dws.length) continue;
-      const sd=curCandidate ? (curCandidate.sideForIdx[idx] ?? 2) : 2;
-      if (curFilter==="ancestors" && sd!==0 && sd!==1) continue;
-      if (curFilter==="blood" && curCandidate && !curCandidate.bloodForIdx[idx]) continue;
-      const by=ind.by, dy_=ind.dy;
-      if (by!=null && by>yint) continue;
-      if (dy_!=null && dy_<yint) continue;
-      if (by!=null && (yint-by)>MAX_LIFESPAN) continue;
-      let lastDi=-1, lastDy=-Infinity;
-      for (const di of ind.dws){ if (dwellY[di]<=yint && dwellY[di]>lastDy){ lastDi=di; lastDy=dwellY[di]; } }
-      if (lastDi<0) continue;
-      if (yint-lastDy>inferenceYears) continue;
-      const sx=dwellSx[lastDi], sy=dwellSy[lastDi];
-      if (sx<-10||sx>mapW+10||sy<mapTop-10||sy>mapBottom+10) continue;
-      const place = dwellPlace[lastDi]>=0 ? places[dwellPlace[lastDi]] : "";
-      rows.push({kind:"inferred",indi:idx,year:yint,place,side:sd,basedOnYear:lastDy,srcDwell:lastDi});
-    }
-  }
-  rows.sort((a,b)=>b.year-a.year);
-  if (rows.length>600) rows.length=600;
-  const html=rows.map(r=>{
-    if (r.kind==="real"){
-      const i=r.i; const ind=individuals[dwellIndi[i]];
-      const t=dwellType[i]; const place=dwellPlace[i]>=0?places[dwellPlace[i]]:"";
-      const sd=dwellSide[i], ps=dwellSrc[i];
-      const c=sd===0?[40,100,220]:sd===1?[220,60,90]:[80,160,100];
-      const shapeCls=ps===2?"sq":ps===1?"di":"";
-      const swatch="<span class='pm "+shapeCls+"' style='background:rgb("+c[0]+","+c[1]+","+c[2]+")'></span>";
-      const sel = highlightedDwell===i ? " selected" : "";
-      return "<li class='"+sel+"' data-idx='"+i+"'><span class='yr'>"+dwellY[i]+"</span>"+swatch+"<span class='nm'>"+escHtml(ind?.name??"?")+"</span> <span class='ev'>"+(EVENT_TYPE_LABEL[t]||"event")+" "+escHtml(place)+"</span></li>";
-    } else {
-      const ind=individuals[r.indi];
-      const sd=r.side;
-      const c=sd===0?[40,100,220]:sd===1?[220,60,90]:[80,160,100];
-      const swatch="<span class='pm' style='background:rgb("+c[0]+","+c[1]+","+c[2]+");opacity:0.6'></span>";
-      const sel = (highlightedDwell===r.srcDwell && highlightInferredYear===r.year) ? " selected" : "";
-      return "<li class='inferred"+sel+"' data-idx='"+r.srcDwell+"' data-inferred='"+r.year+"' data-basedon='"+r.basedOnYear+"'><span class='yr'>"+r.year+"</span>"+swatch+"<span class='nm'>"+escHtml(ind?.name??"?")+"</span> <span class='ev'>lived in "+escHtml(r.place)+"<span class='tag'>INFERRED "+r.basedOnYear+"</span></span></li>";
-    }
-  }).join("");
-  panelList.innerHTML=html||"<li style='color:#888;padding:14px;'>No events visible.</li>";
-  updateBanner();
-}
-function updateBanner(){
-  const banner=$("panelBanner");
-  if (highlightedDwell<0){ banner.classList.remove("shown"); return; }
-  const i=highlightedDwell; const ind=individuals[dwellIndi[i]];
-  if (!ind){ banner.classList.remove("shown"); return; }
-  const placeStr=dwellPlace[i]>=0?places[dwellPlace[i]]:"";
-  const isInferred=highlightInferredYear>=0;
-  const verb=isInferred?"lived in (inferred)":(EVENT_TYPE_LABEL[dwellType[i]]||"event");
-  const yearShown=isInferred?highlightInferredYear:dwellY[i];
-  const inferTag=isInferred?"  (based on "+highlightInferredSrcYear+")":"";
-  $("bannerName").textContent=ind.name;
-  $("bannerEvent").textContent=yearShown+" - "+verb+(placeStr?" "+placeStr:"")+inferTag;
-  banner.classList.add("shown");
-}
-function clearHighlight(){
-  if (highlightedDwell<0&&highlightInferredYear<0) return;
-  highlightedDwell=-1; highlightInferredYear=-1; highlightInferredSrcYear=-1;
-  fxCtx.clearRect(0,0,W,H); updatePanel(true);
-}
-let last=0;
-function tick(now){
-  const dt=last?(now-last)/1000:0; last=now;
-  if (isDraggingSlider) curYear=parseFloat(range.value);
-  else if (playing){ curYear+=parseFloat(speedSel.value)*60*dt; if(curYear>maxYear) curYear=minYear; range.value=curYear; }
-  else curYear=parseFloat(range.value);
-  const yint=Math.floor(curYear);
-  yearBig.textContent=yint;
-  updateStatusLabels(yint);
-  maybeUpdateHistoricalBasemap();
-  if (_baseDirty){ _baseDirty=false; drawBase(); projectAll(); fxCtx.clearRect(0,0,W,H); }
-  frame(parseFloat(trailSel.value));
-  updatePanel(false);
-  requestAnimationFrame(tick);
-}
-playBtn.addEventListener("click",()=>{playing=!playing; playBtn.textContent=playing?"Pause":"Play"; if (playing) clearHighlight();});
-range.addEventListener("input",()=>{ curYear=parseFloat(range.value); clearHighlight(); });
-range.addEventListener("pointerdown",()=>{ isDraggingSlider=true; });
-range.addEventListener("pointerup",()=>{ isDraggingSlider=false; });
-range.addEventListener("pointercancel",()=>{ isDraggingSlider=false; });
-$("rot").addEventListener("input",e=>{ projection.rotate([parseFloat(e.target.value)||0,0,0]); applyZoom(); });
-$("bannerClear").addEventListener("click",clearHighlight);
-$("inferYrs").addEventListener("input",e=>{ inferenceYears=parseInt(e.target.value,10)||0; $("inferYrsLabel").textContent=inferenceYears; updatePanel(true); });
-$("winYrs").addEventListener("input",e=>{ dwellWindow=Math.max(1,parseInt(e.target.value,10)||6); $("winYrsLabel").textContent=dwellWindow; fxCtx.clearRect(0,0,W,H); updatePanel(true); });
-$("statusFilt").addEventListener("change",e=>{ statusFilter=e.target.value; fxCtx.clearRect(0,0,W,H); updatePanel(true); });
-$("panelTypeRow").addEventListener("click",e=>{
-  const btn=e.target.closest(".pill"); if (!btn) return;
-  const t=parseInt(btn.dataset.t,10);
-  if (typeFilter.has(t)) typeFilter.delete(t); else typeFilter.add(t);
-  btn.classList.toggle("on"); fxCtx.clearRect(0,0,W,H); updatePanel(true);
-});
-panelList.addEventListener("click",e=>{
-  const li=e.target.closest("li[data-idx]"); if (!li) return;
-  const i=parseInt(li.dataset.idx,10);
-  const inferredYear=li.dataset.inferred?parseInt(li.dataset.inferred,10):-1;
-  const basedOn=li.dataset.basedon?parseInt(li.dataset.basedon,10):-1;
-  const same=highlightedDwell===i && highlightInferredYear===inferredYear;
-  if (same){ clearHighlight(); }
-  else {
-    highlightedDwell=i; highlightInferredYear=inferredYear; highlightInferredSrcYear=basedOn;
-    curYear=inferredYear>=0?inferredYear:dwellY[i];
-    range.value=curYear;
-    if (playing){ playing=false; playBtn.textContent="Play"; }
-    fxCtx.clearRect(0,0,W,H); updatePanel(true);
-  }
-});
-rootSel.addEventListener("change",e=>{ const c=candidates.find(c=>c.id===e.target.value); if (c) applyCandidate(c); });
-filtSel.addEventListener("change",e=>{ curFilter=e.target.value; fxCtx.clearRect(0,0,W,H); updatePanel(true); });
-cityLayerSel.addEventListener("change",e=>{ cityLayer=e.target.value; precomputeDwellCity(); drawBase(); fxCtx.clearRect(0,0,W,H); updatePanel(true); });
-borderSel.addEventListener("change",e=>{ borderLayer=e.target.value; drawBase(); });
-migSel.addEventListener("change",e=>{ migrationViz=e.target.value; fxCtx.clearRect(0,0,W,H); });
-projSel.addEventListener("change",e=>{ const k=e.target.value; if (PROJECTIONS[k]){ projection=PROJECTIONS[k](); projectionName=k; zoomTransform={k:1,x:0,y:0}; d3.select(fxCanvas).call(zoomBehavior.transform,d3.zoomIdentity); resize(); } });
-const optBtn=document.getElementById("optionsBtn"), optMenu=document.getElementById("optionsMenu"), optWrap=document.getElementById("optionsWrap");
-if (optBtn) optBtn.addEventListener("click", e=>{ e.stopPropagation(); optMenu.classList.toggle("open"); });
-document.addEventListener("click", e=>{ if (!optMenu) return; if (!optMenu.classList.contains("open")) return; if (!optWrap.contains(e.target)) optMenu.classList.remove("open"); });
-resize(); requestAnimationFrame(tick);
-<\/script>
-</body>
-</html>`;
-}
-
-function exportHtml() {
-  if (!lastTimeline || !world || !lastIndividuals) return;
-  const candidates = rankRootCandidates(lastIndividuals, lastIsParent, lastParentsOf, lastIndiById);
-  const candidatesData = candidates.map(c => {
-    const sideMap = classifySides(c.ind.id, lastParentsOf, lastChildrenOf, lastIndividuals);
-    const bloodSet = bloodRelatives(c.ind.id, lastParentsOf, lastChildrenOf);
-    const sideForIdx = new Array(lastIndividuals.length);
-    const bloodForIdx = new Array(lastIndividuals.length);
-    for (let i = 0; i < lastIndividuals.length; i++) {
-      sideForIdx[i] = sideMap.get(lastIndividuals[i].id) ?? 2;
-      bloodForIdx[i] = bloodSet.has(lastIndividuals[i].id) ? 1 : 0;
-    }
-    return {
-      id: c.ind.id, name: c.ind.name,
-      birth: c.ind.birth_year ?? null, death: c.ind.death_year ?? null,
-      label: c.label || "", count: c.count,
-      sideForIdx, bloodForIdx,
-    };
-  });
-  const indiDwellsMap = new Map();
-  for (let i = 0; i < lastTimeline.dwellIndi.length; i++) {
-    const idx = lastTimeline.dwellIndi[i];
-    let arr = indiDwellsMap.get(idx);
-    if (!arr) { arr = []; indiDwellsMap.set(idx, arr); }
-    arr.push(i);
-  }
-  const individualsData = lastIndividuals.map((ind, idx) => ({
-    name: ind.name,
-    by: ind.birth_year ?? null,
-    dy: ind.death_year ?? null,
-    dws: indiDwellsMap.get(idx) || [],
-  }));
-  const html = buildExportHtml(lastTimeline, world, lastFileName, candidatesData, individualsData, lastTimeline.places || []);
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = lastFileName + "-flow.html";
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
-}
 async function bootBasemap() {
-  // MapLibre renders the basemap now; world/usStates are still loaded
-  // because the Export feature embeds them in the standalone HTML it
-  // generates (the export uses the legacy d3-canvas stack to stay portable).
+  // world/usStates topojson loaded for state cluster mode (inferStateBelongings).
   stats.textContent = "loading basemap...";
   const [w, us] = await Promise.all([
     fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(r => r.json()),
@@ -8166,13 +7434,6 @@ async function callClaudeStream(userMsg, onDelta) {
   return full.trim();
 }
 
-function promptForKey() {
-  const cur = localStorage.getItem(CHAT_KEY_LS) || "";
-  const k = prompt("Anthropic API key (sk-ant-...). Stored in localStorage on this device only.", cur);
-  if (k === null) return;
-  if (k.trim()) localStorage.setItem(CHAT_KEY_LS, k.trim());
-  else localStorage.removeItem(CHAT_KEY_LS);
-}
 
 const KFCALL_RE = /<<KFCALL:(\w+)\((.*?)\)>>/gs;
 const KFCHIP_TAG = "<<KFCHIP:";
@@ -8428,11 +7689,13 @@ const VIP_EMAILS = new Set([
   "jamil.burns@gmail.com","derrickrburns@gmail.com","paigeunterberg@gmail.com"
 ]);
 
+let _clerkReady = false;
+
 async function initClerk() {
   const pk = "pk_test_aW5ub2NlbnQtemVicmEtMjQuY2xlcmsuYWNjb3VudHMuZGV2JA";
   // Wait for Clerk class to be available (script loads async)
   let attempts = 0;
-  while (!window.Clerk && attempts++ < 20) {
+  while (!window.Clerk && attempts++ < 40) {
     await new Promise(r => setTimeout(r, 100));
   }
   if (!window.Clerk) { console.warn("Clerk did not load"); return; }
@@ -8440,10 +7703,13 @@ async function initClerk() {
     // window.Clerk from CDN is the class - must instantiate it
     _clerkInstance = new window.Clerk(pk);
     await _clerkInstance.load();
+    _clerkReady = true;
     _clerkInstance.addListener(({ user }) => updateAuthUI(user));
     updateAuthUI(_clerkInstance.user);
   } catch (e) {
-    console.warn("Clerk init failed:", e);
+    console.error("Clerk init failed:", e);
+    // Still mark instance as set so button handler doesn't silently return
+    _clerkReady = false;
   }
 }
 
@@ -8499,7 +7765,10 @@ async function updateAuthUI(user) {
 }
 
 document.getElementById("authBtn").addEventListener("click", async () => {
-  if (!_clerkInstance) return;
+  if (!_clerkReady) {
+    alert("Authentication is not available. Check the browser console for errors.");
+    return;
+  }
   if (_clerkInstance.user) {
     await _clerkInstance.signOut();
   } else {
