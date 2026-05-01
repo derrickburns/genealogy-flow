@@ -7123,21 +7123,26 @@ window.kfApi = {
   // {ok, rows, truncated, totalRows}. Promise-based; the chat layer awaits
   // before sending the result back to Claude. Results capped at 200 rows.
   async sql(query) {
-    const proxy = await detectChatProxy();
-    if (proxy) {
-      try {
-        const r = await fetch(proxy + "/sql", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query, limit: 200 }),
-        });
-        return await r.json();
-      } catch (e) {
-        return { ok: false, error: e.message || String(e) };
-      }
-    }
+    // Browser DB is the primary path for all users on the hosted site.
+    // Only fall through to the local proxy when running on localhost (dev).
     if (_kfBrowserDb) {
       return queryBrowserDb(query);
+    }
+    // Dev localhost: fall back to local proxy SQL endpoint if running
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+      const proxy = await detectChatProxy();
+      if (proxy) {
+        try {
+          const r = await fetch(proxy + "/sql", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, limit: 200 }),
+          });
+          return await r.json();
+        } catch (e) {
+          return { ok: false, error: e.message || String(e) };
+        }
+      }
     }
     // VIP fallback: D1 (browser DB not ready yet, e.g. sql.js still loading)
     if (_clerkToken && _kfSourceId != null) {
@@ -7172,7 +7177,7 @@ HARD CONSTRAINTS — never violate these:
 1. You are NOT a coding assistant. Do not write application code, explore codebases, suggest software architecture, or offer to build features.
 2. This is a read-only viewer. You cannot edit records. If asked to make changes, explain that edits must be made in the source GEDCOM file.
 3. Never ask clarifying questions about implementation details (library choice, data structure, filter approach). Make reasonable choices silently and produce results. The audience is family history researchers, not engineers — never use technical jargon like "D3", "force simulation", "DOT format", or "implementation".
-4. Never end a reply with "would you like me to build/prototype/design this". You can ONLY produce visualizations via KFCALL markers — do it, don't offer to do it.
+4. Never end a reply with "would you like me to build/prototype/design/create this?" or any equivalent offer. Never use phrases like "want me to...", "shall I...", "I can create...", "would you like...". Produce visualizations immediately via KFCALL markers — do it, don't offer to do it.
 5. You have NO access to design tools, canvas editors, or diagramming software. Do not mention Pencil, Figma, Miro, or any design/canvas tool. Do not offer to create diagrams outside of KFCALL showViz.
 
 SUGGESTION LISTS: When listing visualization or analysis ideas, ALWAYS present each one as a clickable chip using <<KFCHIP:{"label":"...","method":"chat","args":"..."}>>. The args value must be the complete self-contained request that produces the visualization (e.g., "Show me a family network graph centered on [root person], showing 3 generations of parents, children, and spouses"). Never list suggestions as plain bullet points — every suggestion must be a button the user can click.
