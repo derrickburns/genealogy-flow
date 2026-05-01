@@ -425,8 +425,7 @@
   <b>Kindred Flow</b>
   <span id="stats">starting...</span>
   <button id="pick">Open .ged</button>
-  <button id="saveCloud" title="Save current GEDCOM to cloud storage" style="display:none">Save to cloud</button>
-  <button id="loadCloud" title="Load your previously saved GEDCOM" style="display:none">Load saved</button>
+  <button id="uploadCloud" title="Upload current GEDCOM to cloud storage" style="display:none">Upload GEDCOM</button>
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
   <span id="rootwrap" style="display:none; margin-left:6px; position:relative;">
     <span id="rootSearchBox" style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:0 4px 0 8px; transition:border-color 0.1s, box-shadow 0.1s;">
@@ -444,14 +443,15 @@
   <span id="optionsWrap" style="display:none; margin-left:auto;">
     <button id="optionsBtn">Options ▾</button>
     <div id="optionsMenu">
-      <div class="section">
-        <h4>Filters</h4>
-        <label>show <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select></label>
-      </div>
-      <div class="section">
-        <h4>Display</h4>
-        <label>color <select id="colorMode"><option value="lineage" selected>maternal/paternal</option><option value="gender">gender</option><option value="tree">tree</option></select></label>
-        <label>borders <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select></label>
+      <div style="display:none">
+        <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select>
+        <input type="range" id="rot" min="-180" max="180" step="1" value="0">
+        <select id="colorMode"><option value="lineage" selected>maternal/paternal</option><option value="gender">gender</option><option value="tree">tree</option></select>
+        <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select>
+        <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="hull">region rings</option><option value="dispersion">on zoom</option></select>
+        <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"><b id="clusterRadiusLabel">30</b>
+        <input type="range" id="kinN" min="0" max="20" step="1" value="0"><b id="kinNLabel">0</b>
+        <div id="clusterSection"></div>
       </div>
       <div class="section">
         <h4>Lens <span style="font-weight:normal; font-size:10px; color:#888;">(claude-defined queries)</span></h4>
@@ -465,17 +465,10 @@
         </div>
         <div id="lensCaption" style="font-size:11px; color:#1c2433; line-height:1.35; margin-top:4px; display:none;"></div>
       </div>
-      <div class="section clusterSec hidden" id="clusterSection">
-        <h4>Clusters</h4>
-        <label>mode <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="hull">region rings</option><option value="dispersion">on zoom</option></select></label>
-        <label>radius <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"> <b id="clusterRadiusLabel">30</b>px</label>
-        <label title="for each person, draw great-circle lines to their N closest blood relatives currently visible">kin lines <input type="range" id="kinN" min="0" max="20" step="1" value="0"> <b id="kinNLabel">0</b></label>
-      </div>
       <div class="section">
         <h4>Animation</h4>
         <label>speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
         <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
-        <label>rotate <input type="range" id="rot" min="-180" max="180" step="1" value="0"></label>
       </div>
       <div class="section">
         <h4>Legend</h4>
@@ -602,6 +595,11 @@
     <span class="chipGroup" data-grp="overlay">
       <span class="chipLabel">overlay:</span>
       <button class="quickChip" data-overlay="treeMatches" title="Highlight people the record linker matched between two or more loaded GEDCOMs. Each match draws halo rings on both endpoints and a connecting line, so you can see geographic overlap at a glance. Requires the chat-proxy and at least 2 loaded trees.">tree matches</button>
+    </span>
+    <span class="chipGroup" style="align-items:center; gap:4px;">
+      <span class="chipLabel">kin lines:</span>
+      <input type="range" id="kinNMain" min="0" max="20" step="1" value="0" style="width:72px; vertical-align:middle;">
+      <b id="kinNMainLabel" style="font-size:11px; min-width:14px; text-align:left; color:#566480;">0</b>
     </span>
     <span class="chipGroup" data-grp="surname"></span>
   </div>
@@ -774,6 +772,8 @@ let isDraggingSlider = false;
 let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null, lastIndiIdxById = null, lastFamilies = null;
 let lastSideById = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
+let _kfSourceId = null;      // D1 source_id for cloud SQL queries; null if no seeded tree
+let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data already in D1)
 
 // applyProjectionFromZoom removed — projection state lives on MapLibre now.
 
@@ -4285,14 +4285,15 @@ function renderSources(list) {
   const wrap = document.getElementById("sourcesPanel");
   const inner = document.getElementById("sourcesList");
   if (!wrap || !inner) return;
-  if (!list || list.length === 0) {
+  const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
+  if (filtered.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
     return;
   }
   wrap.classList.remove("hidden");
   const parts = [`<span class="label">trees</span>`];
-  for (const s of list) {
+  for (const s of filtered) {
     const n = (s.n_individuals || 0).toLocaleString();
     parts.push(
       `<span class="src" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
@@ -4513,6 +4514,7 @@ document.addEventListener("keydown", e => {
 
 async function processFile(file) {
   welcome.classList.add("hidden");
+  localStorage.setItem("kf_returning", "1");
   stats.textContent = `reading ${file.name}...`;
   const text = await file.text();
   window._lastLoadedGedcomRaw = text; // captured for cloud save
@@ -4609,6 +4611,10 @@ async function processFile(file) {
     range.value = START_YEAR;
   }
   requestAnimationFrame(() => { if (!playing) playBtn.click(); });
+  if (_clerkToken && !_kfSkipNextSeed) {
+    seedCloudDb(); // fire-and-forget; populates _kfSourceId for cloud SQL
+  }
+  _kfSkipNextSeed = false;
 }
 
 function populateRootSelect(candidates) {
@@ -5129,11 +5135,16 @@ $("clusterRadius").addEventListener("input", e => {
   $("clusterRadiusLabel").textContent = clusterRadius;
   fxCtx.clearRect(0, 0, W, H);
 });
-$("kinN").addEventListener("input", e => {
-  kinLinesN = parseInt(e.target.value, 10) || 0;
-  $("kinNLabel").textContent = kinLinesN;
+function _kfSetKinLines(n) {
+  kinLinesN = n;
+  $("kinN").value = n;
+  $("kinNLabel").textContent = n;
+  $("kinNMain").value = n;
+  $("kinNMainLabel").textContent = n;
   fxCtx.clearRect(0, 0, W, H);
-});
+}
+$("kinN").addEventListener("input", e => _kfSetKinLines(parseInt(e.target.value, 10) || 0));
+$("kinNMain").addEventListener("input", e => _kfSetKinLines(parseInt(e.target.value, 10) || 0));
 const panelEl = $("panel"), panelList = $("panelList");
 // winYrs / inferYrs slider handlers removed — see note on dwellWindow /
 // inferenceYears constants above.
@@ -5669,8 +5680,13 @@ async function bootBasemap() {
   ]);
   world = w; usStates = us;
   resize();
-  stats.textContent = "ready - drop or open a .ged file";
-  welcome.classList.remove("hidden");
+  if (localStorage.getItem("kf_returning")) {
+    stats.textContent = "ready";
+    // skip welcome screen for returning users - their tree will auto-load
+  } else {
+    stats.textContent = "ready - drop or open a .ged file";
+    welcome.classList.remove("hidden");
+  }
   requestAnimationFrame(tick);
 }
 
@@ -6468,8 +6484,7 @@ window.kfApi = {
   },
   setKinLines(n) {
     n = Math.max(0, Math.min(20, parseInt(n, 10) || 0));
-    $("kinN").value = n;
-    $("kinN").dispatchEvent(new Event("input", { bubbles: true }));
+    _kfSetKinLines(n);
     return { ok: true, kinLines: n };
   },
   setClusterMode(mode) {
@@ -7103,17 +7118,33 @@ window.kfApi = {
   // before sending the result back to Claude. Results capped at 200 rows.
   async sql(query) {
     const proxy = await detectChatProxy();
-    if (!proxy) return { ok: false, error: "no proxy at localhost:8788" };
-    try {
-      const r = await fetch(proxy + "/sql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit: 200 }),
-      });
-      return await r.json();
-    } catch (e) {
-      return { ok: false, error: e.message || String(e) };
+    if (proxy) {
+      try {
+        const r = await fetch(proxy + "/sql", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, limit: 200 }),
+        });
+        return await r.json();
+      } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+      }
     }
+    if (_clerkToken && _kfSourceId != null) {
+      try {
+        const r = await fetch("/api/gedcom/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
+          body: JSON.stringify({ sql: query }),
+        });
+        const data = await r.json();
+        if (data.error) return { ok: false, error: data.error };
+        return { ok: true, rows: data.rows, truncated: data.truncated, totalRows: data.total };
+      } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+      }
+    }
+    return { ok: false, error: "no proxy at localhost:8788 and no cloud database available — upload a GEDCOM after signing in" };
   },
 };
 
@@ -7426,7 +7457,8 @@ async function callClaudeStream(userMsg, onDelta) {
         if (!dataLine) continue;
         try {
           const obj = JSON.parse(dataLine.slice(5).trim());
-          if (obj.delta) { full += obj.delta; onDelta(obj.delta); }
+          const chunk = obj.text ?? obj.delta ?? null; // VIP server sends {text}, proxy sends {delta}
+          if (chunk) { full += chunk; onDelta(chunk); }
           else if (obj.error) throw new Error(obj.error);
           // obj.done — ignore here, end of stream signals completion
         } catch (e) { /* unparsed event */ }
@@ -7684,7 +7716,12 @@ renderChat();
 applyChatAccess("anon");
 // Fire the auto-intro after first paint so the page lays out before the
 // network call. Stays silent if neither proxy nor API key is reachable.
-requestAnimationFrame(() => { autoIntroOnce(); if (!DEMO_GED_URL) refreshSources(); });
+// For returning users, autoIntroOnce runs after the cloud GEDCOM loads (in autoLoadCloudGedcom).
+// For new/anonymous users with chat access, fire it now.
+requestAnimationFrame(() => {
+  if (!localStorage.getItem("kf_returning")) autoIntroOnce();
+  if (!DEMO_GED_URL) refreshSources();
+});
 
 // ---- Clerk auth integration ----
 let _clerkToken = null;
@@ -7693,7 +7730,8 @@ let _clerkInstance = null;
 
 const VIP_EMAILS = new Set([
   "ginagregoryburns@gmail.com","mayasylvia.burns@gmail.com",
-  "jamil.burns@gmail.com","derrickrburns@gmail.com","paigeunterberg@gmail.com"
+  "jamil.burns@gmail.com","derrickrburns@gmail.com","paigeunterberg@gmail.com",
+  "james.raby@gmail.com"
 ]);
 
 let _clerkReady = false;
@@ -7733,8 +7771,7 @@ async function updateAuthUI(user) {
   const emailEl = document.getElementById("authEmail");
   const btnEl = document.getElementById("authBtn");
   const apiKeyRowEl = document.getElementById("apiKeyRow");
-  const saveCloudBtn = document.getElementById("saveCloud");
-  const loadCloudBtn = document.getElementById("loadCloud");
+  const uploadCloudBtn = document.getElementById("uploadCloud");
 
   if (!user) {
     _clerkToken = null;
@@ -7744,8 +7781,7 @@ async function updateAuthUI(user) {
     emailEl.style.display = "none";
     btnEl.textContent = "Sign in";
     apiKeyRowEl.style.display = "none";
-    if (saveCloudBtn) saveCloudBtn.style.display = "none";
-    if (loadCloudBtn) loadCloudBtn.style.display = "none";
+    if (uploadCloudBtn) uploadCloudBtn.style.display = "none";
     applyChatAccess("anon");
     return;
   }
@@ -7762,11 +7798,135 @@ async function updateAuthUI(user) {
   emailEl.textContent = email;
   emailEl.style.display = "inline";
   btnEl.textContent = "Sign out";
-  // Regular users: show key input so they can paste their Anthropic key (stored in localStorage)
   apiKeyRowEl.style.display = _clerkUserTier === "regular" ? "flex" : "none";
-  if (saveCloudBtn) saveCloudBtn.style.display = "inline-block";
-  if (loadCloudBtn) loadCloudBtn.style.display = "inline-block";
+  if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
   applyChatAccess(_clerkUserTier);
+
+  // Auto-load any previously uploaded GEDCOM for this user
+  autoLoadCloudGedcom();
+}
+
+async function autoLoadCloudGedcom() {
+  if (!_clerkToken) return;
+  // Only auto-load if the user has loaded a tree before (returning user).
+  // First-time users should see the welcome screen and pick their own file.
+  if (!localStorage.getItem("kf_returning")) return;
+  const restoring = { role: "bot", content: "Restoring your tree..." };
+  if (typeof chatHistory !== "undefined" && chatHistory.length === 0) {
+    chatHistory.push(restoring);
+    if (typeof renderChat === "function") renderChat();
+  }
+  try {
+    const resp = await fetch("/api/gedcom", {
+      headers: { "Authorization": "Bearer " + _clerkToken }
+    });
+    if (!resp.ok) {
+      // No saved GEDCOM - remove the restoring message and show welcome
+      if (typeof chatHistory !== "undefined") {
+        const idx = chatHistory.indexOf(restoring);
+        if (idx !== -1) chatHistory.splice(idx, 1);
+        if (typeof renderChat === "function") renderChat();
+      }
+      welcome.classList.remove("hidden");
+      stats.textContent = "ready - drop or open a .ged file";
+      return;
+    }
+    const text = await resp.text();
+    if (!text || !text.trim()) {
+      if (typeof chatHistory !== "undefined") {
+        const idx = chatHistory.indexOf(restoring);
+        if (idx !== -1) chatHistory.splice(idx, 1);
+        if (typeof renderChat === "function") renderChat();
+      }
+      welcome.classList.remove("hidden");
+      stats.textContent = "ready - drop or open a .ged file";
+      return;
+    }
+    window._lastLoadedGedcomRaw = text;
+    const blob = new Blob([text], { type: "text/plain" });
+    const file = new File([blob], "saved.ged");
+    _kfSkipNextSeed = true; // tree already in D1 from prior upload; fetch source_id instead
+    if (window._kfLoadFiles) window._kfLoadFiles([file]);
+    fetchSourceId(); // populate _kfSourceId for cloud SQL queries
+    // Replace restoring message with the auto-intro once the tree is loaded
+    if (typeof chatHistory !== "undefined") {
+      const idx = chatHistory.indexOf(restoring);
+      if (idx !== -1) chatHistory.splice(idx, 1);
+      if (typeof renderChat === "function") renderChat();
+    }
+    autoIntroOnce();
+  } catch (_) {
+    if (typeof chatHistory !== "undefined") {
+      const idx = chatHistory.indexOf(restoring);
+      if (idx !== -1) chatHistory.splice(idx, 1);
+      if (typeof renderChat === "function") renderChat();
+    }
+    welcome.classList.remove("hidden");
+    stats.textContent = "ready - drop or open a .ged file";
+  }
+}
+
+// Seed the parsed GEDCOM into D1 so Claude can query it server-side.
+// Fires after processFile() completes. No-op if not signed in.
+async function seedCloudDb() {
+  if (!_clerkToken || !lastIndividuals || !lastFamilies) return;
+  const individuals = lastIndividuals.map(ind => ({
+    id: ind.id,
+    name: ind.name || null,
+    sex: ind.sex || null,
+    birth_year: ind.birth_year ?? null,
+    death_year: ind.death_year ?? null,
+    famc: ind.famc ?? null,
+  }));
+  const events = [];
+  for (const ind of lastIndividuals) {
+    for (const e of (ind.events || [])) {
+      const g = geocoder ? geocoder(e.place) : null;
+      events.push({
+        individual_id: ind.id,
+        type: e.type,
+        year: e.year ?? null,
+        place: e.place || null,
+        lat: g ? g.lat : null,
+        lon: g ? g.lon : null,
+      });
+    }
+  }
+  const families = Array.from(lastFamilies.values()).map(f => ({
+    id: f.id,
+    husb: f.husb || null,
+    wife: f.wife || null,
+    chil: f.chil || [],
+  }));
+  try {
+    const resp = await fetch("/api/gedcom/seed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
+      body: JSON.stringify({ name: lastFileName || "My Tree", individuals, events, families }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      _kfSourceId = data.source_id ?? null;
+    }
+  } catch (e) {
+    console.warn("[kf] seedCloudDb:", e.message || e);
+  }
+}
+
+// Fetch the existing source_id for a returning user (no re-seed).
+async function fetchSourceId() {
+  if (!_clerkToken) { _kfSourceId = null; return; }
+  try {
+    const resp = await fetch("/api/gedcom/source-id", {
+      headers: { "Authorization": "Bearer " + _clerkToken }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      _kfSourceId = data.source_id ?? null;
+    }
+  } catch (e) {
+    console.warn("[kf] fetchSourceId:", e.message || e);
+  }
 }
 
 document.getElementById("authBtn").addEventListener("click", async () => {
@@ -7790,37 +7950,23 @@ document.getElementById("apiKeySave").addEventListener("click", () => {
   applyChatAccess(_clerkUserTier);
 });
 
-// Save current raw GEDCOM text to cloud
-document.getElementById("saveCloud").addEventListener("click", async () => {
-  if (!_clerkToken && _clerkUserTier === "anon") return;
-  // Grab the raw text of the currently loaded file (stored when parsed)
+// Upload current raw GEDCOM to cloud
+document.getElementById("uploadCloud").addEventListener("click", async () => {
+  if (!_clerkToken) return;
   const raw = window._lastLoadedGedcomRaw;
   if (!raw) { alert("No GEDCOM loaded. Open a .ged file first."); return; }
-  const headers = { "Content-Type": "text/plain" };
-  if (_clerkToken) headers["Authorization"] = "Bearer " + _clerkToken;
-  const resp = await fetch("/api/gedcom/upload", { method: "POST", headers, body: raw });
+  const resp = await fetch("/api/gedcom/upload", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", "Authorization": "Bearer " + _clerkToken },
+    body: raw
+  });
   if (resp.ok) {
     const j = await resp.json();
     const d = new Date(j.expires_at * 1000).toLocaleDateString();
-    alert(`Saved. Expires ${d}.`);
+    alert(`Uploaded. Expires ${d}.`);
   } else {
-    alert("Save failed: " + resp.status);
+    alert("Upload failed: " + resp.status);
   }
-});
-
-// Load previously saved GEDCOM from cloud
-document.getElementById("loadCloud").addEventListener("click", async () => {
-  const headers = {};
-  if (_clerkToken) headers["Authorization"] = "Bearer " + _clerkToken;
-  const resp = await fetch("/api/gedcom", { headers });
-  if (!resp.ok) { alert("No saved GEDCOM found."); return; }
-  const text = await resp.text();
-  window._lastLoadedGedcomRaw = text;
-  const blob = new Blob([text], { type: "text/plain" });
-  const file = new File([blob], "saved.ged");
-  // Reuse the existing file loading path
-  if (window._kfLoadFiles) window._kfLoadFiles([file]);
-  else alert("Cannot load: viewer not ready.");
 });
 
 initClerk();

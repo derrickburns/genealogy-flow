@@ -44,3 +44,64 @@ CREATE TABLE IF NOT EXISTS demo_sources (
   id        TEXT PRIMARY KEY,
   data_json TEXT NOT NULL
 );
+
+-- Per-user GEDCOM data seeded from browser-parsed GEDCOM.
+-- One source per user; queries are scoped via CTE wrappers in /api/gedcom/query.
+
+CREATE TABLE IF NOT EXISTS ged_sources (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       TEXT    NOT NULL,
+  name          TEXT    NOT NULL,
+  loaded_at     TEXT    NOT NULL,
+  n_individuals INTEGER DEFAULT 0,
+  n_events      INTEGER DEFAULT 0,
+  n_families    INTEGER DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_user ON ged_sources(user_id);
+
+CREATE TABLE IF NOT EXISTS ged_individuals (
+  source_id  INTEGER NOT NULL,
+  id         TEXT    NOT NULL,
+  name       TEXT,
+  sex        TEXT,
+  birth_year INTEGER,
+  death_year INTEGER,
+  famc       TEXT,
+  PRIMARY KEY (source_id, id)
+);
+CREATE INDEX IF NOT EXISTS ged_indi_name  ON ged_individuals(name);
+CREATE INDEX IF NOT EXISTS ged_indi_birth ON ged_individuals(birth_year);
+CREATE INDEX IF NOT EXISTS ged_indi_death ON ged_individuals(death_year);
+
+CREATE TABLE IF NOT EXISTS ged_events (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id     INTEGER NOT NULL,
+  individual_id TEXT    NOT NULL,
+  type          TEXT    NOT NULL,
+  year          INTEGER,
+  place         TEXT,
+  lat           REAL,
+  lon           REAL
+);
+CREATE INDEX IF NOT EXISTS ged_evt_src  ON ged_events(source_id);
+CREATE INDEX IF NOT EXISTS ged_evt_indi ON ged_events(source_id, individual_id);
+CREATE INDEX IF NOT EXISTS ged_evt_year ON ged_events(year);
+CREATE INDEX IF NOT EXISTS ged_evt_type ON ged_events(type);
+
+CREATE TABLE IF NOT EXISTS ged_families (
+  source_id INTEGER NOT NULL,
+  id        TEXT    NOT NULL,
+  husb_id   TEXT,
+  wife_id   TEXT,
+  PRIMARY KEY (source_id, id)
+);
+CREATE INDEX IF NOT EXISTS ged_fam_husb ON ged_families(source_id, husb_id);
+CREATE INDEX IF NOT EXISTS ged_fam_wife ON ged_families(source_id, wife_id);
+
+CREATE TABLE IF NOT EXISTS ged_family_children (
+  source_id INTEGER NOT NULL,
+  family_id TEXT    NOT NULL,
+  child_id  TEXT    NOT NULL,
+  PRIMARY KEY (source_id, family_id, child_id)
+);
+CREATE INDEX IF NOT EXISTS ged_fc_child ON ged_family_children(source_id, child_id);

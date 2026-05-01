@@ -425,8 +425,7 @@
   <b>Kindred Flow</b>
   <span id="stats">starting...</span>
   <button id="pick">Open .ged</button>
-  <button id="saveCloud" title="Save current GEDCOM to cloud storage" style="display:none">Save to cloud</button>
-  <button id="loadCloud" title="Load your previously saved GEDCOM" style="display:none">Load saved</button>
+  <button id="uploadCloud" title="Upload current GEDCOM to cloud storage" style="display:none">Upload GEDCOM</button>
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
   <span id="rootwrap" style="display:none; margin-left:6px; position:relative;">
     <span id="rootSearchBox" style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:0 4px 0 8px; transition:border-color 0.1s, box-shadow 0.1s;">
@@ -4285,14 +4284,15 @@ function renderSources(list) {
   const wrap = document.getElementById("sourcesPanel");
   const inner = document.getElementById("sourcesList");
   if (!wrap || !inner) return;
-  if (!list || list.length === 0) {
+  const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
+  if (filtered.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
     return;
   }
   wrap.classList.remove("hidden");
   const parts = [`<span class="label">trees</span>`];
-  for (const s of list) {
+  for (const s of filtered) {
     const n = (s.n_individuals || 0).toLocaleString();
     parts.push(
       `<span class="src" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
@@ -4513,6 +4513,7 @@ document.addEventListener("keydown", e => {
 
 async function processFile(file) {
   welcome.classList.add("hidden");
+  localStorage.setItem("kf_returning", "1");
   stats.textContent = `reading ${file.name}...`;
   const text = await file.text();
   window._lastLoadedGedcomRaw = text; // captured for cloud save
@@ -5669,8 +5670,13 @@ async function bootBasemap() {
   ]);
   world = w; usStates = us;
   resize();
-  stats.textContent = "ready - drop or open a .ged file";
-  welcome.classList.remove("hidden");
+  if (localStorage.getItem("kf_returning")) {
+    stats.textContent = "ready";
+    // skip welcome screen for returning users - their tree will auto-load
+  } else {
+    stats.textContent = "ready - drop or open a .ged file";
+    welcome.classList.remove("hidden");
+  }
   requestAnimationFrame(tick);
 }
 
@@ -7684,7 +7690,12 @@ renderChat();
 applyChatAccess("anon");
 // Fire the auto-intro after first paint so the page lays out before the
 // network call. Stays silent if neither proxy nor API key is reachable.
-requestAnimationFrame(() => { autoIntroOnce(); if (!DEMO_GED_URL) refreshSources(); });
+// For returning users, autoIntroOnce runs after the cloud GEDCOM loads (in autoLoadCloudGedcom).
+// For new/anonymous users with chat access, fire it now.
+requestAnimationFrame(() => {
+  if (!localStorage.getItem("kf_returning")) autoIntroOnce();
+  if (!DEMO_GED_URL) refreshSources();
+});
 
 // ---- Clerk auth integration ----
 let _clerkToken = null;
@@ -7693,7 +7704,8 @@ let _clerkInstance = null;
 
 const VIP_EMAILS = new Set([
   "ginagregoryburns@gmail.com","mayasylvia.burns@gmail.com",
-  "jamil.burns@gmail.com","derrickrburns@gmail.com","paigeunterberg@gmail.com"
+  "jamil.burns@gmail.com","derrickrburns@gmail.com","paigeunterberg@gmail.com",
+  "james.raby@gmail.com"
 ]);
 
 let _clerkReady = false;
@@ -7733,8 +7745,7 @@ async function updateAuthUI(user) {
   const emailEl = document.getElementById("authEmail");
   const btnEl = document.getElementById("authBtn");
   const apiKeyRowEl = document.getElementById("apiKeyRow");
-  const saveCloudBtn = document.getElementById("saveCloud");
-  const loadCloudBtn = document.getElementById("loadCloud");
+  const uploadCloudBtn = document.getElementById("uploadCloud");
 
   if (!user) {
     _clerkToken = null;
@@ -7744,8 +7755,7 @@ async function updateAuthUI(user) {
     emailEl.style.display = "none";
     btnEl.textContent = "Sign in";
     apiKeyRowEl.style.display = "none";
-    if (saveCloudBtn) saveCloudBtn.style.display = "none";
-    if (loadCloudBtn) loadCloudBtn.style.display = "none";
+    if (uploadCloudBtn) uploadCloudBtn.style.display = "none";
     applyChatAccess("anon");
     return;
   }
@@ -7762,11 +7772,70 @@ async function updateAuthUI(user) {
   emailEl.textContent = email;
   emailEl.style.display = "inline";
   btnEl.textContent = "Sign out";
-  // Regular users: show key input so they can paste their Anthropic key (stored in localStorage)
   apiKeyRowEl.style.display = _clerkUserTier === "regular" ? "flex" : "none";
-  if (saveCloudBtn) saveCloudBtn.style.display = "inline-block";
-  if (loadCloudBtn) loadCloudBtn.style.display = "inline-block";
+  if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
   applyChatAccess(_clerkUserTier);
+
+  // Auto-load any previously uploaded GEDCOM for this user
+  autoLoadCloudGedcom();
+}
+
+async function autoLoadCloudGedcom() {
+  if (!_clerkToken) return;
+  // Only auto-load if the user has loaded a tree before (returning user).
+  // First-time users should see the welcome screen and pick their own file.
+  if (!localStorage.getItem("kf_returning")) return;
+  const restoring = { role: "bot", content: "Restoring your tree..." };
+  if (typeof chatHistory !== "undefined" && chatHistory.length === 0) {
+    chatHistory.push(restoring);
+    if (typeof renderChat === "function") renderChat();
+  }
+  try {
+    const resp = await fetch("/api/gedcom", {
+      headers: { "Authorization": "Bearer " + _clerkToken }
+    });
+    if (!resp.ok) {
+      // No saved GEDCOM - remove the restoring message and show welcome
+      if (typeof chatHistory !== "undefined") {
+        const idx = chatHistory.indexOf(restoring);
+        if (idx !== -1) chatHistory.splice(idx, 1);
+        if (typeof renderChat === "function") renderChat();
+      }
+      welcome.classList.remove("hidden");
+      stats.textContent = "ready - drop or open a .ged file";
+      return;
+    }
+    const text = await resp.text();
+    if (!text || !text.trim()) {
+      if (typeof chatHistory !== "undefined") {
+        const idx = chatHistory.indexOf(restoring);
+        if (idx !== -1) chatHistory.splice(idx, 1);
+        if (typeof renderChat === "function") renderChat();
+      }
+      welcome.classList.remove("hidden");
+      stats.textContent = "ready - drop or open a .ged file";
+      return;
+    }
+    window._lastLoadedGedcomRaw = text;
+    const blob = new Blob([text], { type: "text/plain" });
+    const file = new File([blob], "saved.ged");
+    if (window._kfLoadFiles) window._kfLoadFiles([file]);
+    // Replace restoring message with the auto-intro once the tree is loaded
+    if (typeof chatHistory !== "undefined") {
+      const idx = chatHistory.indexOf(restoring);
+      if (idx !== -1) chatHistory.splice(idx, 1);
+      if (typeof renderChat === "function") renderChat();
+    }
+    autoIntroOnce();
+  } catch (_) {
+    if (typeof chatHistory !== "undefined") {
+      const idx = chatHistory.indexOf(restoring);
+      if (idx !== -1) chatHistory.splice(idx, 1);
+      if (typeof renderChat === "function") renderChat();
+    }
+    welcome.classList.remove("hidden");
+    stats.textContent = "ready - drop or open a .ged file";
+  }
 }
 
 document.getElementById("authBtn").addEventListener("click", async () => {
@@ -7790,37 +7859,23 @@ document.getElementById("apiKeySave").addEventListener("click", () => {
   applyChatAccess(_clerkUserTier);
 });
 
-// Save current raw GEDCOM text to cloud
-document.getElementById("saveCloud").addEventListener("click", async () => {
-  if (!_clerkToken && _clerkUserTier === "anon") return;
-  // Grab the raw text of the currently loaded file (stored when parsed)
+// Upload current raw GEDCOM to cloud
+document.getElementById("uploadCloud").addEventListener("click", async () => {
+  if (!_clerkToken) return;
   const raw = window._lastLoadedGedcomRaw;
   if (!raw) { alert("No GEDCOM loaded. Open a .ged file first."); return; }
-  const headers = { "Content-Type": "text/plain" };
-  if (_clerkToken) headers["Authorization"] = "Bearer " + _clerkToken;
-  const resp = await fetch("/api/gedcom/upload", { method: "POST", headers, body: raw });
+  const resp = await fetch("/api/gedcom/upload", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", "Authorization": "Bearer " + _clerkToken },
+    body: raw
+  });
   if (resp.ok) {
     const j = await resp.json();
     const d = new Date(j.expires_at * 1000).toLocaleDateString();
-    alert(`Saved. Expires ${d}.`);
+    alert(`Uploaded. Expires ${d}.`);
   } else {
-    alert("Save failed: " + resp.status);
+    alert("Upload failed: " + resp.status);
   }
-});
-
-// Load previously saved GEDCOM from cloud
-document.getElementById("loadCloud").addEventListener("click", async () => {
-  const headers = {};
-  if (_clerkToken) headers["Authorization"] = "Bearer " + _clerkToken;
-  const resp = await fetch("/api/gedcom", { headers });
-  if (!resp.ok) { alert("No saved GEDCOM found."); return; }
-  const text = await resp.text();
-  window._lastLoadedGedcomRaw = text;
-  const blob = new Blob([text], { type: "text/plain" });
-  const file = new File([blob], "saved.ged");
-  // Reuse the existing file loading path
-  if (window._kfLoadFiles) window._kfLoadFiles([file]);
-  else alert("Cannot load: viewer not ready.");
 });
 
 initClerk();

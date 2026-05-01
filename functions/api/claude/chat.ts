@@ -1,72 +1,234 @@
+import Anthropic from "@anthropic-ai/sdk";
 import type { Env, UserContext } from "../../_middleware";
 
-async function decryptKey(encrypted: string, secretHex: string): Promise<string> {
-  const [ivHex, cipherHex] = encrypted.split(":");
-  if (!ivHex || !cipherHex) throw new Error("Invalid encrypted key format");
-  const keyBytes = hexToBytes(secretHex);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]
-  );
-  const plain = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: hexToBytes(ivHex) },
-    cryptoKey,
-    hexToBytes(cipherHex)
-  );
-  return new TextDecoder().decode(plain);
+// Wrap Claude's query in scoped CTEs so it never needs to know about
+// source_id or the ged_ table prefix. Claude writes bare table names.
+function wrapQuery(sql: string, sourceId: number): string {
+  const q = sql.trim().replace(/;+$/, "");
+  return `WITH
+  individuals     AS (SELECT id,name,sex,birth_year,death_year,famc
+                        FROM ged_individuals WHERE source_id=${sourceId}),
+  events          AS (SELECT individual_id,type,year,place,lat,lon
+                        FROM ged_events WHERE source_id=${sourceId}),
+  families        AS (SELECT id,husb_id,wife_id
+                        FROM ged_families WHERE source_id=${sourceId}),
+  family_children AS (SELECT family_id,child_id
+                        FROM ged_family_children WHERE source_id=${sourceId})
+${q}`;
 }
 
-function hexToBytes(hex: string): Uint8Array {
-  const arr = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < arr.length; i++) {
-    arr[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return arr;
+function buildSystemPrompt(sourceId: number | null): string {
+  const schemaBlock = sourceId != null ? `
+SQLite schema (your tree is already scoped — query these table names directly, no source_id needed):
+
+  individuals(id TEXT, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT)
+    -- id is the GEDCOM xref like "@I1234@". sex is M/F/U. famc is the family-as-child id.
+
+  events(individual_id TEXT, type TEXT, year INTEGER, place TEXT, lat REAL, lon REAL)
+    -- type in {BIRT,DEAT,RESI,MARR,EMIG,IMMI,CENS,BAPM,BURI,CHR,OCCU}.
+    -- place is GEDCOM-style ("City, County, State, Country"). lat/lon are geocoded coordinates.
+    -- join to individuals: ON individual_id = individuals.id
+
+  families(id TEXT, husb_id TEXT, wife_id TEXT)
+    -- composite with family_children for parent-child links.
+
+  family_children(family_id TEXT, child_id TEXT)
+    -- one row per child. To find children of a person: join families ON id=famc, then family_children ON family_id=families.id.
+
+Examples:
+  -- everyone born after 1900 in New York
+  SELECT name, birth_year FROM individuals WHERE birth_year > 1900
+  AND id IN (SELECT individual_id FROM events WHERE type='BIRT' AND place LIKE '%New York%');
+
+  -- direct ancestors (recursive CTE)
+  WITH RECURSIVE up(id, gen) AS (
+    SELECT id, 0 FROM individuals WHERE name LIKE '%Helen%' LIMIT 1
+    UNION ALL
+    SELECT CASE WHEN f.husb_id=up.id THEN NULL ELSE f.husb_id END, up.gen+1
+    FROM up JOIN individuals i ON i.id=up.id
+            JOIN families f ON f.id=i.famc
+    WHERE up.gen < 8
+  )
+  SELECT i.name, i.birth_year, up.gen FROM up JOIN individuals i ON i.id=up.id ORDER BY gen;
+
+  -- migration pattern: most common birth-to-death country moves
+  SELECT e1.place AS born_in, e2.place AS died_in, COUNT(*) AS n
+  FROM events e1 JOIN events e2 ON e1.individual_id=e2.individual_id
+  WHERE e1.type='BIRT' AND e2.type='DEAT'
+  GROUP BY 1,2 ORDER BY n DESC LIMIT 20;
+
+Use run_sql for any question about counts, patterns, lineage, or the full dataset.
+` : `
+No tree data is seeded yet. Answer from the context window only. Suggest the user upload a GEDCOM and save it to their account to enable full SQL queries.
+`;
+
+  return `You are the genealogy-data analyst embedded in Kindred Flow, a particle-flow GEDCOM viewer. Your primary job is to help the user understand their genealogical data: migration patterns, family-branch dynamics, lineage paths, surname concentrations, intermarriage, who-was-where-when. You synthesize quantitative findings from SQL into short, narrative answers.
+
+HARD CONSTRAINT: This is a read-only viewer. You cannot edit, update, add, or delete any records. If asked to make changes, explain that edits must be made in the source GEDCOM file.
+
+Each user message may be preceded by a context block describing what they're currently viewing: tree size, year range, root person, selected person, visible people. Use that context to disambiguate references ("them", "her", "this place"). Use run_sql for anything beyond what's visible on screen.
+
+You can drive the visualization by emitting KFCALL markers. The browser parses them, executes them, strips them from visible text, and feeds results back next turn:
+  <<KFCALL:methodName(jsonArgs)>>
+
+You can also offer follow-up actions as clickable chips:
+  <<KFCHIP:{"label":"...","method":"...","args":...}>>
+
+Available KFCALL methods: setYear(n), play(), pause(), setRoot(name), selectPerson(name), centerOn(name), traceLineage([a,b]), addPin({lat,lon,label}), clearPins(), playRange([start,end,step]), setCluster(mode), setFilter(expr), showViz({type,data,title}), chain([{method,args},...]).
+
+Formatting: Markdown renders. Bold names. Use mermaid fenced blocks for small family trees or timelines (under 30 nodes). Offer chip buttons instead of asking "want me to X?".
+
+Audience: family-history researchers, not GEDCOM engineers. Translate tag codes to plain English in your replies. Never show SQL or schema names to the user.
+${schemaBlock}`;
 }
 
-async function resolveApiKey(user: UserContext, env: Env): Promise<string | null> {
-  if (user.type === "vip") return env.ANTHROPIC_API_KEY;
-  if (user.type === "regular") {
-    const row = await env.DB.prepare(
-      `SELECT api_key FROM users WHERE user_id = ?`
-    ).bind(user.id).first<{ api_key: string | null }>();
-    if (!row?.api_key) return null;
-    return decryptKey(row.api_key, env.KEY_ENCRYPTION_SECRET);
-  }
-  return null;
-}
+const RUN_SQL_TOOL: Anthropic.Tool = {
+  name: "run_sql",
+  description:
+    "Execute a read-only SELECT query against the user's GEDCOM database. " +
+    "Tables: individuals, events, families, family_children. Returns up to 200 rows.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      query: { type: "string", description: "A SELECT statement using the schema tables." },
+    },
+    required: ["query"],
+  },
+};
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const user = (ctx as unknown as { user: UserContext }).user;
-  if (user.type === "anon") {
-    return new Response(JSON.stringify({ error: "Sign in to use AI features" }), {
-      status: 401, headers: { "Content-Type": "application/json" },
+
+  // Only VIP users use this endpoint. Regular users call Anthropic directly
+  // from the browser (their key never touches the server) and use
+  // /api/gedcom/query for SQL execution.
+  if (user.type !== "vip") {
+    return new Response(JSON.stringify({ error: "VIP access required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
     });
   }
 
-  const apiKey = await resolveApiKey(user, ctx.env);
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: "No Anthropic API key configured." }),
-      { status: 402, headers: { "Content-Type": "application/json" } }
-    );
+  let body: Anthropic.MessageCreateParamsNonStreaming & { stream?: boolean };
+  try {
+    body = await ctx.request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  // Proxy the request body directly to Anthropic
-  const body = await ctx.request.text();
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body,
-  });
+  // Look up the user's seeded source_id (may be null if they haven't seeded yet)
+  const src = await ctx.env.DB.prepare(`SELECT id FROM ged_sources WHERE user_id = ?`)
+    .bind(user.id)
+    .first<{ id: number }>();
+  const sourceId = src?.id ?? null;
 
-  return new Response(resp.body, {
-    status: resp.status,
+  const client = new Anthropic({ apiKey: ctx.env.ANTHROPIC_API_KEY });
+  const systemPrompt = buildSystemPrompt(sourceId);
+  const tools: Anthropic.Tool[] = sourceId != null ? [RUN_SQL_TOOL] : [];
+
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const enc = new TextEncoder();
+  const send = async (text: string) =>
+    writer.write(enc.encode(`data: ${JSON.stringify({ text })}\n\n`));
+
+  ctx.waitUntil(
+    (async () => {
+      try {
+        let messages: Anthropic.MessageParam[] = body.messages ?? [];
+
+        while (true) {
+          // Use streaming so text reaches the browser immediately
+          const stream = client.messages.stream({
+            model: body.model ?? "claude-haiku-4-5-20251001",
+            max_tokens: body.max_tokens ?? 1024,
+            system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+            tools,
+            messages,
+          });
+
+          // Track tool-use blocks while streaming text deltas
+          const toolBlocks: { id: string; name: string; inputStr: string }[] = [];
+          let activeToolIdx = -1;
+
+          for await (const event of stream) {
+            if (event.type === "content_block_start") {
+              if (event.content_block.type === "tool_use") {
+                toolBlocks.push({ id: event.content_block.id, name: event.content_block.name, inputStr: "" });
+                activeToolIdx = toolBlocks.length - 1;
+              } else {
+                activeToolIdx = -1;
+              }
+            } else if (event.type === "content_block_delta") {
+              if (event.delta.type === "text_delta") {
+                await send(event.delta.text);
+              } else if (event.delta.type === "input_json_delta" && activeToolIdx >= 0) {
+                toolBlocks[activeToolIdx].inputStr += event.delta.partial_json;
+              }
+            }
+          }
+
+          const finalMsg = await stream.finalMessage();
+
+          if (finalMsg.stop_reason === "tool_use" && toolBlocks.length > 0) {
+            const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+            for (const tb of toolBlocks) {
+              if (tb.name !== "run_sql") continue;
+              let result: unknown;
+              try {
+                const input = JSON.parse(tb.inputStr) as { query: string };
+                const query = input.query ?? "";
+                if (!/^\s*SELECT\b/i.test(query)) {
+                  result = { error: "Only SELECT queries are allowed." };
+                } else if (sourceId != null) {
+                  const wrapped = wrapQuery(query, sourceId);
+                  const r = await ctx.env.DB.prepare(wrapped).all();
+                  const rows = r.results ?? [];
+                  result = { rows: rows.slice(0, 200), truncated: rows.length > 200, total: rows.length };
+                } else {
+                  result = { rows: [], note: "No tree data available." };
+                }
+              } catch (e) {
+                result = { error: e instanceof Error ? e.message : String(e) };
+              }
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: tb.id,
+                content: JSON.stringify(result),
+              });
+            }
+
+            messages = [
+              ...messages,
+              { role: "assistant", content: finalMsg.content },
+              { role: "user", content: toolResults },
+            ];
+            // continue loop
+          } else {
+            // end_turn or no tools — done
+            break;
+          }
+        }
+
+        await writer.write(enc.encode("data: [DONE]\n\n"));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await writer.write(enc.encode(`data: ${JSON.stringify({ error: msg })}\n\n`));
+      } finally {
+        await writer.close();
+      }
+    })(),
+  );
+
+  return new Response(readable, {
     headers: {
-      "Content-Type": resp.headers.get("Content-Type") ?? "application/json",
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
     },
   });
 };

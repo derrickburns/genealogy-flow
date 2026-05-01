@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kindred Flow - GEDCOM Data Architecture</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0a1426; color: #e8edf5; height: 100vh; overflow: hidden; }
+
+.deck { width: 100%; height: 100vh; position: relative; }
+.slide { position: absolute; inset: 0; display: none; flex-direction: column; padding: 36px 52px 60px; }
+.slide.active { display: flex; }
+
+.slide-header { flex-shrink: 0; margin-bottom: 18px; }
+.slide-num { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #566480; margin-bottom: 5px; }
+h1 { font-size: 26px; font-weight: 700; color: #e8edf5; }
+.sub { font-size: 13px; color: #8a9ab8; margin-top: 3px; }
+
+.body { flex: 1; overflow: hidden; display: flex; gap: 20px; min-height: 0; }
+.col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.col.w2 { flex: 2; }
+.col.w3 { flex: 3; }
+.col.fixed220 { flex: 0 0 220px; }
+
+/* --- sequence diagram --- */
+.seq { background: #0e1929; border: 1px solid #1e2d47; border-radius: 8px; padding: 14px 16px; overflow-y: auto; flex: 1; min-height: 0; }
+.seq-actors { display: flex; gap: 0; margin-bottom: 12px; }
+.seq-actors .actor {
+  flex: 1; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  padding: 5px 4px; border-radius: 5px; border: 1px solid #2a3d5a; background: #1e2d47;
+  color: #c8d8f0;
+}
+.seq-steps { display: flex; flex-direction: column; gap: 0; }
+.seq-step { display: flex; align-items: stretch; min-height: 36px; }
+.seq-step.note-row { min-height: 28px; }
+
+/* Each cell in a step row */
+.seq-cell { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; }
+
+/* The vertical lifeline */
+.seq-cell::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 0; bottom: 0;
+  width: 1px; background: #1e3050;
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+/* Arrow spans multiple cells */
+.seq-arrow { display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; width: 100%; }
+.seq-label {
+  font-size: 11px; color: #c8d8f0; background: #0e1929;
+  padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+  position: relative; z-index: 2; max-width: 100%; text-align: center;
+  line-height: 1.4;
+}
+
+/* Self-loop step */
+.seq-self { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 2px 6px; position: relative; z-index: 1; }
+.seq-self .seq-label { font-size: 10.5px; color: #8a9ab8; font-style: italic; }
+
+/* Note row */
+.seq-note {
+  flex: 1; font-size: 10.5px; color: #8a9ab8; font-style: italic;
+  background: #141f33; border-left: 2px solid #2a4a6a;
+  padding: 3px 8px; margin: 2px 0; border-radius: 0 4px 4px 0;
+  display: flex; align-items: center;
+}
+
+/* Colored arrow lines */
+.arr-line { height: 1px; flex: 1; }
+.arr-line.solid { background: #5a8ab8; }
+.arr-line.dashed { background: repeating-linear-gradient(90deg, #5a8ab8 0 4px, transparent 4px 8px); }
+.arr-head { width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.arr-head.right { border-left: 7px solid #5a8ab8; }
+.arr-head.left  { border-right: 7px solid #5a8ab8; }
+
+/* region shading */
+.seq-region { background: rgba(30,50,80,0.35); border-radius: 4px; margin: 4px 0; padding: 4px 0; }
+.seq-region-label { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: #566480; padding: 2px 8px 4px; }
+
+/* --- card --- */
+.card { background: #111c2e; border: 1px solid #1e2d47; border-radius: 8px; padding: 12px 14px; flex-shrink: 0; }
+.card h3 { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #566480; margin-bottom: 7px; }
+.card li, .card p { font-size: 12px; color: #8a9ab8; line-height: 1.55; }
+.card ul { padding-left: 13px; }
+.card li { margin-bottom: 2px; }
+.hi { color: #e8edf5; font-weight: 600; }
+
+/* --- badge --- */
+.badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+.badge.r2     { background: #1a3a2a; color: #4caf80; }
+.badge.d1     { background: #1a2c4a; color: #5a9cf0; }
+.badge.local  { background: #2a2a12; color: #d4a820; }
+.badge.br     { background: #2a1a2a; color: #c070e0; }
+.badge.anon   { background: #2a1a1a; color: #e06060; }
+.badge.reg    { background: #1a2a1a; color: #60c060; }
+.badge.vip    { background: #2a2a1a; color: #c0a820; }
+
+/* --- actor badges used in steps --- */
+.a { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 2px; }
+.a.U  { background: #1e2d47; color: #8ab0d8; }
+.a.B  { background: #1e2a1e; color: #70c070; }
+.a.MW { background: #2a2a1a; color: #c0a820; }
+.a.R2 { background: #1a3a2a; color: #4caf80; }
+.a.D1 { background: #1a2c4a; color: #5a9cf0; }
+.a.P  { background: #2a1a1a; color: #e08060; }
+.a.A  { background: #1a1a2a; color: #9070e0; }
+.a.CF { background: #2a1a2a; color: #c070e0; }
+
+/* --- step list (alternative to sequence for simple flows) --- */
+.steplist { display: flex; flex-direction: column; gap: 0; }
+.step {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 8px; border-left: 2px solid #1e3050;
+  position: relative;
+}
+.step:last-child { border-left-color: transparent; }
+.step-num {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+  background: #1e3050; color: #8ab0d8; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 1px; position: relative; z-index: 1;
+}
+.step-content { flex: 1; font-size: 12px; color: #8a9ab8; line-height: 1.5; }
+.step-content .arrow { color: #5a8ab8; margin: 0 3px; }
+.step.divider { border-left: none; padding: 8px 8px 2px; }
+.step.divider .step-num { background: transparent; }
+.step-region-lbl { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: #566480; }
+
+/* --- table --- */
+.tbl-wrap { flex: 1; overflow: auto; background: #111c2e; border: 1px solid #1e2d47; border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { text-align: left; padding: 7px 10px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #566480; border-bottom: 1px solid #1e2d47; white-space: nowrap; }
+td { padding: 6px 10px; color: #8a9ab8; border-bottom: 1px solid #1a2640; vertical-align: top; }
+td:first-child { color: #e8edf5; font-weight: 500; }
+tr:last-child td { border-bottom: none; }
+
+/* title */
+.slide.title { justify-content: center; align-items: center; text-align: center; }
+.slide.title h1 { font-size: 40px; }
+.slide.title .sub { font-size: 16px; margin-top: 10px; max-width: 540px; }
+.logo { font-size: 44px; margin-bottom: 18px; opacity: 0.7; }
+
+/* tier cards */
+.tier-row { display: flex; gap: 10px; flex-shrink: 0; }
+.tier-card { flex: 1; background: #111c2e; border: 1px solid #1e2d47; border-radius: 8px; padding: 11px 13px; }
+.tier-card h4 { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 5px; }
+.tier-card.anon h4 { color: #e06060; }
+.tier-card.reg  h4 { color: #60c060; }
+.tier-card.vip  h4 { color: #c0a820; }
+.tier-card p { font-size: 12px; color: #8a9ab8; line-height: 1.5; }
+
+/* query 3-panel */
+.qpanels { display: flex; gap: 12px; flex: 1; min-height: 0; }
+.qpanel { flex: 1; display: flex; flex-direction: column; gap: 0; min-height: 0; }
+.qpanel-hdr {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 6px 10px; border-radius: 7px 7px 0 0; text-align: center; flex-shrink: 0;
+}
+.qpanel-hdr.dev { background: #1a2c44; color: #5a9cf0; }
+.qpanel-hdr.vip { background: #2a2a12; color: #c0a820; }
+.qpanel-hdr.reg { background: #1a2c1a; color: #60c060; }
+.qpanel .steplist { background: #0e1929; border: 1px solid #1e2d47; border-top: none; border-radius: 0 0 7px 7px; padding: 10px 10px; flex: 1; overflow-y: auto; }
+
+nav { position: fixed; bottom: 18px; right: 28px; display: flex; gap: 8px; align-items: center; }
+nav button { background: #1e2d47; border: 1px solid #2a3d5a; color: #8a9ab8; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+nav button:hover { background: #2a3d5a; color: #e8edf5; }
+nav button:disabled { opacity: 0.3; cursor: default; }
+#sc { font-size: 12px; color: #566480; min-width: 44px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="deck">
+
+<!-- 1: Title -->
+<div class="slide title active">
+  <div class="logo">&#128218;</div>
+  <h1>Kindred Flow</h1>
+  <p class="sub">GEDCOM Data Architecture - Upload, Query, and Delete Flows</p>
+</div>
+
+<!-- 2: Data Stores -->
+<div class="slide">
+  <div class="slide-header"><div class="slide-num">Slide 2</div><h1>Where Data Lives</h1><p class="sub">Three storage layers, each with a distinct role</p></div>
+  <div class="body">
+    <div class="col">
+      <div class="card">
+        <h3><span class="badge r2">R2</span> &nbsp;Object Storage</h3>
+        <ul>
+          <li>Raw <span class="hi">.ged files</span> - one per user or anon session</li>
+          <li>Demo trees: <code>demo/golden-rosenberg.json</code></li>
+          <li>Geocoding: <code>geocodes/gazetteer.json</code></li>
+          <li>Anon: expires in <span class="hi">1 day</span>. Users: <span class="hi">7 days</span> from last login</li>
+          <li>Cleaned by nightly cron at 02:00 UTC</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="badge d1">D1</span> &nbsp;SQLite (Cloudflare)</h3>
+        <ul>
+          <li><span class="hi">sessions</span> - anon session IDs and expiry</li>
+          <li><span class="hi">users</span> - Clerk user ID, email, encrypted API key, GEDCOM expiry</li>
+          <li><span class="hi">demo_individuals, demo_events, demo_families, demo_sources</span> - pre-seeded, queryable by Claude (planned)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h3><span class="badge br">Browser</span> &nbsp;Client-Side State</h3>
+        <ul>
+          <li>Parsed GEDCOM in JS memory (individuals, events, families)</li>
+          <li>Map visualization state (particles, filters, clusters)</li>
+          <li><code>localStorage.kf_returning</code> - suppresses welcome on return visits</li>
+          <li><code>localStorage.kf_hidden_demos</code> - which demo trees are hidden</li>
+          <li><code>localStorage.CHAT_KEY_LS</code> - Anthropic key for regular users</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="badge local">Local</span> &nbsp;Chat Proxy (Dev Only)</h3>
+        <ul>
+          <li>Python server at <code>localhost:8787</code></li>
+          <li>SQLite DB populated from browser-parsed GEDCOM</li>
+          <li>Claude executes SQL tool calls against this DB in dev</li>
+          <li><span class="hi">Not present in production</span> - Cloudflare functions handle Claude there</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3: Tiers -->
+<div class="slide">
+  <div class="slide-header"><div class="slide-num">Slide 3</div><h1>User Tiers</h1><p class="sub">Three tiers determine GEDCOM retention and Claude access</p></div>
+  <div class="body" style="flex-direction:column;">
+    <div class="tier-row">
+      <div class="tier-card anon">
+        <h4>Anonymous</h4>
+        <p>Session cookie only. Can view demo trees and upload a GEDCOM (1-day retention). No Claude access in production. No auto-restore on return.</p>
+      </div>
+      <div class="tier-card reg">
+        <h4>Regular</h4>
+        <p>Clerk login. GEDCOM stored 7 days from last login. Claude requires own Anthropic API key stored in localStorage. Tree auto-restores on sign-in.</p>
+      </div>
+      <div class="tier-card vip">
+        <h4>VIP</h4>
+        <p>Clerk login + email on VIP allowlist. Full Claude access using the app's Anthropic API key. Same 7-day GEDCOM retention as Regular.</p>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Capability</th><th><span class="badge anon">Anon</span></th><th><span class="badge reg">Regular</span></th><th><span class="badge vip">VIP</span></th></tr>
+        <tr><td>View demo trees</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Upload own GEDCOM</td><td>Yes (1 day)</td><td>Yes (7 days)</td><td>Yes (7 days)</td></tr>
+        <tr><td>Auto-restore on sign-in</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Claude biographer / summarize</td><td>No</td><td>Own key</td><td>App key</td></tr>
+        <tr><td>Claude chat</td><td>No</td><td>Own key</td><td>App key</td></tr>
+        <tr><td>Delete own GEDCOM from server</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Delete demo trees from server</td><td>No</td><td>No</td><td>No</td></tr>
+        <tr><td>Hide demo trees (local, reversible)</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 4: Upload -->
+<div class="slide">
+  <div class="slide-header"><div class="slide-num">Slide 4</div><h1>Upload Flow</h1><p class="sub">User saves their GEDCOM to the cloud via "Save to Account"</p></div>
+  <div class="body">
+    <div class="col w2">
+      <div class="steplist" style="background:#0e1929;border:1px solid #1e2d47;border-radius:8px;padding:14px 16px;flex:1;overflow-y:auto;">
+
+        <div class="step divider"><div class="step-num" style="background:transparent"></div><div class="step-content"><span class="step-region-lbl">User opens a .ged file</span></div></div>
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content"><span class="a U">User</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;Selects or drops a <code>.ged</code> file</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content"><span class="a B">Browser</span> &nbsp;Parses GEDCOM + geocodes events client-side using the gazetteer</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content"><span class="a B">Browser</span> &nbsp;Renders map visualization; sets <code>localStorage.kf_returning = "1"</code></div>
+        </div>
+
+        <div class="step divider" style="margin-top:6px"><div class="step-num"></div><div class="step-content"><span class="step-region-lbl">User saves to account</span></div></div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content"><span class="a U">User</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;Clicks "Save to Account"</div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-content"><span class="a B">Browser</span> <span class="arrow">&#8594;</span> <span class="a MW">Middleware</span> &nbsp;<code>POST /api/gedcom/upload</code> with <code>Authorization: Bearer {token}</code> and raw <code>.ged</code> body</div>
+        </div>
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-content"><span class="a MW">Middleware</span> &nbsp;Verifies Clerk JWT; extracts <code>user_id</code> and email; upserts <code>users</code> row in D1</div>
+        </div>
+        <div class="step">
+          <div class="step-num">7</div>
+          <div class="step-content"><span class="a MW">Middleware</span> <span class="arrow">&#8594;</span> <span class="a R2">R2</span> &nbsp;<code>put("gedcom/user/{user_id}", body)</code></div>
+        </div>
+        <div class="step">
+          <div class="step-num">8</div>
+          <div class="step-content"><span class="a MW">Middleware</span> <span class="arrow">&#8594;</span> <span class="a D1">D1</span> &nbsp;<code>SET gedcom_expires_at = now + 7 days</code></div>
+        </div>
+        <div class="step">
+          <div class="step-num">9</div>
+          <div class="step-content"><span class="a MW">Middleware</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;Returns <code>{ stored: true, expires_at: unix_ts }</code></div>
+        </div>
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-content"><span class="a B">Browser</span> <span class="arrow">&#8594;</span> <span class="a U">User</span> &nbsp;"Saved. Expires {date}."</div>
+        </div>
+      </div>
+    </div>
+    <div class="col fixed220">
+      <div class="card">
+        <h3>Key Points</h3>
+        <ul>
+          <li>Raw <span class="hi">.ged text</span> is stored - not parsed data</li>
+          <li>One file per user - upload overwrites previous save</li>
+          <li>Retention: <span class="hi">7 days</span> for auth, <span class="hi">1 day</span> for anon</li>
+          <li>JWT verified on every request; no server-side session</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Auto-Restore on Sign-In</h3>
+        <ul>
+          <li>Clerk resolves on page load</li>
+          <li>If <code>kf_returning</code> flag is set, skip welcome screen</li>
+          <li>App calls <code>GET /api/gedcom</code> with Bearer token</li>
+          <li>Fetches raw .ged from R2 and parses in browser</li>
+          <li>"Restoring your tree..." shown in chat during fetch</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 5: Query -->
+<div class="slide">
+  <div class="slide-header"><div class="slide-num">Slide 5</div><h1>Query Flow - Claude Chat</h1><p class="sub">Three paths depending on user tier and environment</p></div>
+  <div class="body">
+    <div class="qpanels">
+
+      <div class="qpanel">
+        <div class="qpanel-hdr dev">Dev - Local Proxy</div>
+        <div class="steplist">
+          <div class="step"><div class="step-num">1</div><div class="step-content"><span class="a U">User</span> types a question in chat</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-content"><span class="a B">Browser</span> <span class="arrow">&#8594;</span> <span class="a P">Proxy</span> &nbsp;<code>POST /v1/messages</code> (Anthropic format)</div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-content"><span class="a P">Proxy</span> &nbsp;Runs SQL tool calls against local SQLite DB (populated from the GEDCOM)</div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-content"><span class="a P">Proxy</span> <span class="arrow">&#8594;</span> <span class="a A">Anthropic</span> &nbsp;Sends messages + tool results</div></div>
+          <div class="step"><div class="step-num">5</div><div class="step-content"><span class="a A">Anthropic</span> <span class="arrow">&#8594;</span> <span class="a P">Proxy</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;SSE stream</div></div>
+          <div class="step"><div class="step-num">6</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Renders answer in chat panel</div></div>
+        </div>
+      </div>
+
+      <div class="qpanel">
+        <div class="qpanel-hdr vip">VIP - Production</div>
+        <div class="steplist">
+          <div class="step"><div class="step-num">1</div><div class="step-content"><span class="a U">User</span> types a question in chat</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-content"><span class="a B">Browser</span> <span class="arrow">&#8594;</span> <span class="a CF">CF&nbsp;/api/claude/chat</span> &nbsp;<code>POST</code> with <code>Authorization: Bearer {token}</code></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-content"><span class="a CF">CF</span> &nbsp;Verifies JWT; confirms VIP tier; uses app <code>ANTHROPIC_API_KEY</code></div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-content"><span class="a CF">CF</span> <span class="arrow">&#8594;</span> <span class="a A">Anthropic</span> &nbsp;Messages API call</div></div>
+          <div class="step"><div class="step-num">5</div><div class="step-content"><span class="a A">Anthropic</span> <span class="arrow">&#8594;</span> <span class="a CF">CF</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;SSE stream</div></div>
+          <div class="step"><div class="step-num">6</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Renders answer in chat panel</div></div>
+        </div>
+      </div>
+
+      <div class="qpanel">
+        <div class="qpanel-hdr reg">Regular - Own Key</div>
+        <div class="steplist">
+          <div class="step"><div class="step-num">1</div><div class="step-content"><span class="a U">User</span> types a question in chat</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Reads Anthropic key from <code>localStorage</code></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-content"><span class="a B">Browser</span> <span class="arrow">&#8594;</span> <span class="a A">Anthropic</span> &nbsp;<code>POST /v1/messages</code> directly, <code>x-api-key: {key}</code></div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-content"><span class="a A">Anthropic</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;SSE stream (no Cloudflare hop)</div></div>
+          <div class="step"><div class="step-num">5</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Renders answer in chat panel</div></div>
+          <div class="step" style="border-left-color:transparent"><div class="step-num" style="background:#2a2a1a;color:#c0a820;">!</div><div class="step-content" style="color:#c0a820;font-size:11px;">Key never leaves the browser - not sent to Cloudflare</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 6: Delete -->
+<div class="slide">
+  <div class="slide-header"><div class="slide-num">Slide 6</div><h1>Delete Flow</h1><p class="sub">User trees deleted from server. Demo trees hidden locally only.</p></div>
+  <div class="body">
+    <div class="col w2">
+      <div class="steplist" style="background:#0e1929;border:1px solid #1e2d47;border-radius:8px;padding:14px 16px;flex:1;overflow-y:auto;">
+
+        <div class="step divider"><div class="step-num"></div><div class="step-content"><span class="step-region-lbl" style="color:#5a9cf0;">User tree - permanent server delete</span></div></div>
+
+        <div class="step"><div class="step-num">1</div><div class="step-content"><span class="a U">User</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;Clicks <b>X</b> on their own tree in the TREES panel</div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-content"><span class="a B">Browser</span> <span class="arrow">&#8594;</span> <span class="a MW">Middleware</span> &nbsp;<code>DELETE /api/gedcom</code> with <code>Authorization: Bearer {token}</code></div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-content"><span class="a MW">Middleware</span> &nbsp;Verifies JWT; resolves <code>user_id</code></div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-content"><span class="a MW">Middleware</span> <span class="arrow">&#8594;</span> <span class="a R2">R2</span> &nbsp;<code>delete("gedcom/user/{user_id}")</code></div></div>
+        <div class="step"><div class="step-num">5</div><div class="step-content"><span class="a MW">Middleware</span> <span class="arrow">&#8594;</span> <span class="a D1">D1</span> &nbsp;<code>SET gedcom_expires_at = NULL</code></div></div>
+        <div class="step"><div class="step-num">6</div><div class="step-content"><span class="a MW">Middleware</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;<code>204 No Content</code></div></div>
+        <div class="step"><div class="step-num">7</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Removes tree from local state and map visualization</div></div>
+
+        <div class="step divider" style="margin-top:10px"><div class="step-num"></div><div class="step-content"><span class="step-region-lbl" style="color:#4caf80;">Demo tree - local hide only (no server call)</span></div></div>
+
+        <div class="step"><div class="step-num">1</div><div class="step-content"><span class="a U">User</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;Clicks <b>hide</b> (eye icon) on a demo tree</div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Adds tree name to <code>localStorage.kf_hidden_demos</code></div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Removes tree from visualization - <b>no server request made</b></div></div>
+        <div class="step"><div class="step-num" style="background:#1a3a2a;color:#4caf80;">&#8635;</div><div class="step-content">User can restore via "Restore demos" - clears the flag and reloads from <code>/api/demo</code></div></div>
+
+        <div class="step divider" style="margin-top:10px"><div class="step-num"></div><div class="step-content"><span class="step-region-lbl" style="color:#c0a820;">Nightly cron - automatic expiry (02:00 UTC)</span></div></div>
+        <div class="step"><div class="step-num">&#x2605;</div><div class="step-content">Delete from <span class="a R2">R2</span> + <span class="a D1">D1</span> where anon <code>sessions.expires_at &lt; now</code></div></div>
+        <div class="step" style="border-left-color:transparent"><div class="step-num">&#x2605;</div><div class="step-content">Delete from <span class="a R2">R2</span> where <code>users.gedcom_expires_at &lt; now</code>. Demo trees never touched.</div></div>
+      </div>
+    </div>
+    <div class="col fixed220">
+      <div class="card">
+        <h3>User Tree Delete</h3>
+        <ul>
+          <li>Removes .ged from <span class="hi">R2</span></li>
+          <li>Nulls expiry in <span class="hi">D1</span></li>
+          <li>Clears browser state</li>
+          <li><span class="hi">Irreversible</span> - must re-upload</li>
+          <li>Only available to auth users</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Demo Tree Hide</h3>
+        <ul>
+          <li>Client-side only (localStorage)</li>
+          <li>Server data <span class="hi">never deleted</span></li>
+          <li>Reversible via "Restore demos"</li>
+          <li>Per-browser - not synced across devices</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 7: Demo -->
+<div class="slide">
+  <div class="slide-header"><div class="slide-num">Slide 7</div><h1>Demo Tree Flow</h1><p class="sub">Shared trees available to all users - read-only on server</p></div>
+  <div class="body">
+    <div class="col w2">
+      <div class="steplist" style="background:#0e1929;border:1px solid #1e2d47;border-radius:8px;padding:14px 16px;flex:1;overflow-y:auto;">
+
+        <div class="step divider"><div class="step-num"></div><div class="step-content"><span class="step-region-lbl">App startup (any user tier)</span></div></div>
+        <div class="step"><div class="step-num">1</div><div class="step-content"><span class="a B">Browser</span> <span class="arrow">&#8594;</span> <span class="a CF">/api/demo</span> &nbsp;<code>GET</code> (no auth required)</div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-content"><span class="a CF">CF</span> <span class="arrow">&#8594;</span> <span class="a R2">R2</span> &nbsp;<code>get("demo/golden-rosenberg.json")</code></div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-content"><span class="a R2">R2</span> <span class="arrow">&#8594;</span> <span class="a CF">CF</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;Pre-processed JSON (individuals + events + families)</div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Loads tree into map visualization (no client-side parsing needed)</div></div>
+
+        <div class="step divider" style="margin-top:10px"><div class="step-num"></div><div class="step-content"><span class="step-region-lbl">User hides a demo tree</span></div></div>
+        <div class="step"><div class="step-num">5</div><div class="step-content"><span class="a U">User</span> <span class="arrow">&#8594;</span> <span class="a B">Browser</span> &nbsp;Clicks hide on demo tree</div></div>
+        <div class="step"><div class="step-num">6</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Adds name to <code>localStorage.kf_hidden_demos</code>; removes from visualization</div></div>
+
+        <div class="step divider" style="margin-top:10px"><div class="step-num"></div><div class="step-content"><span class="step-region-lbl">User restores hidden demo trees</span></div></div>
+        <div class="step"><div class="step-num">7</div><div class="step-content"><span class="a U">User</span> &nbsp;Clicks "Restore demos"</div></div>
+        <div class="step"><div class="step-num">8</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Clears <code>kf_hidden_demos</code>; calls <code>GET /api/demo</code> again</div></div>
+        <div class="step" style="border-left-color:transparent"><div class="step-num">9</div><div class="step-content"><span class="a B">Browser</span> &nbsp;Re-adds demo tree to visualization</div></div>
+      </div>
+    </div>
+    <div class="col fixed220">
+      <div class="card">
+        <h3>Demo Data Sources</h3>
+        <ul>
+          <li><span class="hi">R2:</span> Pre-processed JSON - fast, no parse step</li>
+          <li><span class="hi">D1:</span> demo_* tables - seeded for future Claude SQL queries</li>
+          <li>Seeded once via <code>scripts/seed-demo.mjs</code></li>
+          <li>Never modified or deleted by any user action</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Planned: Gregory-Henry Tree</h3>
+        <ul>
+          <li>Second demo at <code>demo/gregory-henry.json</code></li>
+          <li><code>GET /api/demo/list</code> returns all demo names</li>
+          <li>Both trees load on startup unless hidden</li>
+          <li>Each independently hideable per-browser</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 8: Lifecycle Table -->
+<div class="slide">
+  <div class="slide-header"><div class="slide-num">Slide 8</div><h1>Data Lifecycle Summary</h1><p class="sub">What gets stored, where, and for how long</p></div>
+  <div class="body" style="flex-direction:column;">
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Data</th><th>Store</th><th>Key / Location</th><th>Created by</th><th>Deleted by</th><th>Retention</th></tr>
+        <tr><td>Anon GEDCOM</td><td><span class="badge r2">R2</span></td><td><code>gedcom/anon/{sid}</code></td><td>POST /api/gedcom/upload</td><td>Nightly cron</td><td>1 day</td></tr>
+        <tr><td>User GEDCOM</td><td><span class="badge r2">R2</span></td><td><code>gedcom/user/{uid}</code></td><td>POST /api/gedcom/upload</td><td>DELETE /api/gedcom or cron</td><td>7 days from last login</td></tr>
+        <tr><td>Demo trees</td><td><span class="badge r2">R2</span> <span class="badge d1">D1</span></td><td><code>demo/*.json</code></td><td>seed-demo.mjs (one-time)</td><td>Never</td><td>Permanent</td></tr>
+        <tr><td>Anon session</td><td><span class="badge d1">D1</span></td><td><code>sessions.session_id</code></td><td>First API request</td><td>Nightly cron</td><td>1 day</td></tr>
+        <tr><td>User record</td><td><span class="badge d1">D1</span></td><td><code>users.user_id</code></td><td>First Clerk login</td><td>Manual only</td><td>Permanent</td></tr>
+        <tr><td>Encrypted API key</td><td><span class="badge d1">D1</span></td><td><code>users.api_key</code></td><td>PUT /api/user/apikey</td><td>User removes it</td><td>Until changed</td></tr>
+        <tr><td>Parsed GEDCOM</td><td><span class="badge br">Memory</span></td><td>JS in-memory</td><td>File load / R2 restore</td><td>Page close / new file</td><td>Session only</td></tr>
+        <tr><td>Return flag</td><td><span class="badge br">localStorage</span></td><td><code>kf_returning</code></td><td>First GEDCOM load</td><td>Never</td><td>Permanent (this device)</td></tr>
+        <tr><td>Hidden demos</td><td><span class="badge br">localStorage</span></td><td><code>kf_hidden_demos</code></td><td>User hides demo</td><td>User restores</td><td>Until cleared (this device)</td></tr>
+        <tr><td>Anthropic key (regular)</td><td><span class="badge br">localStorage</span></td><td><code>CHAT_KEY_LS</code></td><td>User pastes key</td><td>User removes</td><td>Until cleared (this device)</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /.deck -->
+
+<nav>
+  <button id="prev" disabled>&#8592; Prev</button>
+  <span id="sc">1 / 8</span>
+  <button id="next">Next &#8594;</button>
+</nav>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let cur = 0;
+  function show(n) {
+    slides[cur].classList.remove('active');
+    cur = n;
+    slides[cur].classList.add('active');
+    document.getElementById('prev').disabled = cur === 0;
+    document.getElementById('next').disabled = cur === slides.length - 1;
+    document.getElementById('sc').textContent = `${cur + 1} / ${slides.length}`;
+  }
+  document.getElementById('prev').addEventListener('click', () => { if (cur > 0) show(cur - 1); });
+  document.getElementById('next').addEventListener('click', () => { if (cur < slides.length - 1) show(cur + 1); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { if (cur < slides.length - 1) show(cur + 1); }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { if (cur > 0) show(cur - 1); }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+US.zip
+cities500.zip
+cities15000.zip
+*.ged
+*.py
+*.txt
+admin1.txt
+countryInfo.txt
+gazetteer.json
+gazetteer.json.gz
+individuals.json
+timeline.json
+places.json
+places.before-fix.json
+node_modules
+.git
