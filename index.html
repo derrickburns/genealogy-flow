@@ -7173,6 +7173,7 @@ HARD CONSTRAINTS — never violate these:
 2. This is a read-only viewer. You cannot edit records. If asked to make changes, explain that edits must be made in the source GEDCOM file.
 3. Never ask clarifying questions about implementation details (library choice, data structure, filter approach). Make reasonable choices silently and produce results. The audience is family history researchers, not engineers — never use technical jargon like "D3", "force simulation", "DOT format", or "implementation".
 4. Never end a reply with "would you like me to build/prototype/design this". You can ONLY produce visualizations via KFCALL markers — do it, don't offer to do it.
+5. You have NO access to design tools, canvas editors, or diagramming software. Do not mention Pencil, Figma, Miro, or any design/canvas tool. Do not offer to create diagrams outside of KFCALL showViz.
 
 SUGGESTION LISTS: When listing visualization or analysis ideas, ALWAYS present each one as a clickable chip using <<KFCHIP:{"label":"...","method":"chat","args":"..."}>>. The args value must be the complete self-contained request that produces the visualization (e.g., "Show me a family network graph centered on [root person], showing 3 generations of parents, children, and spouses"). Never list suggestions as plain bullet points — every suggestion must be a button the user can click.
 
@@ -7872,11 +7873,16 @@ async function autoLoadCloudGedcom() {
       return;
     }
     window._lastLoadedGedcomRaw = text;
+    // Fetch the canonical tree name from D1 before loading so processFile uses it.
+    let treeName = "saved";
+    try {
+      const si = await fetch("/api/gedcom/source-id", { headers: { "Authorization": "Bearer " + _clerkToken } });
+      if (si.ok) { const sd = await si.json(); if (sd.name) treeName = sd.name; _kfSourceId = sd.source_id ?? null; }
+    } catch (_) {}
     const blob = new Blob([text], { type: "text/plain" });
-    const file = new File([blob], "saved.ged");
-    _kfSkipNextSeed = true; // tree already in D1 from prior upload; fetch source_id instead
+    const file = new File([blob], treeName + ".ged");
+    _kfSkipNextSeed = true; // tree already in D1 from prior upload
     if (window._kfLoadFiles) window._kfLoadFiles([file]);
-    fetchSourceId(); // populate _kfSourceId for cloud SQL queries
     // Replace restoring message with the auto-intro once the tree is loaded
     if (typeof chatHistory !== "undefined") {
       const idx = chatHistory.indexOf(restoring);

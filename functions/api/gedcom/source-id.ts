@@ -7,10 +7,10 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       headers: { "Content-Type": "application/json" },
     });
   }
-  const src = await ctx.env.DB.prepare(`SELECT id FROM ged_sources WHERE user_id = ?`)
+  const src = await ctx.env.DB.prepare(`SELECT id, name FROM ged_sources WHERE user_id = ?`)
     .bind(user.id)
-    .first<{ id: number }>();
-  return new Response(JSON.stringify({ source_id: src?.id ?? null }), {
+    .first<{ id: number; name: string }>();
+  return new Response(JSON.stringify({ source_id: src?.id ?? null, name: src?.name ?? null }), {
     headers: { "Content-Type": "application/json" },
   });
 };
