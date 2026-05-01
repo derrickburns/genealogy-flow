@@ -7695,22 +7695,26 @@ let _clerkReady = false;
 
 async function initClerk() {
   const pk = "pk_test_aW5ub2NlbnQtemVicmEtMjQuY2xlcmsuYWNjb3VudHMuZGV2JA";
-  // Wait for Clerk class to be available (script loads async)
   let attempts = 0;
   while (!window.Clerk && attempts++ < 40) {
     await new Promise(r => setTimeout(r, 100));
   }
   if (!window.Clerk) { console.warn("Clerk did not load"); return; }
   try {
-    // window.Clerk from CDN is the class - must instantiate it
-    _clerkInstance = new window.Clerk(pk);
-    await _clerkInstance.load();
+    // v5+ CDN with data-clerk-publishable-key: window.Clerk is already an initialized
+    // instance. v4 CDN: window.Clerk is a constructor that needs instantiation.
+    if (typeof window.Clerk === "function") {
+      _clerkInstance = new window.Clerk(pk);
+      await _clerkInstance.load();
+    } else {
+      _clerkInstance = window.Clerk;
+      if (!_clerkInstance.loaded) await _clerkInstance.load({ publishableKey: pk });
+    }
     _clerkReady = true;
     _clerkInstance.addListener(({ user }) => updateAuthUI(user));
     updateAuthUI(_clerkInstance.user);
   } catch (e) {
     console.error("Clerk init failed:", e);
-    // Still mark instance as set so button handler doesn't silently return
     _clerkReady = false;
   }
 }
