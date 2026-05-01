@@ -406,7 +406,6 @@
 <script
   src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
   data-clerk-publishable-key="pk_live_Y2xlcmsua2luZHJlZHNlYXJjaC5jb20k"
-  crossorigin="anonymous"
 ></script>
 </head>
 <body>
@@ -4543,7 +4542,7 @@ async function processFile(file) {
   // already has the data — _kfSkipNextProxyLoad lets it skip the upload.
   if (_kfSkipNextProxyLoad) {
     _kfSkipNextProxyLoad = false;
-  } else {
+  } else if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
     loadGedcomToProxy(file, text, DEMO_GED_URL ? "replace" : "add").then(r => {
       if (r && r.ok) {
         const cur = stats.textContent || "";
