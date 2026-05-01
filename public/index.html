@@ -570,7 +570,7 @@
   <h1>Kindred Flow</h1>
   <p>Drop a <code>.ged</code> file or use the button below. Birth, death, residence, and marriage events plot as moving particles across the map.</p>
   <button id="pick2">Choose GEDCOM file</button>
-  <p style="font-size:11px;margin-top:14px;">Parsed and geocoded in your browser. If you sign in, your GEDCOM is stored on our servers so Claude can query it.</p>
+  <p style="font-size:11px;margin-top:14px;">Parsed, geocoded, and queried entirely in your browser. Nothing uploaded.</p>
 </div>
 <div id="ui">
   <div id="quickChips" class="hidden">
@@ -772,8 +772,9 @@ let isDraggingSlider = false;
 let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null, lastIndiIdxById = null, lastFamilies = null;
 let lastSideById = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
-let _kfSourceId = null;      // D1 source_id for cloud SQL queries; null if no seeded tree
+let _kfSourceId = null;      // D1 source_id for VIP server-side queries
 let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data already in D1)
+let _kfBrowserDb = null;     // sql.js in-memory SQLite DB built from the loaded GEDCOM
 
 // applyProjectionFromZoom removed — projection state lives on MapLibre now.
 
@@ -4611,8 +4612,9 @@ async function processFile(file) {
     range.value = START_YEAR;
   }
   requestAnimationFrame(() => { if (!playing) playBtn.click(); });
-  if (_clerkToken && !_kfSkipNextSeed) {
-    seedCloudDb(); // fire-and-forget; populates _kfSourceId for cloud SQL
+  buildBrowserDb(); // build in-memory SQLite for kfApi.sql() — all users
+  if (_clerkToken && _clerkUserTier === "vip" && !_kfSkipNextSeed) {
+    seedCloudDb(); // VIP only: seed D1 so server-side chat.ts agentic loop can query
   }
   _kfSkipNextSeed = false;
 }
@@ -5733,6 +5735,7 @@ function maybeUpdateHistoricalBasemap() {
   });
 }
 bootBasemap().catch(e => { stats.textContent = "boot error: " + e.message; });
+_ensureSqlJs(); // pre-load sql.js WASM in background so it's ready when a GEDCOM is dropped
 
 // ---------- Chat ----------
 const chatHistoryEl = $("chatHistory");
@@ -7130,6 +7133,10 @@ window.kfApi = {
         return { ok: false, error: e.message || String(e) };
       }
     }
+    if (_kfBrowserDb) {
+      return queryBrowserDb(query);
+    }
+    // VIP fallback: D1 (browser DB not ready yet, e.g. sql.js still loading)
     if (_clerkToken && _kfSourceId != null) {
       try {
         const r = await fetch("/api/gedcom/query", {
@@ -7144,7 +7151,7 @@ window.kfApi = {
         return { ok: false, error: e.message || String(e) };
       }
     }
-    return { ok: false, error: "no proxy at localhost:8788 and no cloud database available — upload a GEDCOM after signing in" };
+    return { ok: false, error: "no GEDCOM loaded — drop a .ged file to enable SQL queries" };
   },
 };
 
@@ -7866,8 +7873,80 @@ async function autoLoadCloudGedcom() {
   }
 }
 
+// --------------- Browser SQLite (sql.js WASM) ---------------
+
+let _sqlJsReady = null; // Promise<void> — resolves when sql.js is loaded
+
+function _ensureSqlJs() {
+  if (_sqlJsReady) return _sqlJsReady;
+  _sqlJsReady = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/sql-wasm.js";
+    s.onload = () => {
+      window.initSqlJs({ locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/${f}` })
+        .then(SQL => { window._sqlJs = SQL; resolve(); })
+        .catch(reject);
+    };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return _sqlJsReady;
+}
+
+async function buildBrowserDb() {
+  if (!lastIndividuals || !lastFamilies) return;
+  try {
+    await _ensureSqlJs();
+    if (_kfBrowserDb) { _kfBrowserDb.close(); _kfBrowserDb = null; }
+    const db = new window._sqlJs.Database();
+    db.run(`CREATE TABLE individuals (id TEXT PRIMARY KEY, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT)`);
+    db.run(`CREATE TABLE events (individual_id TEXT, type TEXT, year INTEGER, place TEXT, lat REAL, lon REAL)`);
+    db.run(`CREATE TABLE families (id TEXT PRIMARY KEY, husb_id TEXT, wife_id TEXT)`);
+    db.run(`CREATE TABLE family_children (family_id TEXT, child_id TEXT, PRIMARY KEY (family_id, child_id))`);
+    db.run("BEGIN");
+    const si = db.prepare("INSERT OR REPLACE INTO individuals VALUES (?,?,?,?,?,?)");
+    for (const ind of lastIndividuals) {
+      si.run([ind.id, ind.name || null, ind.sex || null, ind.birth_year ?? null, ind.death_year ?? null, ind.famc ?? null]);
+    }
+    si.free();
+    const se = db.prepare("INSERT INTO events VALUES (?,?,?,?,?,?)");
+    for (const ind of lastIndividuals) {
+      for (const e of (ind.events || [])) {
+        const g = geocoder ? geocoder(e.place) : null;
+        se.run([ind.id, e.type, e.year ?? null, e.place || null, g ? g.lat : null, g ? g.lon : null]);
+      }
+    }
+    se.free();
+    const sf = db.prepare("INSERT OR REPLACE INTO families VALUES (?,?,?)");
+    const sc = db.prepare("INSERT OR REPLACE INTO family_children VALUES (?,?)");
+    for (const [, f] of lastFamilies) {
+      sf.run([f.id, f.husb || null, f.wife || null]);
+      for (const c of (f.chil || [])) sc.run([f.id, c]);
+    }
+    sf.free(); sc.free();
+    db.run("COMMIT");
+    _kfBrowserDb = db;
+  } catch (e) {
+    console.warn("[kf] buildBrowserDb:", e.message || e);
+  }
+}
+
+function queryBrowserDb(query) {
+  try {
+    const results = _kfBrowserDb.exec(query);
+    if (!results.length) return { ok: true, rows: [], truncated: false, totalRows: 0 };
+    const { columns, values } = results[0];
+    const rows = values.map(row => Object.fromEntries(columns.map((c, i) => [c, row[i]])));
+    return { ok: true, rows: rows.slice(0, 200), truncated: rows.length > 200, totalRows: rows.length };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
+// --------------- Cloud D1 (VIP server-side seeding) ---------------
+
 // Seed the parsed GEDCOM into D1 so Claude can query it server-side.
-// Fires after processFile() completes. No-op if not signed in.
+// Fires after processFile() completes. VIP only.
 async function seedCloudDb() {
   if (!_clerkToken || !lastIndividuals || !lastFamilies) return;
   const individuals = lastIndividuals.map(ind => ({
