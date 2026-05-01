@@ -403,10 +403,11 @@
   #chatLock { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:32px 16px; color:#7a8aa0; font-size:13px; text-align:center; flex:1; }
   #chatLock.hidden { display:none; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js" crossorigin="anonymous"></script>
-<script>
-  window.__ClerkCtor = window.Clerk;
-</script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+  data-clerk-publishable-key="pk_live_Y2xlcmsua2luZHJlZHNlYXJjaC5jb20k"
+  crossorigin="anonymous"
+></script>
 </head>
 <body>
 <div id="authBar">
@@ -7785,15 +7786,15 @@ const VIP_EMAILS = new Set([
 let _clerkReady = false;
 
 async function initClerk() {
-  const pk = "pk_live_Y2xlcmsua2luZHJlZHNlYXJjaC5jb20k";
   try {
-    // Wait for ESM module to expose the Clerk constructor (up to 10s)
+    // clerk.browser.js auto-initializes via data-clerk-publishable-key attribute.
+    // Wait up to 10s for window.Clerk to be ready.
     let attempts = 0;
-    while (!window.__ClerkCtor && attempts++ < 100) {
+    while (!window.Clerk && attempts++ < 100) {
       await new Promise(r => setTimeout(r, 100));
     }
-    if (!window.__ClerkCtor) throw new Error("Clerk module did not load");
-    _clerkInstance = new window.__ClerkCtor(pk);
+    if (!window.Clerk) throw new Error("Clerk did not load");
+    _clerkInstance = window.Clerk;
     await _clerkInstance.load();
     _clerkReady = true;
     _clerkInstance.addListener(({ user }) => updateAuthUI(user));
