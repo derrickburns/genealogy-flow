@@ -5630,7 +5630,8 @@ if (DEMO_GED_URL) {
   const _pick2 = $("pick2"); if (_pick2) _pick2.style.display = "none";
   (async () => {
     // Clear any proxy trees from prior sessions so only the demo tree appears
-    detectChatProxy().then(p => { if (p) fetch(p + "/reset", { method: "POST" }).catch(() => {}); });
+    const _p = await detectChatProxy().catch(() => null);
+    if (_p) { try { await fetch(_p + "/reset", { method: "POST" }); } catch (_) {} }
     try {
       stats.textContent = "loading demo tree...";
       const resp = await fetch(DEMO_GED_URL);
@@ -7678,7 +7679,7 @@ renderChat();
 applyChatAccess("anon");
 // Fire the auto-intro after first paint so the page lays out before the
 // network call. Stays silent if neither proxy nor API key is reachable.
-requestAnimationFrame(() => { autoIntroOnce(); refreshSources(); });
+requestAnimationFrame(() => { autoIntroOnce(); if (!DEMO_GED_URL) refreshSources(); });
 
 // ---- Clerk auth integration ----
 let _clerkToken = null;
