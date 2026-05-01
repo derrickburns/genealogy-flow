@@ -7780,7 +7780,7 @@ document.getElementById("authBtn").addEventListener("click", async () => {
   if (_clerkInstance.user) {
     await _clerkInstance.signOut();
   } else {
-    _clerkInstance.openSignIn();
+    _clerkInstance.redirectToSignIn({ redirectUrl: window.location.href });
   }
 });
 
