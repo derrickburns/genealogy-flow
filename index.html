@@ -7428,8 +7428,8 @@ async function callClaudeStream(userMsg, onDelta) {
   const messages = chatHistory.map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }));
   messages.push({ role: "user", content: ctx ? `Context for current view:\n${ctx}\n\nQuestion: ${userMsg}` : userMsg });
   const requestBody = JSON.stringify({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 1024,
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
     system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
     messages,
     stream: true,
@@ -7608,6 +7608,8 @@ function parseChips(text) {
   return { stripped: out, chips };
 }
 async function parseAndRunKfCalls(text) {
+  // Strip incomplete KFCALL markers that were cut off by max_tokens truncation.
+  text = text.replace(/<<KFCALL:[^>]*$/s, "").trimEnd();
   // Process tool-call markers in order. Methods may be sync or async.
   const calls = [];
   const stripped = text.replace(KFCALL_RE, (_match, method, argsStr) => {

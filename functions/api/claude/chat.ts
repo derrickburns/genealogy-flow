@@ -149,8 +149,8 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
         while (true) {
           // Use streaming so text reaches the browser immediately
           const stream = client.messages.stream({
-            model: body.model ?? "claude-haiku-4-5-20251001",
-            max_tokens: body.max_tokens ?? 1024,
+            model: body.model ?? "claude-sonnet-4-6",
+            max_tokens: body.max_tokens ?? 8192,
             system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
             tools,
             messages,
