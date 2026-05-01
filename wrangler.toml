@@ -1,0 +1,24 @@
+name = "genealogy-flow"
+pages_build_output_dir = "public"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "genealogy-flow"
+database_id = "8c0eda38-4eb8-4c2f-b6c2-dafc96c2c059"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "genealogy-flow"
+
+[vars]
+VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@gmail.com,derrickrburns@gmail.com,paigeunterberg@gmail.com"
+# CLERK_PUBLISHABLE_KEY set after Clerk project creation
+
+# Cron (02:00 UTC daily) is configured in Cloudflare dashboard after first deploy.
+# Secrets (set via: npx wrangler pages secret put <NAME> --project-name genealogy-flow):
+#   CLERK_SECRET_KEY
+#   CLERK_PUBLISHABLE_KEY
+#   ANTHROPIC_API_KEY
+#   KEY_ENCRYPTION_SECRET   (32-byte hex, e.g. openssl rand -hex 32)

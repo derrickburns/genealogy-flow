@@ -39,8 +39,13 @@
     "biographer": "tsx src/bin/biographer.ts",
     "audience": "tsx src/bin/audience.ts",
     "typecheck": "tsc --noEmit",
+    "typecheck:functions": "tsc -p tsconfig.functions.json",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/finalize-bins.mjs",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build",
+    "seed-demo": "node scripts/seed-demo.mjs",
+    "predeploy": "mkdir -p public && cp index.html public/index.html",
+    "deploy": "npx wrangler pages deploy public",
+    "dev": "npx wrangler pages dev public --d1 DB --r2 STORAGE"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -48,10 +53,14 @@
     "better-sqlite3": "^12.9.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@clerk/backend": "^1.0.0",
+    "@cloudflare/workers-types": "^4.0.0",
     "@types/adm-zip": "^0.5.7",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "wrangler": "^4.0.0"
   },
   "publishConfig": {
     "access": "public"
