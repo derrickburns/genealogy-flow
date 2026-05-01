@@ -4138,25 +4138,30 @@ function buildTimeline(individuals, geocode, parentsOf) {
         ec.count++;
       }
       const tcode = EVENT_TYPE_CODE[e.type] ?? 10;
-      coded.push([e.year, lat, lon, exact, tcode, placeIdx(e.place)]);
+      // Store base (un-jittered) coords at indices 6,7 for flow comparison.
+      coded.push([e.year, lat, lon, exact, tcode, placeIdx(e.place), g.lat, g.lon]);
     }
     if (!coded.length) continue;
     coded.sort((a, b) => a[0] - b[0]);
     let prev = null;
     for (const c of coded) {
-      const [y, lat, lon, exact, tcode, pidx] = c;
+      const [y, lat, lon, exact, tcode, pidx, blat, blon] = c;
       if (y < mn) mn = y; if (y > mx) mx = y;
       dwells.push([y, lat, lon]); dwellIndi.push(idx); dwellSrc.push(isSource); dwellExact.push(exact);
       dwellType.push(tcode); dwellPlace.push(pidx);
       if (prev) {
-        const [py, plat, plon, pex] = prev;
-        if ((plat !== lat || plon !== lon) && y > py) {
+        const [py, plat, plon, pex, , , pblat, pblon] = prev;
+        // Use base geocode coords (not jittered) to determine whether a real
+        // move occurred. Comparing jittered coords incorrectly created flows
+        // between consecutive events at the same location, causing the
+        // destination ring to appear at a different jitter than the marker.
+        if ((pblat !== blat || pblon !== blon) && y > py) {
           flows.push([py, y, plat, plon, lat, lon]);
           flowIndi.push(idx); flowSrc.push(isSource);
           flowExact.push(exact && pex ? 1 : 0);
         }
       }
-      prev = [y, lat, lon, exact];
+      prev = [y, lat, lon, exact, tcode, pidx, blat, blon];
     }
   }
   if (mn > mx) { mn = 1700; mx = 2026; }
