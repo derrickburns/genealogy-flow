@@ -403,7 +403,7 @@
   #chatLock { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:32px 16px; color:#7a8aa0; font-size:13px; text-align:center; flex:1; }
   #chatLock.hidden { display:none; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js" type="text/javascript" data-clerk-publishable-key="pk_test_aW5ub2NlbnQtemVicmEtMjQuY2xlcmsuYWNjb3VudHMuZGV2JA"></script>
 </head>
 <body>
 <div id="authBar">
@@ -634,6 +634,7 @@ const rootwrap = $("rootwrap");
 // Demo mode: set to a URL of a .ged file to preload it and hide every upload
 // path (Open .ged button, Choose GEDCOM button, drag-drop). Empty disables.
 const DEMO_GED_URL = "/api/demo";
+let _chatProxyOk = null; // hoisted early; detectChatProxy() is called before its declaration site
 
 let W = 0, H = 0;
 let mapW = 0, mapTop = 0, mapBottom = 0;
@@ -7347,7 +7348,6 @@ Style: keep prose short. After a tool call, you don't need to repeat what you di
 
 const CHAT_PROXY_LS = "kf-chat-proxy";
 const CHAT_PROXY_DEFAULT = "http://localhost:8789";
-let _chatProxyOk = null;
 let _chatNewSession = true;
 async function detectChatProxy() {
   if (_chatProxyOk !== null) return _chatProxyOk;
