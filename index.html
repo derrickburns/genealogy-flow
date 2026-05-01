@@ -4081,7 +4081,12 @@ function buildGeocoder(gz) {
 }
 
 // ---------- Pipeline ----------
-function jitter(lat, lon) { return [lat + (Math.random() - 0.5) * 0.6, lon + (Math.random() - 0.5) * 0.6]; }
+function jitter(lat, lon, level) {
+  // Scale jitter to geocode precision so city-level points don't drift into
+  // the ocean. City ~1 km, county ~10 km, state ~30 km.
+  const r = level === "city" ? 0.02 : level === "county" ? 0.15 : 0.4;
+  return [lat + (Math.random() - 0.5) * r, lon + (Math.random() - 0.5) * r];
+}
 
 function hasRecordedParent(id, parentsOf) {
   const p = parentsOf.get(id);
@@ -4119,8 +4124,8 @@ function buildTimeline(individuals, geocode, parentsOf) {
       if (g === undefined) { g = geocode(e.place); cache.set(e.place, g); }
       if (!g) { missed++; continue; }
       geocoded++;
-      const [lat, lon] = jitter(g.lat, g.lon);
       const exact = g.level === "city" ? 1 : 0;
+      const [lat, lon] = jitter(g.lat, g.lon, g.level);
       if (exact) {
         const key = g.lat.toFixed(2) + "," + g.lon.toFixed(2);
         let ec = evCities.get(key);
