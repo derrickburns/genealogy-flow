@@ -7703,7 +7703,7 @@ async function initClerk() {
     document.head.appendChild(s);
   });
   try {
-    await loadScript(`https://${clerkDomain}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`);
+    await loadScript(`https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`);
     await loadScript(`https://${clerkDomain}/npm/@clerk/ui@1/dist/ui.browser.js`);
     _clerkInstance = new window.Clerk(pk);
     await _clerkInstance.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
