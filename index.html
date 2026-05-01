@@ -3073,7 +3073,7 @@ function drawClusters(visible, radius, mode, year, dw) {
     // states like RI / DC).
     if (!ensureStateIndex()) return;
     const stateCounts = new Map();
-    const stateBreak = new Map();   // state idx → {sides, parents, genders}
+    const stateBreak = new Map();   // state idx → {sides, parents, genders, members}
     for (let m = 0; m < _kfDwellCount; m++) {
       const di = _kfPersonDwell[m];
       if (di == null || di < 0) continue;
@@ -3081,7 +3081,8 @@ function drawClusters(visible, radius, mode, year, dw) {
       if (s < 0) continue;
       stateCounts.set(s, (stateCounts.get(s) || 0) + 1);
       let b = stateBreak.get(s);
-      if (!b) { b = { sides: [0,0,0], parents: [0,0,0], genders: [0,0,0] }; stateBreak.set(s, b); }
+      if (!b) { b = { sides: [0,0,0], parents: [0,0,0], genders: [0,0,0], members: [] }; stateBreak.set(s, b); }
+      b.members.push(di);
       const sd = dwellSide[di], ps = dwellSrc[di];
       if (sd >= 0 && sd < 3) b.sides[sd]++;
       if (ps >= 0 && ps < 3) b.parents[ps]++;
@@ -3097,6 +3098,7 @@ function drawClusters(visible, radius, mode, year, dw) {
         stateIdx: s,
         abbr: _kfStateAbbrByIdx[s],
         count,
+        members: b.members,
         sides: b.sides, parents: b.parents, genders: b.genders,
       });
     }
@@ -3223,6 +3225,7 @@ function drawClusters(visible, radius, mode, year, dw) {
       _kfFxClusterHits.push({
         kind: "circle", cx: cl.cx, cy: cl.cy, r,
         count: total,
+        members: cl.members,
         sides: cl.sides, parents: cl.parents, genders: cl.genders,
         sourceCounts, sourceNames,
       });
@@ -3277,6 +3280,7 @@ function drawClusters(visible, radius, mode, year, dw) {
       _kfFxClusterHits.push({
         kind: "circle", cx: cl.cx, cy: cl.cy, r,
         count: total,
+        members: cl.members,
         sides: cl.sides, parents: cl.parents, genders: cl.genders,
       });
     }
