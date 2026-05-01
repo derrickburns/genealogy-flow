@@ -1662,10 +1662,17 @@ function rebuildPersonMarkers() {
     _kfDwellPositions[count * 2 + 1] = dwellLat[bestDi];
     _kfDwellRadii[count]             = dwellExact[bestDi] ? 4 : 3;
     const c = colorForFinal(dwellSide[bestDi], dwellSrc[bestDi], idx);
+    // Fade out over the last 5 years of life so the marker dims before vanishing.
+    const FADE_YEARS = 5;
+    let alpha = 220;
+    if (dy != null) {
+      const yearsLeft = dy - yint;
+      if (yearsLeft < FADE_YEARS) alpha = Math.round(220 * Math.max(0, yearsLeft / FADE_YEARS));
+    }
     _kfDwellColors[count * 4]     = c[0];
     _kfDwellColors[count * 4 + 1] = c[1];
     _kfDwellColors[count * 4 + 2] = c[2];
-    _kfDwellColors[count * 4 + 3] = 220;
+    _kfDwellColors[count * 4 + 3] = alpha;
     _kfPersonIndi[count]  = idx;
     _kfPersonDwell[count] = bestDi;
     count++;
