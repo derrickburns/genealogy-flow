@@ -472,12 +472,22 @@
       </div>
       <div class="section">
         <h4>Legend</h4>
-        <div class="legend">
-          <span><span class="swatch" style="background:#2864dc;"></span>paternal</span>
-          <span><span class="swatch" style="background:#dc3c5a;"></span>maternal</span>
-          <span><span class="swatch" style="background:#50a064;"></span>other</span>
-          <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span>1 missing</span>
-          <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span>both missing</span>
+        <div style="font-size:10px; color:#9aa6bc; margin-bottom:4px;">Particle color (lineage mode)</div>
+        <div class="legend" style="flex-direction:column; gap:5px;">
+          <span><span class="swatch" style="background:#2864dc;"></span><b>Blue circle</b> &mdash; paternal-line ancestor or descendant</span>
+          <span><span class="swatch" style="background:#dc3c5a;"></span><b>Red circle</b> &mdash; maternal-line ancestor or descendant</span>
+          <span><span class="swatch" style="background:#50a064;"></span><b>Green circle</b> &mdash; collateral relative (not direct ancestor)</span>
+        </div>
+        <div style="font-size:10px; color:#9aa6bc; margin:6px 0 4px;">Particle shape (parent knowledge)</div>
+        <div class="legend" style="flex-direction:column; gap:5px;">
+          <span><span class="swatch" style="background:#566480;"></span><b>Filled circle</b> &mdash; both parents known</span>
+          <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span><b>Diamond outline</b> &mdash; one parent unknown</span>
+          <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span><b>Square outline</b> &mdash; both parents unknown</span>
+        </div>
+        <div style="font-size:10px; color:#9aa6bc; margin:6px 0 4px;">Arcs</div>
+        <div class="legend" style="flex-direction:column; gap:5px;">
+          <span><span class="swatch" style="background:#2864dc; opacity:0.5;"></span><b>Blue arc</b> &mdash; paternal migration event</span>
+          <span><span class="swatch" style="background:#dc3c5a; opacity:0.5;"></span><b>Red arc</b> &mdash; maternal migration event</span>
         </div>
       </div>
     </div>
@@ -5685,13 +5695,16 @@ async function bootBasemap() {
   ]);
   world = w; usStates = us;
   resize();
-  if (localStorage.getItem("kf_returning")) {
-    stats.textContent = "ready";
-    // skip welcome screen for returning users - their tree will auto-load
-  } else {
-    stats.textContent = "ready - drop or open a .ged file";
-    welcome.classList.remove("hidden");
-  }
+  stats.textContent = "ready";
+  // Welcome screen stays hidden until auth resolves:
+  // - Signed-in users: autoLoadCloudGedcom shows it only if no GEDCOM in R2
+  // - Anon returning users: welcome shown after a short delay (below)
+  // - Anon new users: welcome shown after auth check completes
+  setTimeout(() => {
+    if (!_clerkToken && !localStorage.getItem("kf_returning") && !lastIndividuals) {
+      welcome.classList.remove("hidden");
+    }
+  }, 3000); // wait for Clerk to resolve before showing welcome
   requestAnimationFrame(tick);
 }
 
@@ -7843,9 +7856,8 @@ async function updateAuthUI(user) {
 
 async function autoLoadCloudGedcom() {
   if (!_clerkToken) return;
-  // Only auto-load if the user has loaded a tree before (returning user).
-  // First-time users should see the welcome screen and pick their own file.
-  if (!localStorage.getItem("kf_returning")) return;
+  // For anonymous users, only auto-load if they've loaded a tree on this device before.
+  // For authenticated users, always check cloud storage — they may be on a new device.
   const restoring = { role: "bot", content: "Restoring your tree..." };
   if (typeof chatHistory !== "undefined" && chatHistory.length === 0) {
     chatHistory.push(restoring);
