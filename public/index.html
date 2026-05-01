@@ -7694,19 +7694,24 @@ let _clerkReady = false;
 
 async function initClerk() {
   const pk = "pk_live_Y2xlcmsuZ2VuZWFsb2d5LWZsb3cucGFnZXMuZGV2JA";
-  const clerkDomain = atob(pk.split("_")[2]).slice(0, -1);
-  const loadScript = src => new Promise((res, rej) => {
-    const s = document.createElement("script");
-    s.src = src; s.async = true; s.crossOrigin = "anonymous";
-    s.onload = res;
-    s.onerror = () => rej(new Error("Failed to load " + src));
-    document.head.appendChild(s);
-  });
   try {
-    await loadScript(`https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`);
-    await loadScript(`https://${clerkDomain}/npm/@clerk/ui@1/dist/ui.browser.js`);
-    _clerkInstance = new window.Clerk(pk);
-    await _clerkInstance.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js";
+      s.setAttribute("data-clerk-publishable-key", pk);
+      s.async = true;
+      s.onload = res;
+      s.onerror = () => rej(new Error("Failed to load clerk.browser.js"));
+      document.head.appendChild(s);
+    });
+    // With data-clerk-publishable-key set, Clerk auto-initializes on load.
+    // Wait for the instance to finish loading (up to 4s).
+    let attempts = 0;
+    while ((!window.Clerk || !window.Clerk.loaded) && attempts++ < 40) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (!window.Clerk) throw new Error("Clerk did not initialize");
+    _clerkInstance = window.Clerk;
     _clerkReady = true;
     _clerkInstance.addListener(({ user }) => updateAuthUI(user));
     updateAuthUI(_clerkInstance.user);
