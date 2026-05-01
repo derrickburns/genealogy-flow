@@ -427,8 +427,9 @@
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
   <span id="rootwrap" style="display:none; margin-left:6px; position:relative;">
     <span id="rootSearchBox" style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:0 4px 0 8px; transition:border-color 0.1s, box-shadow 0.1s;">
-      <span aria-hidden="true" style="font-size:13px; line-height:1; opacity:0.65;">&#127968;</span>
+      <span aria-hidden="true" style="font-size:13px; line-height:1; opacity:0.65;" title="Home person: the tree is centered on this person. Their paternal line appears blue and maternal line red. Type to search and pick someone else.">&#127968;</span>
       <input id="rootSearch" type="search" autocomplete="off" spellcheck="false" placeholder="loading..."
+             title="Home person: the tree is centered on this person. Their paternal line appears blue and maternal line red. Type to search and pick someone else."
              style="border:none; outline:none; background:transparent; font:inherit; padding:4px 0; width:260px;">
       <span id="rootPciTag" style="display:none; font-size:10px; color:#7a8aa0; padding:0 2px; white-space:nowrap;"></span>
       <button id="resetHomeBtn" type="button" title="Reset home to highest-PCI person" tabindex="-1"
@@ -506,8 +507,17 @@
     <div id="sourcesPanel" class="hidden"><div id="sourcesList"></div></div>
     <div id="selectedPerson" hidden></div>
     <div id="chatLock">
-      <span>Sign in to use AI chat</span>
-      <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Sign in</button>
+      <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">How to use Kindred Flow</div>
+      <ul style="text-align:left; font-size:12px; color:#566480; line-height:1.7; margin:0 0 12px 0; padding-left:18px;">
+        <li>The map shows each person as a moving dot over their lifetime</li>
+        <li>Press <b>Play</b> to animate births, deaths &amp; migrations through time</li>
+        <li>Use the <b>cluster</b> chips below the map to group by lineage, gender, or geography</li>
+        <li>Use the <b>filter</b> chips to focus on blood relatives, ancestors, men, or women</li>
+        <li>Click any dot to select that person and see their events in the right panel</li>
+        <li>Type a name in the <b>home person</b> box to re-center the tree on someone else</li>
+        <li>Sign in to unlock AI chat &mdash; ask questions about the tree in plain English</li>
+      </ul>
+      <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Sign in for AI chat</button>
     </div>
     <div id="chatHistory"></div>
     <form id="chatForm">
@@ -616,6 +626,8 @@ const $ = id => document.getElementById(id);
 const baseCanvas = $("base"), fxCanvas = $("fx"), glCanvas = $("gl");
 const baseCtx = baseCanvas.getContext("2d"), fxCtx = fxCanvas.getContext("2d");
 const playBtn = $("play"), range = $("range");
+const yearWatermarkEl = $("yearWatermark");
+const yearThumbLabelEl = $("yearThumbLabel");
 const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
 const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
 const rootwrap = $("rootwrap");
@@ -679,14 +691,7 @@ projection.clipExtent = function() { return projection; };
 let projectionName = "mercator";
 let baseScale = 1, baseTranslate = [0, 0];
 let zoomTransform = { k: 1, x: 0, y: 0 };
-// displayTransform lerps toward zoomTransform each frame, so a single big
-// pinch event animates over ~5-10 frames instead of jumping the view in
-// one step. Game-style smoothing.
-// MapLibre handles its own animation; legacy lerpDisplayTransform removed.
-// displayTransform is still synced by initMapLibre's move handler so any
-// surviving reads (e.g., zoomTransform.k for legacy zoom-gated render code)
-// see the correct value.
-let displayTransform = { k: 1, x: 0, y: 0 };
+
 let world = null, worldHi = null, worldHiLoading = false, usStates = null, majorCities = null, eventCities = null, gazetteer = null, geocoder = null, timelineLoaded = false;
 // LOD basemap helpers (ensureHiResWorld, activeWorld, cachedLand /
 // cachedBordersMesh / cachedStatesMesh, _featCache) all removed — MapLibre
@@ -838,7 +843,6 @@ function initMapLibre() {
   _kfMap.on("move", () => {
     const k = Math.pow(2, _kfMap.getZoom());
     zoomTransform = { k, x: 0, y: 0 };
-    displayTransform = { ...zoomTransform };
     if (timelineLoaded) projectAll();
     _baseDirty = true;
   });
@@ -1943,7 +1947,7 @@ function _kfFormatClusterTooltip(c) {
   }
   if (c.sourceCounts) {
     const top = Array.from(c.sourceCounts.entries()).sort((a, b) => b[1] - a[1]);
-    lines.push(`<div class="tipYrs">${top.map(([sid, n]) => `${c.sourceNames?.get(sid) || sid} ${n}`).join(" &middot; ")}</div>`);
+    lines.push(`<div class="tipYrs">${top.map(([sid, n]) => `${escHtml(c.sourceNames?.get(sid) || String(sid))} ${n}`).join(" &middot; ")}</div>`);
   }
   return lines.join("");
 }
@@ -3178,14 +3182,11 @@ function tick(now) {
     }
     const yint = Math.floor(curYear);
     const ystr = String(yint);
-    const _ywm = document.getElementById("yearWatermark");
-    if (_ywm) _ywm.textContent = ystr;
-    // Position year thumb label above the slider thumb
-    const _ytl = document.getElementById("yearThumbLabel");
-    if (_ytl && range) {
-      _ytl.textContent = ystr;
+    if (yearWatermarkEl) yearWatermarkEl.textContent = ystr;
+    if (yearThumbLabelEl && range) {
+      yearThumbLabelEl.textContent = ystr;
       const pct = (curYear - parseFloat(range.min)) / Math.max(1, parseFloat(range.max) - parseFloat(range.min));
-      _ytl.style.left = (pct * 100) + "%";
+      yearThumbLabelEl.style.left = (pct * 100) + "%";
     }
     updateStatusLabels(yint);
   }
