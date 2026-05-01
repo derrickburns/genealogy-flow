@@ -333,6 +333,8 @@
   #chatSend { margin-left:auto; background:#2a4a8c !important; color:#fff !important; border-color:#1c3669 !important; padding:5px 14px !important; }
   #chatSend:hover { background:#1c3669 !important; }
   #chatSend:disabled { background:#9aa6bc !important; cursor:default; border-color:#7c8aa3 !important; }
+  #cannedViz { font:inherit; font-size:11px; border:1px solid #c0ccd8; border-radius:4px; background:#fff; color:#566480; padding:3px 6px; cursor:pointer; width:100%; }
+  #cannedViz:focus { outline:none; border-color:#2a4a8c; }
   #panel {
     background:rgba(255,255,255,0.98); border:1px solid #c0ccd8; border-radius:10px;
     box-shadow:0 2px 12px rgba(0,0,0,0.08);
@@ -513,6 +515,33 @@
     </div>
     <div id="chatHistory"></div>
     <form id="chatForm">
+      <select id="cannedViz">
+        <option value="">-- Canned Visualizations --</option>
+        <optgroup label="Most Illuminating">
+          <option value="Show me a geographic migration flow map: plot birth locations with arrows connecting parent to child generations, colored by century. Trace the Norman to English to American migration story.">Geographic Migration Flow Map</option>
+          <option value="Show me a birth year histogram by 50-year bin across the entire tree, so I can see where data is reliable vs reconstructed and identify the ordinary ancestor gap between 1300-1600.">Birth Year Histogram by Century</option>
+          <option value="Show me a surname lineage Sankey diagram tracing how surnames transform across generations (e.g. Richvaride to de L'Aigle to Le Chaundeler to Chandler to modern surnames).">Surname Lineage Sankey Diagram</option>
+        </optgroup>
+        <optgroup label="Highly Revealing">
+          <option value="Show me a data completeness heatmap: for each individual score completeness (birth date known, death date known, parents known, spouse known) and plot it as a tree, revealing which branches need more research.">Data Completeness Heatmap</option>
+          <option value="Show me a lifespan box plot by century using available death dates, so I can see median lifespan trends, childhood mortality spikes during plague centuries, and life expectancy improvement post-1800.">Lifespan Box Plot by Century</option>
+          <option value="Show me a fan/pedigree collapse chart centered on the home person. Highlight individuals who appear multiple times (pedigree collapse). Show the collapse ratio of unique ancestors to expected ancestors.">Pedigree Collapse Fan Chart</option>
+        </optgroup>
+        <optgroup label="Supporting Views">
+          <option value="Show me an event type frequency timeline: of all events (births, deaths, marriages, military service, immigration), which types cluster in which centuries? Show battle deaths spiking around 1066, 1095, etc.">Event Type Frequency Timeline</option>
+          <option value="Show me a country of birth treemap: breakdown of individuals by country (France, England, Scotland, colonies, USA) showing the Norman-to-British pipeline.">Country of Birth Treemap</option>
+          <option value="Show me a generation depth sunburst chart: how many generations deep is each branch from the home person? Color by branch depth and show where research gravity lies.">Generation Depth by Branch</option>
+        </optgroup>
+        <optgroup label="Animated">
+          <option value="Show me an animated Great River flow: start at the earliest ancestor and animate descendants branching outward like a river delta, tributaries splitting and merging through marriages, flooding forward through time to 2026.">Animated: The Great River Flow</option>
+          <option value="Show me an animated geographic migration pulse: dots appear at birthplaces then travel along arcs to settlement locations, generation by generation, tracing the France to England to colonies to America journey.">Animated: Geographic Migration Pulse</option>
+          <option value="Show me an animated timeline heartbeat: a horizontal timeline from 1010 to 2026 where people pulse into existence at birth and fade at death, showing who was alive simultaneously at key historical moments like 1066.">Animated: Timeline Heartbeat</option>
+          <option value="Show me an animated DNA inheritance cascade: colored gene blocks pass from parent to child each generation, halving each time, showing why a 10th-great-grandparent contributes only ~0.4% DNA despite being equally family.">Animated: DNA Inheritance Cascade</option>
+          <option value="Show me an animated web of marriages: start with the home person, then animate parents connecting, then their parents, with lines flying in from geographic and social clusters, showing endogamy as tight loops and social crossings as dramatic breaks.">Animated: Web of Marriages</option>
+          <option value="Show me an ancestor burn animation starting from a dark screen. The home person lights up, then direct ancestors light up one by one branching backward, with non-direct relatives dim and the direct line blazing, tracing back to the earliest Norman ancestor.">Animated: Ancestor Burn</option>
+          <option value="Show me an animated population wave: a bar chart that fills in showing births vs deaths per decade across the tree, making plague years, wars, and famines visible as valleys, with the 1340s Black Death highlighted.">Animated: Population Wave (Births/Deaths)</option>
+        </optgroup>
+      </select>
       <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
       <div id="chatBar">
         <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools on</button>
@@ -1648,7 +1677,10 @@ function rebuildPersonMarkers() {
     if (ind.death_year == null && ind.birth_year != null) {
       if (yint - ind.birth_year >= 115) continue; // biologically impossible to be alive
       const inferred = _kfInferredDeathYear(ind);
-      if (inferred != null && inferred < yint && yint - ind.birth_year >= 80) continue;
+      // Only remove marker if yint is meaningfully past the cohort median — a
+      // 15-year buffer means we keep showing e.g. a 1945-born male until age
+      // 85 (2030) rather than cutting them at age 80 (2025).
+      if (inferred != null && yint > inferred + 15) continue;
     }
     // Lineage / blood / status filters still apply
     if (curFilter === "ancestors") {
@@ -2963,7 +2995,7 @@ function drawKinLines(lo, hi, y, dw) {
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
     const indi = dwellIndi[i];
-    if (!visibleByIndi.has(indi)) visibleByIndi.set(indi, i);
+    visibleByIndi.set(indi, i); // last-wins = latest event, matching the dominant visible marker
   }
   const drawn = new Set();
   fxCtx.lineWidth = 0.6;
@@ -6028,7 +6060,9 @@ function _kfShowPersonCard(di) {
   if (!ind) return;
 
   const sex = ind.sex === "M" ? "Male" : ind.sex === "F" ? "Female" : "";
-  const sub = sex;
+  const rel = (relationCache && ind.id !== lastRootId) ? (relationCache.get(ind.id) || "") : "";
+  console.log("[kf] personCard rel:", ind.id, "->", JSON.stringify(rel), "cacheSize:", relationCache?.size, "rootId:", lastRootId);
+  const sub = [sex, rel].filter(Boolean).join(" · ");
 
   const clickedType = dwellType[di];
   const clickedYear = dwellY[di];
@@ -7912,6 +7946,12 @@ chatFormEl.addEventListener("submit", async e => {
     chatSendBtn.disabled = false;
     chatSendBtn.textContent = "Send";
   }
+});
+$("cannedViz").addEventListener("change", function() {
+  const prompt = this.value;
+  this.value = "";
+  if (!prompt) return;
+  kfApi.sendChat(prompt);
 });
 chatInputEl.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) {
