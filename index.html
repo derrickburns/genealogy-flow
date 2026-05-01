@@ -7693,7 +7693,7 @@ const VIP_EMAILS = new Set([
 let _clerkReady = false;
 
 async function initClerk() {
-  const pk = "pk_test_aW5ub2NlbnQtemVicmEtMjQuY2xlcmsuYWNjb3VudHMuZGV2JA";
+  const pk = "pk_live_Y2xlcmsuZ2VuZWFsb2d5LWZsb3cucGFnZXMuZGV2JA";
   const clerkDomain = atob(pk.split("_")[2]).slice(0, -1);
   const loadScript = src => new Promise((res, rej) => {
     const s = document.createElement("script");
