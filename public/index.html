@@ -4523,7 +4523,7 @@ async function processFile(file) {
   if (_kfSkipNextProxyLoad) {
     _kfSkipNextProxyLoad = false;
   } else {
-    loadGedcomToProxy(file, text, "add").then(r => {
+    loadGedcomToProxy(file, text, DEMO_GED_URL ? "replace" : "add").then(r => {
       if (r && r.ok) {
         const cur = stats.textContent || "";
         const mode = r.mode === "replace" ? "replaced" : "added";
