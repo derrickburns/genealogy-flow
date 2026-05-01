@@ -470,26 +470,6 @@
         <label>speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
         <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
       </div>
-      <div class="section">
-        <h4>Legend</h4>
-        <div style="font-size:10px; color:#9aa6bc; margin-bottom:4px;">Particle color (lineage mode)</div>
-        <div class="legend" style="flex-direction:column; gap:5px;">
-          <span><span class="swatch" style="background:#2864dc;"></span><b>Blue circle</b> &mdash; paternal-line ancestor or descendant</span>
-          <span><span class="swatch" style="background:#dc3c5a;"></span><b>Red circle</b> &mdash; maternal-line ancestor or descendant</span>
-          <span><span class="swatch" style="background:#50a064;"></span><b>Green circle</b> &mdash; collateral relative (not direct ancestor)</span>
-        </div>
-        <div style="font-size:10px; color:#9aa6bc; margin:6px 0 4px;">Particle shape (parent knowledge)</div>
-        <div class="legend" style="flex-direction:column; gap:5px;">
-          <span><span class="swatch" style="background:#566480;"></span><b>Filled circle</b> &mdash; both parents known</span>
-          <span><span class="swatch diamond" style="background:transparent;border:1.5px solid #566480;"></span><b>Diamond outline</b> &mdash; one parent unknown</span>
-          <span><span class="swatch square" style="background:transparent;border:1.5px solid #566480;"></span><b>Square outline</b> &mdash; both parents unknown</span>
-        </div>
-        <div style="font-size:10px; color:#9aa6bc; margin:6px 0 4px;">Arcs</div>
-        <div class="legend" style="flex-direction:column; gap:5px;">
-          <span><span class="swatch" style="background:#2864dc; opacity:0.5;"></span><b>Blue arc</b> &mdash; paternal migration event</span>
-          <span><span class="swatch" style="background:#dc3c5a; opacity:0.5;"></span><b>Red arc</b> &mdash; maternal migration event</span>
-        </div>
-      </div>
     </div>
   </span>
 </div>
@@ -2482,6 +2462,7 @@ function colorForFinal(side, _parStat, indiIdx) {
 function updateMapLegend() {
   const el = document.getElementById("mapLegend");
   if (!el || el.classList.contains("hidden")) return;
+
   function dot(rgb, label) {
     const c = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
     return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};margin-right:5px;vertical-align:middle;"></span>${label}</div>`;
@@ -2489,27 +2470,89 @@ function updateMapLegend() {
   function hdr(text) {
     return `<div style="font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin:5px 0 3px;">${text}</div>`;
   }
+  function swatch(color, size, shape, label) {
+    // shape: "circle" | "diamond" | "square" | "arc"
+    let s = "";
+    if (shape === "diamond") {
+      s = `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:1px;transform:rotate(45deg);border:1.5px solid ${color};margin-right:6px;vertical-align:middle;"></span>`;
+    } else if (shape === "square") {
+      s = `<span style="display:inline-block;width:${size}px;height:${size}px;border:1.5px solid ${color};margin-right:6px;vertical-align:middle;"></span>`;
+    } else if (shape === "arc") {
+      s = `<span style="display:inline-block;width:${size+4}px;height:${Math.ceil(size/2)+2}px;border-top:2px solid ${color};border-radius:50% 50% 0 0;margin-right:5px;vertical-align:middle;"></span>`;
+    } else {
+      s = `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${color};margin-right:5px;vertical-align:middle;"></span>`;
+    }
+    return `<div>${s}${label}</div>`;
+  }
+
   let html = "";
-  if (colorMode === "gender") {
-    html += hdr("Gender");
+
+  // Cluster-specific legends override the particle color legend
+  if (clusterMode === "pie") {
+    html += hdr("Lineage clusters");
+    html += dot(COLOR_PATERNAL, "Paternal slice");
+    html += dot(COLOR_MATERNAL, "Maternal slice");
+    html += dot(COLOR_OTHER,    "Collateral slice");
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count</div>`;
+  } else if (clusterMode === "parents") {
+    html += hdr("Parent knowledge");
+    html += dot([80, 160, 100],  "2 parents known");
+    html += dot([200, 160, 60],  "1 parent known");
+    html += dot([180, 80, 80],   "0 parents known");
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count</div>`;
+  } else if (clusterMode === "gender") {
+    html += hdr("Gender clusters");
     html += dot(COLOR_GENDER_M, "Male");
     html += dot(COLOR_GENDER_F, "Female");
     html += dot(COLOR_GENDER_U, "Unknown");
-  } else if (colorMode === "tree") {
-    html += hdr("Tree");
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count</div>`;
+  } else if (clusterMode === "tree") {
+    html += hdr("Tree clusters");
     const name = _kfActiveTreeName || "Current tree";
-    const c = TREE_PALETTE[_kfTreeColorFromName(name)];
-    html += dot(c, name.replace(/\.ged$/i, ""));
+    html += dot(TREE_PALETTE[_kfTreeColorFromName(name)], name.replace(/\.ged$/i, ""));
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count</div>`;
+  } else if (clusterMode === "aggregate" || clusterMode === "dispersion") {
+    html += hdr("Density");
+    html += `<div><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#2864dc;margin-right:5px;vertical-align:middle;"></span>Few people</div>`;
+    html += `<div><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#2864dc;margin-right:5px;vertical-align:middle;"></span>Many people</div>`;
+  } else if (clusterMode === "state") {
+    html += hdr("US States");
+    html += `<div style="font-size:10px;color:#566480;">Color and label show the state abbreviation. Circle size = people count.</div>`;
+  } else if (clusterMode === "hull") {
+    html += hdr("Region rings");
+    html += dot(COLOR_PATERNAL, "Paternal region");
+    html += dot(COLOR_MATERNAL, "Maternal region");
+    html += dot(COLOR_OTHER,    "Other region");
   } else {
-    html += hdr("Lineage");
-    html += dot(COLOR_PATERNAL, "Paternal line");
-    html += dot(COLOR_MATERNAL, "Maternal line");
-    html += dot(COLOR_OTHER,    "Collateral");
-    html += hdr("Parents");
-    html += `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#566480;margin-right:5px;vertical-align:middle;"></span>Both known</div>`;
-    html += `<div><span style="display:inline-block;width:9px;height:9px;border-radius:1px;transform:rotate(45deg);border:1.5px solid #566480;margin-right:6px;vertical-align:middle;"></span>One unknown</div>`;
-    html += `<div><span style="display:inline-block;width:9px;height:9px;border:1.5px solid #566480;margin-right:6px;vertical-align:middle;"></span>Both unknown</div>`;
+    // "none" or unknown — show individual particle legend
+    if (colorMode === "gender") {
+      html += hdr("Gender");
+      html += dot(COLOR_GENDER_M, "Male");
+      html += dot(COLOR_GENDER_F, "Female");
+      html += dot(COLOR_GENDER_U, "Unknown");
+    } else if (colorMode === "tree") {
+      html += hdr("Tree");
+      const name = _kfActiveTreeName || "Current tree";
+      html += dot(TREE_PALETTE[_kfTreeColorFromName(name)], name.replace(/\.ged$/i, ""));
+    } else {
+      html += hdr("Lineage");
+      html += dot(COLOR_PATERNAL, "Paternal line");
+      html += dot(COLOR_MATERNAL, "Maternal line");
+      html += dot(COLOR_OTHER,    "Collateral");
+      html += hdr("Parents");
+      html += swatch("#566480", 10, "circle",  "Both known");
+      html += swatch("#566480",  9, "diamond", "One unknown");
+      html += swatch("#566480",  9, "square",  "Both unknown");
+    }
   }
+
+  // Kin lines annotation (appended regardless of cluster mode)
+  if (kinLinesN > 0) {
+    html += hdr("Kin lines");
+    html += swatch(`rgb(${COLOR_PATERNAL[0]},${COLOR_PATERNAL[1]},${COLOR_PATERNAL[2]})`, 12, "arc",
+      `${kinLinesN} nearest kin`);
+  }
+
   el.innerHTML = html;
 }
 
@@ -5195,6 +5238,7 @@ function _kfSetKinLines(n) {
   $("kinNMain").value = n;
   $("kinNMainLabel").textContent = n;
   fxCtx.clearRect(0, 0, W, H);
+  updateMapLegend();
 }
 $("kinN").addEventListener("input", e => _kfSetKinLines(parseInt(e.target.value, 10) || 0));
 $("kinNMain").addEventListener("input", e => _kfSetKinLines(parseInt(e.target.value, 10) || 0));
@@ -7906,14 +7950,13 @@ async function autoLoadCloudGedcom() {
       headers: { "Authorization": "Bearer " + _clerkToken }
     });
     if (!resp.ok) {
-      // No saved GEDCOM - remove the restoring message and show welcome
       if (typeof chatHistory !== "undefined") {
         const idx = chatHistory.indexOf(restoring);
         if (idx !== -1) chatHistory.splice(idx, 1);
         if (typeof renderChat === "function") renderChat();
       }
-      welcome.classList.remove("hidden");
-      stats.textContent = "ready - drop or open a .ged file";
+      // Authenticated users with no cloud GEDCOM: show upload prompt, not the drop zone
+      stats.textContent = "ready - open a .ged file or drag one in";
       return;
     }
     const text = await resp.text();
@@ -7923,8 +7966,7 @@ async function autoLoadCloudGedcom() {
         if (idx !== -1) chatHistory.splice(idx, 1);
         if (typeof renderChat === "function") renderChat();
       }
-      welcome.classList.remove("hidden");
-      stats.textContent = "ready - drop or open a .ged file";
+      stats.textContent = "ready - open a .ged file or drag one in";
       return;
     }
     window._lastLoadedGedcomRaw = text;
@@ -7951,8 +7993,7 @@ async function autoLoadCloudGedcom() {
       if (idx !== -1) chatHistory.splice(idx, 1);
       if (typeof renderChat === "function") renderChat();
     }
-    welcome.classList.remove("hidden");
-    stats.textContent = "ready - drop or open a .ged file";
+    stats.textContent = "ready - open a .ged file or drag one in";
   }
 }
 
