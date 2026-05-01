@@ -13,10 +13,27 @@ import { spawn } from "node:child_process";
 import { existsSync, writeFileSync, unlinkSync, statSync, createReadStream } from "node:fs";
 import { dirname, join, resolve as pathResolve, extname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import Anthropic from "@anthropic-ai/sdk";
 
 const PORT = Number(process.env.KF_CHAT_PROXY_PORT || 8789);
 const CLAUDE_BIN = process.env.KF_CLAUDE_BIN || "claude";
 const DB_PATH = process.env.KF_DB_PATH || "";
+// Backend selector: "cli" uses the local `claude` CLI (subscription, single-user).
+// "api" uses the Anthropic Messages API (commercial sharing requires this).
+const BACKEND = (process.env.KF_BACKEND || "cli").toLowerCase();
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
+const DEFAULT_MODEL = process.env.KF_DEFAULT_MODEL || "claude-opus-4-7";
+const MAX_TOKENS = Number(process.env.KF_MAX_TOKENS || 4096);
+
+if (BACKEND !== "cli" && BACKEND !== "api") {
+  console.error(`[chat-proxy] KF_BACKEND must be "cli" or "api", got "${BACKEND}"`);
+  process.exit(1);
+}
+if (BACKEND === "api" && !ANTHROPIC_API_KEY) {
+  console.error("[chat-proxy] KF_BACKEND=api requires ANTHROPIC_API_KEY to be set");
+  process.exit(1);
+}
+const _anthropic = BACKEND === "api" ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STATIC_ROOT = pathResolve(HERE, "..");
@@ -262,6 +279,23 @@ function streamClaude({ system, model, content, onDelta, onDone, onError }) {
   drainQueue();
 }
 
+async function streamApi({ rawSystem, model, messages, onDelta, onDone, onError }) {
+  try {
+    const params = {
+      model: model || DEFAULT_MODEL,
+      max_tokens: MAX_TOKENS,
+      messages: Array.isArray(messages) ? messages : [],
+    };
+    if (rawSystem) params.system = rawSystem;
+    const stream = _anthropic.messages.stream(params);
+    stream.on("text", text => { if (text) onDelta(text); });
+    const final = await stream.finalMessage();
+    onDone({ usage: final.usage || null, stop_reason: final.stop_reason || "end_turn" });
+  } catch (e) {
+    onError(e instanceof Error ? e : new Error(String(e)));
+  }
+}
+
 function resetProc() {
   if (_proc) { try { _proc.kill("SIGTERM"); } catch (_) {} _proc = null; }
   _stdoutBuf = "";
@@ -273,7 +307,7 @@ const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204, corsHeaders); res.end(); return; }
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { ...corsHeaders, "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, mode: "claude-cli-stream", running: !!_proc, db: DB_PATH ? { path: DB_PATH, loaded: existsSync(DB_PATH) } : null }));
+    res.end(JSON.stringify({ ok: true, backend: BACKEND, mode: BACKEND === "api" ? "anthropic-api-stream" : "claude-cli-stream", running: BACKEND === "api" ? true : !!_proc, model: BACKEND === "api" ? DEFAULT_MODEL : null, db: DB_PATH ? { path: DB_PATH, loaded: existsSync(DB_PATH) } : null }));
     return;
   }
   if (req.method === "POST" && req.url === "/reset") {
@@ -647,14 +681,8 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ error: { type: "invalid_request", message: "body is not JSON" } }));
       return;
     }
-    if (req.headers["kf-new-session"] === "1") resetProc();
-    const { system, messages, model } = parsed;
-    const lastUser = (messages || []).filter(m => m.role === "user").slice(-1)[0];
-    const content = lastUser
-      ? (typeof lastUser.content === "string" ? lastUser.content
-          : Array.isArray(lastUser.content) ? lastUser.content.filter(b => b.type === "text").map(b => b.text).join("")
-          : String(lastUser.content || ""))
-      : "";
+    if (BACKEND === "cli" && req.headers["kf-new-session"] === "1") resetProc();
+    const { system: rawSystem, messages, model } = parsed;
     res.writeHead(200, {
       ...corsHeaders,
       "Content-Type": "text/event-stream",
@@ -663,19 +691,37 @@ const server = http.createServer((req, res) => {
       "X-Accel-Buffering": "no",
     });
     function send(obj) { res.write(`data: ${JSON.stringify(obj)}\n\n`); }
-    streamClaude({
-      system, model, content,
-      onDelta: text => send({ delta: text }),
-      onDone: ({ usage, stop_reason }) => { send({ done: true, usage, stop_reason }); res.end(); },
-      onError: err => { send({ error: err.message || String(err) }); res.end(); },
-    });
-    req.on("close", () => { /* client disconnected; let claude finish silently */ });
+    const onDelta = text => send({ delta: text });
+    const onDone = ({ usage, stop_reason }) => { send({ done: true, usage, stop_reason }); res.end(); };
+    const onError = err => { send({ error: err.message || String(err) }); res.end(); };
+    if (BACKEND === "api") {
+      streamApi({ rawSystem, model, messages, onDelta, onDone, onError });
+    } else {
+      // CLI mode: maintains its own session, so flatten system to a string and
+      // forward only the latest user turn (the CLI keeps prior history itself).
+      const system = Array.isArray(rawSystem)
+        ? rawSystem.filter(b => b.type === "text").map(b => b.text).join("\n")
+        : rawSystem;
+      const lastUser = (messages || []).filter(m => m.role === "user").slice(-1)[0];
+      const content = lastUser
+        ? (typeof lastUser.content === "string" ? lastUser.content
+            : Array.isArray(lastUser.content) ? lastUser.content.filter(b => b.type === "text").map(b => b.text).join("")
+            : String(lastUser.content || ""))
+        : "";
+      streamClaude({ system, model, content, onDelta, onDone, onError });
+    }
+    req.on("close", () => { /* client disconnected; let upstream finish silently */ });
   });
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`[chat-proxy] listening on http://localhost:${PORT}  mode=claude-cli-stream  bin=${CLAUDE_BIN}`);
-  console.log(`[chat-proxy] one persistent claude process serves all turns; replies stream back via SSE.`);
+  if (BACKEND === "api") {
+    console.log(`[chat-proxy] listening on http://localhost:${PORT}  mode=anthropic-api-stream  default-model=${DEFAULT_MODEL}`);
+    console.log(`[chat-proxy] turns are billed against ANTHROPIC_API_KEY; replies stream back via SSE.`);
+  } else {
+    console.log(`[chat-proxy] listening on http://localhost:${PORT}  mode=claude-cli-stream  bin=${CLAUDE_BIN}`);
+    console.log(`[chat-proxy] one persistent claude process serves all turns; replies stream back via SSE.`);
+  }
   console.log(`[chat-proxy] static root: ${STATIC_ROOT}  ->  open http://localhost:${PORT}/index.html`);
   console.log(`[chat-proxy] health: curl http://localhost:${PORT}/health`);
 });

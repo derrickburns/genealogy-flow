@@ -15,9 +15,27 @@ export const US_STATE_ABBR: Record<string, string> = {
   WI: "Wisconsin", WY: "Wyoming",
 };
 
+// Genuine AP-style abbreviations that fuzzy matching cannot reach. These are
+// short (<6 chars) so Levenshtein-based catches don't apply, and they're real
+// abbreviations rather than typos. Misspellings are deliberately NOT listed
+// here - the fuzzy fallback in detectState catches them generically.
+const US_STATE_EXTRA: Record<string, string> = {
+  "ala": "AL", "ariz": "AZ", "ark": "AR", "calif": "CA", "cal": "CA",
+  "colo": "CO", "conn": "CT", "del": "DE", "fla": "FL", "ill": "IL",
+  "ind": "IN", "kan": "KS", "kans": "KS", "mass": "MA",
+  "mich": "MI", "minn": "MN", "miss": "MS", "mont": "MT",
+  "neb": "NE", "nebr": "NE", "nev": "NV", "okla": "OK", "ore": "OR",
+  "oreg": "OR", "penn": "PA", "penna": "PA", "tenn": "TN", "tex": "TX",
+  "wash": "WA", "wis": "WI", "wisc": "WI", "wyo": "WY",
+  "n h": "NH", "n j": "NJ", "n m": "NM", "n mex": "NM", "n y": "NY",
+  "n c": "NC", "n d": "ND", "n dak": "ND", "r i": "RI", "s c": "SC",
+  "s d": "SD", "s dak": "SD", "w va": "WV", "d c": "DC",
+};
+
 export const US_NAME_TO_ABBR: Record<string, string> = (() => {
   const m: Record<string, string> = {};
   for (const [abbr, name] of Object.entries(US_STATE_ABBR)) m[name.toLowerCase()] = abbr;
+  for (const [slug, abbr] of Object.entries(US_STATE_EXTRA)) m[slug] = abbr;
   m["d.c."] = "DC";
   m["washington d.c."] = "DC";
   m["washington, d.c."] = "DC";

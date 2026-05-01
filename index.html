@@ -304,6 +304,10 @@
   #chatHistory .msg.bot .body blockquote { margin:4px 0; padding:2px 10px; border-left:3px solid #c0ccd8; color:#566480; }
   #chatHistory .msg.bot .body hr { border:none; border-top:1px solid #e0e6ee; margin:8px 0; }
   #chatHistory .msg.bot .body iframe.chatMermaid { display:block; margin:6px 0; }
+  #chatHistory .msg.bot .body table { border-collapse:collapse; font-size:11px; margin:6px 0; width:100%; }
+  #chatHistory .msg.bot .body th { background:#f0f4fa; color:#2a3a58; font-weight:700; padding:4px 8px; border:1px solid #d0dae8; text-align:left; }
+  #chatHistory .msg.bot .body td { padding:3px 8px; border:1px solid #e0e6ee; vertical-align:top; }
+  #chatHistory .msg.bot .body tr:nth-child(even) td { background:#f8fafd; }
   #chatHistory .msg.tool { font-size:11px; color:#888; }
   #chatHistory .msg.tool .who { color:#9aa6bc; }
   #chatHistory .msg.tool .body { word-wrap:break-word; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
@@ -843,7 +847,7 @@ function initMapLibre() {
   // composite) per tick during drag — avoids the blink that comes from
   // clearing on every move event while frame() redraws asynchronously.
   _kfMap.on("movestart", () => { _kfMapMoving = true; });
-  _kfMap.on("moveend",   () => { _kfMapMoving = false; });
+  _kfMap.on("moveend",   () => { _kfMapMoving = false; updateMapLegend(); });
   _kfMap.on("move", () => {
     const k = Math.pow(2, _kfMap.getZoom());
     zoomTransform = { k, x: 0, y: 0 };
@@ -1953,6 +1957,32 @@ function _kfFormatClusterTooltip(c) {
     const top = Array.from(c.sourceCounts.entries()).sort((a, b) => b[1] - a[1]);
     lines.push(`<div class="tipYrs">${top.map(([sid, n]) => `${escHtml(c.sourceNames?.get(sid) || String(sid))} ${n}`).join(" &middot; ")}</div>`);
   }
+  // Top 5 nearest relatives of the home person in this cluster
+  if (c.members && c.members.length && lastIndividuals && relDistCache.size) {
+    const N_REL = 5;
+    const rels = [];
+    for (const di of c.members) {
+      const idx = dwellIndi ? dwellIndi[di] : -1;
+      if (idx < 0 || !lastIndividuals[idx]) continue;
+      const ind = lastIndividuals[idx];
+      const dist = relDistCache.get(ind.id) ?? Infinity;
+      if (!isFinite(dist) || dist === 0) continue; // skip unknown / self
+      const rel = relationCache.get(ind.id) || "";
+      const place = (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
+      const shortPlace = place ? place.split(",")[0].trim() : "";
+      rels.push({ name: ind.name || "?", rel, dist, place: shortPlace });
+    }
+    rels.sort((a, b) => a.dist - b.dist || a.name.localeCompare(b.name));
+    const top = rels.slice(0, N_REL);
+    if (top.length) {
+      lines.push(`<div style="border-top:1px solid #e0e6ee;margin-top:4px;padding-top:3px;font-size:10.5px;color:#566480;font-weight:700;">Closest relatives</div>`);
+      for (const r of top) {
+        const relBadge = r.rel ? `<span style="background:#e8eef8;border-radius:3px;padding:1px 4px;font-size:9.5px;color:#2a4a8c;margin-right:4px;font-weight:700;">${r.rel}</span>` : "";
+        const place = r.place ? ` <span style="color:#9aa6bc;font-size:10px;">${escHtml(r.place)}</span>` : "";
+        lines.push(`<div style="font-size:10.5px;padding:1px 0;">${relBadge}${escHtml(r.name)}${place}</div>`);
+      }
+    }
+  }
   return lines.join("");
 }
 function _kfGetClustersForDeck() {
@@ -2219,6 +2249,54 @@ let _baseDirty = false;
   if (!timelineLoaded) return;
   const _rect = $("mapWrap").getBoundingClientRect();
   const x = e.clientX - _rect.left, y = e.clientY - _rect.top;
+
+  // In cluster modes the individual dots are hidden. Find the cluster nearest
+  // the click and show the home-person's closest relative within it.
+  const isClusterMode = clusterMode !== "none" && !!_kfActiveLens === false &&
+    (clusterMode === "aggregate" || clusterMode === "pie" || clusterMode === "parents" ||
+     clusterMode === "gender"    || clusterMode === "tree" || clusterMode === "state" ||
+     (clusterMode === "dispersion" && zoomTransform.k < 2));
+  if (isClusterMode) {
+    const clusters = _kfGetClustersForDeck();
+    if (clusters && clusters.length) {
+      let bestCluster = null, bestD2 = Infinity;
+      for (const cl of clusters) {
+        const [lon, lat] = cl.position;
+        const p = _kfMap ? _kfMap.project([lon, lat]) : null;
+        if (!p) continue;
+        const dx = p.x - x, dy = p.y - y;
+        const d2 = dx * dx + dy * dy;
+        const rPx = (cl.radius + 8) * (cl.radius + 8);
+        if (d2 < rPx && d2 < bestD2) { bestD2 = d2; bestCluster = cl; }
+      }
+      if (bestCluster && bestCluster.members && relDistCache.size) {
+        // Find the closest relative of the home person among cluster members
+        let bestDwell = -1, bestRelDist = Infinity;
+        for (const di of bestCluster.members) {
+          const idx = dwellIndi ? dwellIndi[di] : -1;
+          if (idx < 0 || !lastIndividuals || !lastIndividuals[idx]) continue;
+          const ind = lastIndividuals[idx];
+          const dist = relDistCache.get(ind.id) ?? Infinity;
+          if (dist < bestRelDist) { bestRelDist = dist; bestDwell = di; }
+        }
+        if (bestDwell >= 0) {
+          pushHistory();
+          if (highlightedDwell === bestDwell && highlightInferredYear < 0) {
+            highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
+            _kfHidePersonCard();
+          } else {
+            highlightedDwell = bestDwell; highlightInferredYear = -1; highlightInferredSrcYear = -1;
+            if (playing) { playing = false; playBtn.textContent = "Play"; }
+            _kfShowPersonCard(bestDwell);
+          }
+          fxCtx.clearRect(0, 0, W, H);
+          applyExpansion();
+        }
+      }
+    }
+    return;
+  }
+
   const HIT_RADIUS = 14;
   const HIT_R2 = HIT_RADIUS * HIT_RADIUS;
   const dw = dwellWindow;
@@ -2430,15 +2508,64 @@ function updateMapLegend() {
   const el = document.getElementById("mapLegend");
   if (!el || el.classList.contains("hidden")) return;
 
-  function dot(rgb, label) {
+  // --- compute viewport stats ---
+  const isIndividualMode = !(clusterMode === "pie" || clusterMode === "parents" ||
+    clusterMode === "gender" || clusterMode === "tree" ||
+    clusterMode === "aggregate" || clusterMode === "dispersion" || clusterMode === "state");
+
+  const total = _kfDwellCount || 0;
+  let inView = total;
+  // [paternal, maternal, other]
+  const sideTot = [0, 0, 0], sideView = [0, 0, 0];
+  // {M, F, U}
+  const sexTot = {M:0, F:0, U:0}, sexView = {M:0, F:0, U:0};
+
+  const bounds = _kfMap && _kfMap.getBounds ? _kfMap.getBounds() : null;
+  if (bounds && total && _kfDwellPositions && _kfPersonDwell && _kfPersonIndi) {
+    const bW = bounds.getWest(), bE = bounds.getEast();
+    const bS = bounds.getSouth(), bN = bounds.getNorth();
+    inView = 0;
+    for (let m = 0; m < total; m++) {
+      const lon = _kfDwellPositions[m * 2];
+      const lat = _kfDwellPositions[m * 2 + 1];
+      const v = lon >= bW && lon <= bE && lat >= bS && lat <= bN;
+      if (v) inView++;
+      if (isIndividualMode) {
+        const side = (dwellSide && _kfPersonDwell[m] >= 0) ? (dwellSide[_kfPersonDwell[m]] ?? 2) : 2;
+        const si = side < 2 ? side : 2;
+        sideTot[si]++;
+        if (v) sideView[si]++;
+        const ind = lastIndividuals ? lastIndividuals[_kfPersonIndi[m]] : null;
+        const sx = ind ? (ind.sex === "M" ? "M" : ind.sex === "F" ? "F" : "U") : "U";
+        sexTot[sx]++;
+        if (v) sexView[sx]++;
+      }
+    }
+  } else if (isIndividualMode && total && _kfPersonDwell && _kfPersonIndi) {
+    for (let m = 0; m < total; m++) {
+      const side = (dwellSide && _kfPersonDwell[m] >= 0) ? (dwellSide[_kfPersonDwell[m]] ?? 2) : 2;
+      const si = side < 2 ? side : 2;
+      sideTot[si]++; sideView[si]++;
+      const ind = lastIndividuals ? lastIndividuals[_kfPersonIndi[m]] : null;
+      const sx = ind ? (ind.sex === "M" ? "M" : ind.sex === "F" ? "F" : "U") : "U";
+      sexTot[sx]++; sexView[sx]++;
+    }
+  }
+
+  // suffix: "view/total" or just "total" if no bounds info
+  function cnt(t, v) {
+    if (!t) return "";
+    const s = bounds ? `${v} / ${t}` : `${t}`;
+    return ` <span style="color:#9aa6bc;font-size:10px;font-variant-numeric:tabular-nums;">(${s})</span>`;
+  }
+  function dot(rgb, label, t, v) {
     const c = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-    return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};margin-right:5px;vertical-align:middle;"></span>${label}</div>`;
+    return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};margin-right:5px;vertical-align:middle;"></span>${label}${cnt(t, v)}</div>`;
   }
   function hdr(text) {
     return `<div style="font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin:5px 0 3px;">${text}</div>`;
   }
-  function swatch(color, size, shape, label) {
-    // shape: "circle" | "diamond" | "square" | "arc"
+  function swatch(color, size, shape, label, t, v) {
     let s = "";
     if (shape === "diamond") {
       s = `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:1px;transform:rotate(45deg);border:1.5px solid ${color};margin-right:6px;vertical-align:middle;"></span>`;
@@ -2449,7 +2576,7 @@ function updateMapLegend() {
     } else {
       s = `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${color};margin-right:5px;vertical-align:middle;"></span>`;
     }
-    return `<div>${s}${label}</div>`;
+    return `<div>${s}${label}${cnt(t, v)}</div>`;
   }
 
   let html = "";
@@ -2489,18 +2616,18 @@ function updateMapLegend() {
     // "none" or unknown — show individual particle legend
     if (colorMode === "gender") {
       html += hdr("Gender");
-      html += dot(COLOR_GENDER_M, "Male");
-      html += dot(COLOR_GENDER_F, "Female");
-      html += dot(COLOR_GENDER_U, "Unknown");
+      html += dot(COLOR_GENDER_M, "Male",    sexTot.M, sexView.M);
+      html += dot(COLOR_GENDER_F, "Female",  sexTot.F, sexView.F);
+      html += dot(COLOR_GENDER_U, "Unknown", sexTot.U, sexView.U);
     } else if (colorMode === "tree") {
       html += hdr("Tree");
       const name = _kfActiveTreeName || "Current tree";
       html += dot(TREE_PALETTE[_kfTreeColorFromName(name)], name.replace(/\.ged$/i, ""));
     } else {
       html += hdr("Lineage");
-      html += dot(COLOR_PATERNAL, "Paternal line");
-      html += dot(COLOR_MATERNAL, "Maternal line");
-      html += dot(COLOR_OTHER,    "Collateral");
+      html += dot(COLOR_PATERNAL, "Paternal line", sideTot[0], sideView[0]);
+      html += dot(COLOR_MATERNAL, "Maternal line", sideTot[1], sideView[1]);
+      html += dot(COLOR_OTHER,    "Collateral",    sideTot[2], sideView[2]);
       html += hdr("Parents");
       html += swatch("#566480", 10, "circle",  "Both known");
       html += swatch("#566480",  9, "diamond", "One unknown");
@@ -2512,7 +2639,21 @@ function updateMapLegend() {
   if (kinLinesN > 0) {
     html += hdr("Kin lines");
     html += swatch(`rgb(${COLOR_PATERNAL[0]},${COLOR_PATERNAL[1]},${COLOR_PATERNAL[2]})`, 12, "arc",
-      `${kinLinesN} nearest kin`);
+      "Paternal lineage");
+    html += swatch(`rgb(${COLOR_MATERNAL[0]},${COLOR_MATERNAL[1]},${COLOR_MATERNAL[2]})`, 12, "arc",
+      "Maternal lineage");
+    html += swatch(`rgb(${COLOR_OTHER[0]},${COLOR_OTHER[1]},${COLOR_OTHER[2]})`, 12, "arc",
+      "Collateral");
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Arc color = lineage side of source person &middot; ${kinLinesN} nearest kin</div>`;
+  }
+
+  // Summary stats
+  if (total > 0) {
+    const viewStr = bounds ? `${inView} / ${total}` : `${total}`;
+    html += `<div style="border-top:1px solid #e0e6ee;margin-top:5px;padding-top:4px;font-size:10px;color:#566480;font-variant-numeric:tabular-nums;">`;
+    html += `<span style="font-weight:700;">${viewStr}</span> alive in ${Math.floor(curYear)}`;
+    if (bounds) html += ` <span style="color:#9aa6bc;">(view / total)</span>`;
+    html += `</div>`;
   }
 
   el.innerHTML = html;
@@ -3222,6 +3363,7 @@ function tick(now) {
       yearThumbLabelEl.style.left = (pct * 100) + "%";
     }
     updateStatusLabels(yint);
+    updateMapLegend();
   }
   // MapLibre owns the basemap and projection state — no more lerp/transform
   // dance. We just re-project dwells whenever the map moves (_baseDirty is
@@ -3578,6 +3720,7 @@ function pathFromRoot(otherId) {
 }
 
 let relationCache = new Map();
+let relDistCache = new Map(); // id -> m + n (total generation steps from root)
 function recomputeRelationships() {
   // Single BFS through the consanguinity DAG from root, recording (m, n)
   // — generations up to MRCA, then generations down — for every reachable
@@ -3613,10 +3756,12 @@ function recomputeRelationships() {
       }
     }
   }
+  relDistCache = new Map();
   for (const ind of lastIndividuals) {
     const r = mn.get(ind.id);
-    if (!r) { relationCache.set(ind.id, ""); continue; }
-    if (ind.id === lastRootId) { relationCache.set(ind.id, "self"); continue; }
+    if (!r) { relationCache.set(ind.id, ""); relDistCache.set(ind.id, Infinity); continue; }
+    if (ind.id === lastRootId) { relationCache.set(ind.id, "self"); relDistCache.set(ind.id, 0); continue; }
+    relDistCache.set(ind.id, r[0] + r[1]);
     relationCache.set(ind.id, formatRelation(r[0], r[1], lastRootId, ind.id, lastParentsOf));
   }
   const elapsed = performance.now() - t0;
@@ -6007,8 +6152,8 @@ function _kfChatMermaidIframe(src) {
   return `<iframe class="chatMermaid" sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="${safe}" title="diagram" style="width:100%; min-height:80px; border:1px solid #e0e6ee; border-radius:4px; background:#fbfbfd;"></iframe>`;
 }
 
-// Block-level markdown renderer: paragraphs, headers, lists, code fences
-// (with language detection so ```mermaid blocks render as diagrams),
+// Block-level markdown renderer: paragraphs, headers, lists, tables, code
+// fences (with language detection so ```mermaid blocks render as diagrams),
 // blockquotes, and horizontal rules. Inline transforms run via _kfInlineMd.
 function renderMd(s) {
   const lines = String(s).split("\n");
@@ -6016,8 +6161,23 @@ function renderMd(s) {
   let inFence = false, fenceLang = "", fenceBuf = [];
   let listType = null;
   let paraBuf = [];
+  let tableBuf = [];  // accumulates pipe-delimited rows
   function closeList() {
     if (listType) { out.push(`</${listType}>`); listType = null; }
+  }
+  function flushTable() {
+    if (!tableBuf.length) return;
+    // Split each row by | and trim cells; skip separator rows (only dashes/colons/spaces/pipes)
+    const isSep = r => /^[\|\s\-:]+$/.test(r);
+    const rows = tableBuf.filter(r => !isSep(r));
+    if (rows.length) {
+      const splitRow = r => r.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const [header, ...body] = rows;
+      const ths = splitRow(header).map(c => `<th>${_kfInlineMd(c)}</th>`).join("");
+      const trs = body.map(r => `<tr>${splitRow(r).map(c => `<td>${_kfInlineMd(c)}</td>`).join("")}</tr>`).join("");
+      out.push(`<table style="border-collapse:collapse;font-size:11px;margin:6px 0;width:100%;"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`);
+    }
+    tableBuf = [];
   }
   function flushPara() {
     if (paraBuf.length) {
@@ -6040,10 +6200,18 @@ function renderMd(s) {
     const fence = line.match(/^```\s*(\w*)\s*$/);
     if (fence) {
       if (inFence) flushFence();
-      else { flushPara(); closeList(); inFence = true; fenceLang = fence[1] || ""; }
+      else { flushPara(); closeList(); flushTable(); inFence = true; fenceLang = fence[1] || ""; }
       continue;
     }
     if (inFence) { fenceBuf.push(line); continue; }
+    // Table rows: lines that start (or end) with a pipe character
+    if (/^\s*\|/.test(line)) {
+      flushPara(); closeList();
+      tableBuf.push(line);
+      continue;
+    } else if (tableBuf.length) {
+      flushTable();
+    }
     const h = line.match(/^(#{1,6})\s+(.+)$/);
     if (h) {
       flushPara(); closeList();
@@ -6082,7 +6250,7 @@ function renderMd(s) {
     closeList();
     paraBuf.push(line);
   }
-  flushPara(); closeList();
+  flushPara(); closeList(); flushTable();
   if (inFence) flushFence();
   return out.join("");
 }
