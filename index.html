@@ -448,7 +448,7 @@
         <input type="range" id="rot" min="-180" max="180" step="1" value="0">
         <select id="colorMode"><option value="lineage" selected>maternal/paternal</option><option value="gender">gender</option><option value="tree">tree</option></select>
         <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select>
-        <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="hull">region rings</option><option value="dispersion">on zoom</option></select>
+        <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="dispersion">on zoom</option></select>
         <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"><b id="clusterRadiusLabel">30</b>
         <input type="range" id="kinN" min="0" max="20" step="1" value="0"><b id="kinNLabel">0</b>
         <div id="clusterSection"></div>
@@ -574,7 +574,6 @@
       <button class="quickChip" data-cluster="pie" title="Group nearby people and break each cluster down by ancestral lineage (mother's vs father's side).">lineage</button>
       <button class="quickChip" data-cluster="tree" title="Group nearby people and show which loaded GEDCOM file each came from.">tree</button>
       <button class="quickChip" data-cluster="aggregate" title="Group nearby people into single sized circles. Bigger circle = more people.">density</button>
-      <button class="quickChip" data-cluster="hull" title="Draw a soft outline around each region where a cluster of people lived.">hulls</button>
     </span>
     <span class="chipGroup" data-grp="filter">
       <span class="chipLabel">filter:</span>
@@ -1720,7 +1719,6 @@ function updateDeckDwellLayer() {
   // hull → arcs → kin → lineage → dwells → aggregate → highlight → pins → labels.
   const layers = [
     makeLensLayer(),       // user/Claude-defined SQL cluster — drawn under everything else
-    makeHullLayer(),
     makeFlowLayer(),
     makeFlowDestLayer(),
     makeKinLinesLayer(),
@@ -2007,44 +2005,6 @@ function makeAggregateLabelsLayer() {
     getColor: [20, 28, 48, 245],
     fontWeight: 700,
     pickable: false,
-  });
-}
-
-function makeHullLayer() {
-  if (clusterMode !== "hull") return null;
-  if (!deck || !deck.PolygonLayer) return null;
-  const data = _kfGetClustersForDeck();
-  if (!data) return null;
-  const polys = [];
-  for (const cl of data) {
-    if (cl.members.length < 3) continue;
-    const pts = cl.members.map(i => [dwellLon[i], dwellLat[i]]);
-    const hull = convexHull(pts);
-    if (hull.length < 3) continue;
-    polys.push({
-      polygon: hull, color: cl.color,
-      count: cl.count, sides: cl.sides, parents: cl.parents, genders: cl.genders,
-    });
-  }
-  if (!polys.length) return null;
-  return new deck.PolygonLayer({
-    id: "kf-hull",
-    data: polys,
-    getPolygon: d => d.polygon,
-    getFillColor: d => [d.color[0], d.color[1], d.color[2], 26],
-    getLineColor: d => [d.color[0], d.color[1], d.color[2], 140],
-    lineWidthUnits: "pixels",
-    getLineWidth: 1.5,
-    stroked: true,
-    filled: true,
-    pickable: true,
-    onHover: ({ object, x, y }) => {
-      if (!object) { hoverTip.style.display = "none"; return; }
-      hoverTip.innerHTML = _kfFormatClusterTooltip(object);
-      hoverTip.style.left = (x + 12) + "px";
-      hoverTip.style.top  = (y + 12) + "px";
-      hoverTip.style.display = "block";
-    },
   });
 }
 
@@ -2518,11 +2478,6 @@ function updateMapLegend() {
   } else if (clusterMode === "state") {
     html += hdr("US States");
     html += `<div style="font-size:10px;color:#566480;">Color and label show the state abbreviation. Circle size = people count.</div>`;
-  } else if (clusterMode === "hull") {
-    html += hdr("Region rings");
-    html += dot(COLOR_PATERNAL, "Paternal region");
-    html += dot(COLOR_MATERNAL, "Maternal region");
-    html += dot(COLOR_OTHER,    "Other region");
   } else {
     // "none" or unknown — show individual particle legend
     if (colorMode === "gender") {
@@ -2644,13 +2599,11 @@ function frame(activeTrailFade) {
   fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
   const renderClusters = clusterMode !== "none" && clusterMode !== "dispersion";
   const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
-  const useClusterReplace = renderClusters && clusterMode !== "hull";
-  // Aggregate, dispersion (at low zoom), and hull cluster modes are
-  // now drawn by deck.gl. The fxCanvas cluster path is only kept for "pie"
-  // (lineage pie slices) which has no clean deck.gl equivalent yet.
+  const useClusterReplace = renderClusters;
+  // Aggregate and dispersion (at low zoom) cluster modes are drawn by deck.gl.
+  // The fxCanvas cluster path is only kept for "pie" which has no clean deck.gl equivalent.
   const clusterOnDeck = !!_kfDeckOverlay && (
        clusterMode === "aggregate"
-    || clusterMode === "hull"
     || (clusterMode === "dispersion" && zoomTransform.k < 2)
   );
   if ((renderClusters || useDispersion) && !clusterOnDeck) {
@@ -2668,12 +2621,8 @@ function frame(activeTrailFade) {
     }
     const mode = useDispersion ? "aggregate" : clusterMode;
     drawClusters(visible, clusterRadius, mode, y, dw);
-    if (mode === "hull") {
-      // hull mode: also draw individual dots below
-    } else {
-      if (highlightedDwell >= 0) drawHighlight();
-      return;
-    }
+    if (highlightedDwell >= 0) drawHighlight();
+    return;
   }
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
@@ -2968,25 +2917,6 @@ function drawClusters(visible, radius, mode, year, dw) {
   _kfFxClusterHits = [];
   if (visible.length === 0) return;
   const clusters = buildClusters(visible, radius);
-  if (mode === "hull") {
-    for (const cl of clusters) {
-      if (cl.members.length < 3) continue;
-      const pts = cl.members.map(i => [dwellSx[i], dwellSy[i]]);
-      const hull = convexHull(pts);
-      if (hull.length < 3) continue;
-      const c = clusterDominantColor(cl);
-      fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.10)`;
-      fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.55)`;
-      fxCtx.lineWidth = 1.5;
-      fxCtx.beginPath();
-      fxCtx.moveTo(hull[0][0], hull[0][1]);
-      for (let h = 1; h < hull.length; h++) fxCtx.lineTo(hull[h][0], hull[h][1]);
-      fxCtx.closePath();
-      fxCtx.fill();
-      fxCtx.stroke();
-    }
-    return;
-  }
   if (mode === "state") {
     // Cluster persons by their CURRENT US state (computed once from the
     // usStates topojson on first state-mode access). Render the actual
@@ -5225,6 +5155,7 @@ $("clusterMode").addEventListener("change", e => {
   fxCtx.clearRect(0, 0, W, H);
   if (_kfDeckOverlay) updateDeckDwellLayer();
   if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
+  updateMapLegend();
 });
 $("clusterRadius").addEventListener("input", e => {
   clusterRadius = parseInt(e.target.value, 10) || 30;
@@ -6589,7 +6520,7 @@ window.kfApi = {
     return { ok: true, kinLines: n };
   },
   setClusterMode(mode) {
-    const valid = ["none", "aggregate", "pie", "parents", "gender", "tree", "state", "hull", "dispersion"];
+    const valid = ["none", "aggregate", "pie", "parents", "gender", "tree", "state", "dispersion"];
     if (!valid.includes(mode)) return { error: "valid modes: " + valid.join(", ") };
     $("clusterMode").value = mode;
     $("clusterMode").dispatchEvent(new Event("change", { bubbles: true }));
@@ -7321,7 +7252,7 @@ Available tools. jsonArgs is a single JSON value:
 - centerOn(personIdOrNameOrPlace)  Center the map. Accepts a person (rotates/pans to their latest event) OR a place string like "San Francisco, California, USA" / "Detroit, Michigan" / "France" — uses the offline geocoder to resolve places.
 - setProjection(name)              [deprecated stub] only Natural Earth is supported now; do not use.
 - setKinLines(n)                   0..20 — connect each person to N nearest blood kin.
-- setClusterMode(mode)             "none" | "aggregate" | "pie" | "parents" | "gender" | "tree" | "state" | "hull" | "dispersion"
+- setClusterMode(mode)             "none" | "aggregate" | "pie" | "parents" | "gender" | "tree" | "state" | "dispersion"
 - saveLens({name, sql, shape, label?})  Register a "lens" — a SQL-driven map visualization. shape and required SELECT columns:
     state    → state | geo_st, count | n                 (US-state polygons, fill scaled by count)
     country  → country | geo_cc, count | n               (sized dot at country centroid)
