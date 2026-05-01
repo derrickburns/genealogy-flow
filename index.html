@@ -908,6 +908,7 @@ let _kfLensCaption = null;
 // hover tooltip later if we add it).
 let _kfMatchOverlayOn = false;
 let _kfMatchData = null;
+let _kfLoadedTreeCount = 0; // updated by renderSources; gates "tree matches" overlay chip
 let _kfMatchSrcNames = null;
 let _kfMatchFetching = false;
 function _kfRenderLensCaption() {
@@ -4309,9 +4310,11 @@ function renderSources(list) {
   const inner = document.getElementById("sourcesList");
   if (!wrap || !inner) return;
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
+  _kfLoadedTreeCount = filtered.length;
   if (filtered.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
+    if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
     return;
   }
   wrap.classList.remove("hidden");
@@ -4353,6 +4356,7 @@ function renderSources(list) {
       refreshSources();
     });
   });
+  if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
 }
 
 async function refreshSources() {
@@ -5095,6 +5099,9 @@ function _kfRefreshQuickChips() {
     }
     el.classList.toggle("on", on);
   });
+  // Show/hide overlay group based on whether multiple trees are loaded
+  const overlayGrp = document.querySelector("#quickChips .chipGroup[data-grp='overlay']");
+  if (overlayGrp) overlayGrp.style.display = _kfLoadedTreeCount >= 2 ? "" : "none";
 }
 
 async function _kfToggleMatchOverlay() {
