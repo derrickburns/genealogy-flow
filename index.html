@@ -775,6 +775,9 @@ let lastTimeline = null, lastFileName = "genealogy";
 let _kfSourceId = null;      // D1 source_id for VIP server-side queries
 let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data already in D1)
 let _kfBrowserDb = null;     // sql.js in-memory SQLite DB built from the loaded GEDCOM
+let _sqlJsReady = null;      // Promise — resolves when sql.js WASM is loaded
+const CHAT_PROXY_LS = "kf-chat-proxy";
+const CHAT_PROXY_DEFAULT = "http://localhost:8789";
 
 // applyProjectionFromZoom removed — projection state lives on MapLibre now.
 
@@ -7389,8 +7392,6 @@ Audience: the user is a family-history researcher, not a GEDCOM engineer. Schema
 
 Style: keep prose short. After a tool call, you don't need to repeat what you did unless the user asked. If a call errored, explain briefly and try a sensible fallback. Never invent facts not in the context. **Bold** names; *italics* sparingly.`;
 
-const CHAT_PROXY_LS = "kf-chat-proxy";
-const CHAT_PROXY_DEFAULT = "http://localhost:8789";
 let _chatNewSession = true;
 async function detectChatProxy() {
   if (_chatProxyOk !== null) return _chatProxyOk;
@@ -7874,8 +7875,6 @@ async function autoLoadCloudGedcom() {
 }
 
 // --------------- Browser SQLite (sql.js WASM) ---------------
-
-let _sqlJsReady = null; // Promise<void> — resolves when sql.js is loaded
 
 function _ensureSqlJs() {
   if (_sqlJsReady) return _sqlJsReady;
