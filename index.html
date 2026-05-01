@@ -7917,6 +7917,12 @@ async function runChatTurn(userText) {
     if (chipParse.chips.length) pending.chips = chipParse.chips;
     renderChat();
     if (!results.length) return;  // no tool calls -> Claude is done
+    // Surface KFCALL errors visibly -- otherwise showViz failures are silent.
+    const kfErrors = results.filter(r => r.result && r.result.error);
+    if (kfErrors.length) {
+      chatHistory.push({ role: "bot", kind: "tool", content: "*[KFCALL error]* " + kfErrors.map(r => `\`${r.call}\`: ${r.result.error}`).join("; ") });
+      renderChat();
+    }
     const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
     chatHistory.push({ role: "bot", kind: "tool", content: "*[tool calls]*\n" + log });
     renderChat();
@@ -7951,6 +7957,11 @@ $("cannedViz").addEventListener("change", function() {
   const prompt = this.value;
   this.value = "";
   if (!prompt) return;
+  if (_chatBusy) {
+    chatInputEl.value = prompt;
+    chatInputEl.focus();
+    return;
+  }
   kfApi.sendChat(prompt);
 });
 chatInputEl.addEventListener("keydown", e => {
