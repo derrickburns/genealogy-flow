@@ -1597,6 +1597,7 @@ function buildDeckDwellData() {
 // is excluded — anyone in a GEDCOM record almost by definition survived early
 // childhood). Sourced from rough US/European cohort tables; the goal is "show
 // person markers for a reasonable plausible lifespan", not actuarial accuracy.
+const _kfCurrentYear = new Date().getFullYear();
 function _kfInferredDeathYear(ind) {
   if (ind.death_year != null) return ind.death_year;
   if (ind.birth_year == null) return null;
@@ -1611,7 +1612,12 @@ function _kfInferredDeathYear(ind) {
   else if (decade < 1960) life = sex === "F" ? 75 : 70;
   else if (decade < 1990) life = sex === "F" ? 80 : 74;
   else                    life = sex === "F" ? 82 : 78;
-  return ind.birth_year + life;
+  const inferred = ind.birth_year + life;
+  // If the inferred death year is already past AND the person is young enough
+  // to plausibly still be alive (born within last 115 years), treat the missing
+  // death year as "unknown / still alive" rather than applying the estimate.
+  if (inferred <= _kfCurrentYear && (_kfCurrentYear - ind.birth_year) < 115) return null;
+  return inferred;
 }
 
 function rebuildPersonMarkers() {
