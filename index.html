@@ -403,6 +403,9 @@
   #chatLock { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:32px 16px; color:#7a8aa0; font-size:13px; text-align:center; flex:1; }
   #chatLock.hidden { display:none; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+        data-clerk-publishable-key="pk_live_Y2xlcmsuZ2VuZWFsb2d5LWZsb3cucGFnZXMuZGV2JA"
+        async></script>
 </head>
 <body>
 <div id="authBar">
@@ -7693,18 +7696,15 @@ const VIP_EMAILS = new Set([
 let _clerkReady = false;
 
 async function initClerk() {
-  const pk = "pk_live_Y2xlcmsuZ2VuZWFsb2d5LWZsb3cucGFnZXMuZGV2JA";
   try {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js";
-      s.async = true;
-      s.onload = res;
-      s.onerror = () => rej(new Error("Failed to load clerk.browser.js"));
-      document.head.appendChild(s);
-    });
-    _clerkInstance = new window.Clerk(pk);
-    await _clerkInstance.load();
+    // Static script tag with data-clerk-publishable-key lets Clerk read the key
+    // via document.currentScript and auto-initialize. Wait up to 10s for it.
+    let attempts = 0;
+    while ((!window.Clerk || !window.Clerk.loaded) && attempts++ < 100) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (!window.Clerk || !window.Clerk.loaded) throw new Error("Clerk did not load in time");
+    _clerkInstance = window.Clerk;
     _clerkReady = true;
     _clerkInstance.addListener(({ user }) => updateAuthUI(user));
     updateAuthUI(_clerkInstance.user);
