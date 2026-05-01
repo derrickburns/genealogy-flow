@@ -62,8 +62,13 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     try {
-      const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
-      const payload = await clerk.verifyToken(token);
+      const clerk = createClerkClient({
+        secretKey: env.CLERK_SECRET_KEY,
+        publishableKey: env.CLERK_PUBLISHABLE_KEY,
+      });
+      const payload = await clerk.verifyToken(token, {
+        secretKey: env.CLERK_SECRET_KEY,
+      });
       const userId = payload.sub;
 
       // Fetch email from Clerk
@@ -90,8 +95,9 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
 
       ctx.data.user = { type, id: userId, email };
       return next();
-    } catch {
-      // Invalid token - fall through to anon
+    } catch (e) {
+      console.error("[auth] token verification failed:", e instanceof Error ? e.message : String(e));
+      // Fall through to anon
     }
   }
 
