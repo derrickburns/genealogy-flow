@@ -497,16 +497,7 @@
 <div id="vizArea">
 <div id="vizTabBar"><button class="vizTab on" data-tab="map">Map</button></div>
 <div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div>
-<div id="mapLegend" class="hidden" style="position:absolute;bottom:28px;left:10px;z-index:10;background:rgba(255,255,255,0.88);border:1px solid #c0ccd8;border-radius:7px;padding:7px 10px;font-size:11px;color:#566480;line-height:1.6;pointer-events:none;">
-  <div style="font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin-bottom:4px;">Lineage</div>
-  <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2864dc;margin-right:5px;vertical-align:middle;"></span>Paternal line</div>
-  <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#dc3c5a;margin-right:5px;vertical-align:middle;"></span>Maternal line</div>
-  <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#50a064;margin-right:5px;vertical-align:middle;"></span>Collateral relative</div>
-  <div style="font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin:5px 0 4px;">Parent knowledge</div>
-  <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#566480;margin-right:5px;vertical-align:middle;"></span>Both parents known</div>
-  <div><span style="display:inline-block;width:9px;height:9px;border-radius:1px;transform:rotate(45deg);border:1.5px solid #566480;margin-right:6px;vertical-align:middle;"></span>One parent unknown</div>
-  <div><span style="display:inline-block;width:9px;height:9px;border-radius:0;border:1.5px solid #566480;margin-right:6px;vertical-align:middle;"></span>Both parents unknown</div>
-</div>
+<div id="mapLegend" class="hidden" style="position:absolute;bottom:28px;left:10px;z-index:10;background:rgba(255,255,255,0.88);border:1px solid #c0ccd8;border-radius:7px;padding:7px 10px;font-size:11px;color:#566480;line-height:1.7;pointer-events:none;min-width:150px;"></div>
 <div id="vizPane">
   <div id="vizPaneHeader">
     <button id="vizSpecToggle" title="Toggle between rendered visualization and the raw spec Claude sent" style="background:none; border:1px solid #c0ccd8; border-radius:3px; padding:2px 8px; cursor:pointer; font:inherit; font-size:11px; color:#566480; margin-right:6px;">spec</button>
@@ -2488,6 +2479,40 @@ function colorForFinal(side, _parStat, indiIdx) {
   }
   return colorFor(side);
 }
+function updateMapLegend() {
+  const el = document.getElementById("mapLegend");
+  if (!el || el.classList.contains("hidden")) return;
+  function dot(rgb, label) {
+    const c = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};margin-right:5px;vertical-align:middle;"></span>${label}</div>`;
+  }
+  function hdr(text) {
+    return `<div style="font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin:5px 0 3px;">${text}</div>`;
+  }
+  let html = "";
+  if (colorMode === "gender") {
+    html += hdr("Gender");
+    html += dot(COLOR_GENDER_M, "Male");
+    html += dot(COLOR_GENDER_F, "Female");
+    html += dot(COLOR_GENDER_U, "Unknown");
+  } else if (colorMode === "tree") {
+    html += hdr("Tree");
+    const name = _kfActiveTreeName || "Current tree";
+    const c = TREE_PALETTE[_kfTreeColorFromName(name)];
+    html += dot(c, name.replace(/\.ged$/i, ""));
+  } else {
+    html += hdr("Lineage");
+    html += dot(COLOR_PATERNAL, "Paternal line");
+    html += dot(COLOR_MATERNAL, "Maternal line");
+    html += dot(COLOR_OTHER,    "Collateral");
+    html += hdr("Parents");
+    html += `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#566480;margin-right:5px;vertical-align:middle;"></span>Both known</div>`;
+    html += `<div><span style="display:inline-block;width:9px;height:9px;border-radius:1px;transform:rotate(45deg);border:1.5px solid #566480;margin-right:6px;vertical-align:middle;"></span>One unknown</div>`;
+    html += `<div><span style="display:inline-block;width:9px;height:9px;border:1.5px solid #566480;margin-right:6px;vertical-align:middle;"></span>Both unknown</div>`;
+  }
+  el.innerHTML = html;
+}
+
 function drawShape(ctx, x, y, r, ps) {
   if (ps === 2) {
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -4606,6 +4631,7 @@ async function processFile(file) {
   $("clusterSection").classList.remove("hidden");
   $("quickChips").classList.remove("hidden");
   $("mapLegend").classList.remove("hidden");
+  updateMapLegend();
   _kfBuildSurnameTopN(12);
   _kfRenderSurnameChips();
   _kfRefreshQuickChips();
@@ -4925,6 +4951,7 @@ $("colorMode").addEventListener("change", e => {
   if (_kfDwellsOnDeck) refreshDeckDwellColors();
   if (_kfFlowsOnDeck)  refreshDeckFlowColors();
   if (_kfDwellsOnDeck || _kfFlowsOnDeck) updateDeckDwellLayer();
+  updateMapLegend();
 });
 
 // Lens dropdown — selecting a lens activates it (replaces cluster mode in
