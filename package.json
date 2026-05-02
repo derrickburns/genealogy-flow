@@ -43,7 +43,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/finalize-bins.mjs",
     "prepublishOnly": "pnpm run build",
     "seed-demo": "node scripts/seed-demo.mjs",
-    "predeploy": "mkdir -p public && cp index.html public/index.html",
+    "predeploy": "node scripts/prepare-public.mjs",
     "deploy": "npx wrangler pages deploy public",
     "dev": "npx wrangler pages dev public --d1 DB --r2 STORAGE"
   },

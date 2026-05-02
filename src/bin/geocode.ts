@@ -242,10 +242,12 @@ function loadGeonames(): GazetteerData {
     }
   }
 
+  const stateCountryCollisions = buildStateCountryCollisions(aliases, state_names);
   return {
     cities_by_state, cities_by_country, counties_us,
     state_centroids, country_centroids, state_names,
     countryAliases: aliases,
+    stateCountryCollisions,
   };
 }
 
@@ -452,7 +454,7 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
   const parts = cleaned.split(",").map(s => s.trim()).filter(Boolean);
   if (parts.length === 0) return null;
 
-  const cc = detectCountry(parts, gz.countryAliases) ?? "US";
+  const cc = detectCountry(parts, gz.countryAliases, gz.stateCountryCollisions) ?? "US";
   const { st, idx: stIdx } = detectState(parts, cc, gz.state_names, cc === "US" ? ctx.usFuzzySlugs : undefined);
   const hasCountyToken = parts.some(p => COUNTY_SUFFIX.test(p));
 

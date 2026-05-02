@@ -1,4 +1,4 @@
-import { createClerkClient } from "@clerk/backend";
+import { createClerkClient, verifyToken } from "@clerk/backend";
 
 export interface UserContext {
   type: "anon" | "regular" | "vip";
@@ -14,12 +14,8 @@ export interface Env {
   ANTHROPIC_API_KEY: string;
   KEY_ENCRYPTION_SECRET: string;
   VIP_EMAILS: string;
-}
-
-declare module "@cloudflare/workers-types" {
-  interface EventPluginContext<Env, P extends string, Data extends Record<string, unknown>> {
-    data: Data & { user?: UserContext };
-  }
+  GITHUB_TOKEN?: string;
+  GITHUB_REPO?: string;
 }
 
 function getVipEmails(env: Env): Set<string> {
@@ -66,7 +62,7 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
         secretKey: env.CLERK_SECRET_KEY,
         publishableKey: env.CLERK_PUBLISHABLE_KEY,
       });
-      const payload = await clerk.verifyToken(token, {
+      const payload = await verifyToken(token, {
         secretKey: env.CLERK_SECRET_KEY,
       });
       const userId = payload.sub;

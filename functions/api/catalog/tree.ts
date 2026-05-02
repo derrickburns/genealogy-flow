@@ -32,8 +32,10 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     });
   }
 
-  const text = await obj.text();
-  return new Response(JSON.stringify({ key, name: tree.name, text }), {
-    headers: { "Content-Type": "application/json" },
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "X-Catalog-Key": key,
+    "X-Catalog-Name": tree.name,
   });
+  return new Response(obj.body, { headers });
 };

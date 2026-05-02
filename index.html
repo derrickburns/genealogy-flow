@@ -414,11 +414,46 @@
   #authBar .authTier.anon { background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; }
   #authBar button { padding:3px 10px; border:1px solid #c0ccd8; border-radius:4px; background:#fff; color:#1c2433; font:inherit; font-size:11px; cursor:pointer; }
   #authBar button:hover { background:#f0f5fa; }
+  #authBar button.busy { opacity:0.65; cursor:wait; }
   #authBar .authEmail { color:#334155; font-weight:500; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #apiKeyRow { display:none; align-items:center; gap:6px; font-size:11px; }
   #apiKeyRow input { width:240px; padding:2px 6px; border:1px solid #c0ccd8; border-radius:4px; font:inherit; font-size:11px; }
   #chatLock { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:32px 16px; color:#7a8aa0; font-size:13px; text-align:center; flex:1; }
   #chatLock.hidden { display:none; }
+  #sideTabs { display:flex; gap:0; border-bottom:1px solid #e0e6ee; background:#f4f6fa; flex-shrink:0; }
+  #sideTabs button { flex:1; padding:8px 10px; border:0; border-right:1px solid #e0e6ee; background:transparent; color:#566480; font:inherit; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; }
+  #sideTabs button:last-child { border-right:0; }
+  #sideTabs button.on { background:#fff; color:#1e40af; box-shadow:inset 0 -2px 0 #1e40af; }
+  #chatPanel .sidePane { display:none; flex:1; min-height:0; flex-direction:column; }
+  #chatPanel .sidePane.on { display:flex; }
+  #personPane { overflow-y:auto; background:#f8fbff; }
+  #personPane #selectedPerson { flex:1 1 auto; max-height:none; overflow-y:auto; border-bottom:0; }
+  #personEmpty { margin:12px; padding:18px 14px; border:1px dashed #c0ccd8; border-radius:8px; color:#7a8aa0; font-size:12px; text-align:center; background:#fff; }
+  #clusterPane { background:#f8fafc; }
+  #selectedCluster { flex:1 1 auto; min-height:0; overflow-y:auto; padding:10px 12px; font-size:11.5px; color:#1c2433; }
+  #clusterEmpty { margin:12px; padding:18px 14px; border:1px dashed #c0ccd8; border-radius:8px; color:#7a8aa0; font-size:12px; text-align:center; background:#fff; }
+  .cluster-head { display:flex; gap:9px; align-items:center; margin-bottom:8px; }
+  .cluster-swatch { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; border:2px solid rgba(255,255,255,0.95); box-shadow:0 0 0 1px rgba(20,28,48,0.22); color:#13203a; font-size:9px; font-weight:800; }
+  .cluster-title { font-weight:800; font-size:13px; color:#0a1426; }
+  .cluster-sub { margin-top:1px; color:#566480; font-size:11px; }
+  .cluster-breakdown { display:grid; gap:3px; padding:8px; background:#fff; border:1px solid #d6dde7; border-radius:7px; margin:7px 0 9px; }
+  .cluster-breakdown div { display:flex; justify-content:space-between; gap:10px; }
+  .cluster-breakdown b { color:#566480; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; }
+  .cluster-breakdown span { text-align:right; color:#1c2433; }
+  .cluster-list-head { display:flex; justify-content:space-between; align-items:baseline; margin:10px 0 5px; color:#566480; font-size:10px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; }
+  .cluster-list { display:grid; gap:4px; }
+  .cluster-person { display:grid; grid-template-columns:18px 1fr auto; align-items:center; gap:7px; width:100%; border:1px solid #d6dde7; border-radius:6px; background:#fff; padding:6px 7px; font:inherit; text-align:left; color:inherit; cursor:pointer; }
+  .cluster-person:hover { border-color:#8aa2d0; background:#f2f6ff; }
+  .cluster-marker { display:inline-block; width:11px; height:11px; border:1.5px solid rgba(255,255,255,0.95); box-shadow:0 0 0 1px rgba(20,28,48,0.2); }
+  .cluster-marker.circle { border-radius:50%; }
+  .cluster-marker.diamond { border-radius:2px; transform:rotate(45deg); }
+  .cluster-marker.square { border-radius:2px; }
+  .cluster-person-name { display:block; color:#0a1426; font-weight:700; line-height:1.25; }
+  .cluster-person-meta { display:block; color:#718096; font-size:10.5px; line-height:1.35; margin-top:1px; }
+  .cluster-person-year { color:#566480; font-size:10px; font-variant-numeric:tabular-nums; }
+  .cluster-actions { display:flex; gap:6px; margin-top:9px; }
+  .cluster-ask { background:#2a4a8c; color:#fff; border:none; border-radius:5px; padding:5px 10px; font:inherit; font-size:11px; cursor:pointer; }
+  .cluster-ask:hover { background:#1c3669; }
 </style>
 <script
   src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
@@ -436,6 +471,7 @@
   </span>
   <span class="authSpacer"></span>
   <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">__COMMIT_SHA__</span>
+  <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
   <button id="authBtn">Sign in</button>
 </div>
 <div id="app">
@@ -510,30 +546,44 @@
   </div>
   <div id="chatPanel">
     <div id="sourcesPanel" class="hidden"><div id="sourcesList"></div></div>
-    <div id="selectedPerson" hidden></div>
-    <div id="chatLock">
-      <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">How to use Kindred Flow</div>
-      <ul style="text-align:left; font-size:12px; color:#566480; line-height:1.7; margin:0 0 12px 0; padding-left:18px;">
-        <li>The map shows each person as a moving dot over their lifetime</li>
-        <li>Press <b>Play</b> to animate births, deaths &amp; migrations through time</li>
-        <li>Use the <b>cluster</b> chips below the map to group by lineage, gender, or geography</li>
-        <li>Use the <b>filter</b> chips to focus on blood relatives, ancestors, men, or women</li>
-        <li>Click any dot to select that person and see their events in the right panel</li>
-        <li>Type a name in the <b>home person</b> box to re-center the tree on someone else</li>
-        <li>Sign in to unlock AI chat &mdash; ask questions about the tree in plain English</li>
-      </ul>
-      <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Sign in for AI chat</button>
+    <div id="sideTabs">
+      <button type="button" data-side-tab="person">Person</button>
+      <button type="button" data-side-tab="cluster">Cluster</button>
+      <button type="button" class="on" data-side-tab="chat">Kindred Genealogist</button>
     </div>
-    <div id="chatHistory"></div>
-    <form id="chatForm">
-      <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
-      <div id="chatBar">
-        <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools on</button>
-        <button type="button" id="chatReview" title="Review cross-tree link candidates" hidden>review</button>
-        <button type="button" id="chatClear" title="Clear conversation">clear</button>
-        <button type="submit" id="chatSend">Send</button>
+    <div id="personPane" class="sidePane">
+      <div id="personEmpty">Click a marker on the map to inspect that person.</div>
+      <div id="selectedPerson" hidden></div>
+    </div>
+    <div id="clusterPane" class="sidePane">
+      <div id="clusterEmpty">Click a cluster on the map to inspect its people.</div>
+      <div id="selectedCluster" hidden></div>
+    </div>
+    <div id="chatPane" class="sidePane on">
+      <div id="chatLock">
+        <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">How to use Kindred Flow</div>
+        <ul style="text-align:left; font-size:12px; color:#566480; line-height:1.7; margin:0 0 12px 0; padding-left:18px;">
+          <li>The map shows each person as a moving dot over their lifetime</li>
+          <li>Press <b>Play</b> to animate births, deaths &amp; migrations through time</li>
+          <li>Use the <b>cluster</b> chips below the map to group by lineage, gender, or geography</li>
+          <li>Use the <b>filter</b> chips to focus on blood relatives, ancestors, men, or women</li>
+          <li>Click any dot to select that person and see their events in the right panel</li>
+          <li>Type a name in the <b>home person</b> box to re-center the tree on someone else</li>
+          <li>Sign in to unlock AI chat &mdash; ask questions about the tree in plain English</li>
+        </ul>
+        <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Sign in for AI chat</button>
       </div>
-    </form>
+      <div id="chatHistory"></div>
+      <form id="chatForm">
+        <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
+        <div id="chatBar">
+          <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools on</button>
+          <button type="button" id="chatReview" title="Review cross-tree link candidates" hidden>review</button>
+          <button type="button" id="chatClear" title="Clear conversation">clear</button>
+          <button type="submit" id="chatSend">Send</button>
+        </div>
+      </form>
+    </div>
   </div>
 </aside>
 </div>
@@ -649,6 +699,29 @@ const rootwrap = $("rootwrap");
 // path (Open .ged button, Choose GEDCOM button, drag-drop). Empty disables.
 const DEMO_GED_URL = "/api/demo";
 let _chatProxyOk = null; // hoisted early; detectChatProxy() is called before its declaration site
+const _kfClientErrors = [];
+function _kfRecordClientError(entry) {
+  _kfClientErrors.push({ at: new Date().toISOString(), ...entry });
+  if (_kfClientErrors.length > 25) _kfClientErrors.shift();
+}
+window.addEventListener("error", e => {
+  _kfRecordClientError({
+    type: "error",
+    message: e.message || "",
+    source: e.filename || "",
+    line: e.lineno || null,
+    column: e.colno || null,
+    stack: e.error?.stack || "",
+  });
+});
+window.addEventListener("unhandledrejection", e => {
+  const reason = e.reason;
+  _kfRecordClientError({
+    type: "unhandledrejection",
+    message: reason?.message || String(reason || ""),
+    stack: reason?.stack || "",
+  });
+});
 
 let W = 0, H = 0;
 let mapW = 0, mapTop = 0, mapBottom = 0;
@@ -795,6 +868,14 @@ let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data 
 let _kfSkipNextSeedCount = 0; // suppress VIP autosave for N upcoming processFile() calls
 let _kfStartupLoadUserKey = "";
 let _kfVipCatalogAutoLoadUserKey = "";
+const VIP_CATALOG_TREES = [
+  { key: "golden-rosenberg", name: "Golden-Rosenberg.ged", available: true },
+  { key: "gregory-henry", name: "Gregory-Henry.ged", available: true },
+  { key: "archer", name: "Archer.ged", available: true },
+];
+function _kfCatalogFallbackTrees() {
+  return VIP_CATALOG_TREES.map(t => ({ ...t }));
+}
 let _kfBrowserDb = null;     // sql.js in-memory SQLite DB built from the loaded GEDCOM
 let _sqlJsReady = null;      // Promise — resolves when sql.js WASM is loaded
 const CHAT_PROXY_LS = "kf-chat-proxy";
@@ -2279,54 +2360,55 @@ let _baseDirty = false;
 // handlers all removed. MapLibre owns pan/zoom/pinch/rotate now, and
 // fxCanvas has pointer-events:none so interactions fall through to the map.
 
+function _kfIsClusterSelectionMode() {
+  return clusterMode !== "none" && !!_kfActiveLens === false &&
+    (clusterMode === "aggregate" || clusterMode === "pie" || clusterMode === "parents" ||
+     clusterMode === "gender"    || clusterMode === "tree" || clusterMode === "state" ||
+     (clusterMode === "dispersion" && zoomTransform.k < 2));
+}
+
+function _kfPickDeckClusterAt(x, y) {
+  const clusters = _kfGetClustersForDeck();
+  if (!clusters || !clusters.length) return null;
+  let bestCluster = null, bestD2 = Infinity;
+  for (const cl of clusters) {
+    if (!cl.position) continue;
+    const [lon, lat] = cl.position;
+    const p = _kfMap ? _kfMap.project([lon, lat]) : null;
+    if (!p) continue;
+    const dx = p.x - x, dy = p.y - y;
+    const d2 = dx * dx + dy * dy;
+    const rPx = ((cl.radius || 0) + 8) ** 2;
+    if (d2 < rPx && d2 < bestD2) { bestD2 = d2; bestCluster = cl; }
+  }
+  return bestCluster;
+}
+
+function _kfPickClusterAt(x, y) {
+  if (clusterMode === "aggregate" || (clusterMode === "dispersion" && zoomTransform.k < 2)) {
+    return _kfPickDeckClusterAt(x, y);
+  }
+  return _kfHitTestFxCluster(x, y);
+}
+
 ($("mapWrap")).addEventListener("click", e => {
   if (!timelineLoaded) return;
   const _rect = $("mapWrap").getBoundingClientRect();
   const x = e.clientX - _rect.left, y = e.clientY - _rect.top;
 
-  // In cluster modes the individual dots are hidden. Find the cluster nearest
-  // the click and show the home-person's closest relative within it.
-  const isClusterMode = clusterMode !== "none" && !!_kfActiveLens === false &&
-    (clusterMode === "aggregate" || clusterMode === "pie" || clusterMode === "parents" ||
-     clusterMode === "gender"    || clusterMode === "tree" || clusterMode === "state" ||
-     (clusterMode === "dispersion" && zoomTransform.k < 2));
-  if (isClusterMode) {
-    const clusters = _kfGetClustersForDeck();
-    if (clusters && clusters.length) {
-      let bestCluster = null, bestD2 = Infinity;
-      for (const cl of clusters) {
-        const [lon, lat] = cl.position;
-        const p = _kfMap ? _kfMap.project([lon, lat]) : null;
-        if (!p) continue;
-        const dx = p.x - x, dy = p.y - y;
-        const d2 = dx * dx + dy * dy;
-        const rPx = (cl.radius + 8) * (cl.radius + 8);
-        if (d2 < rPx && d2 < bestD2) { bestD2 = d2; bestCluster = cl; }
-      }
-      if (bestCluster && bestCluster.members && relDistCache.size) {
-        // Find the closest relative of the home person among cluster members
-        let bestDwell = -1, bestRelDist = Infinity;
-        for (const di of bestCluster.members) {
-          const idx = dwellIndi ? dwellIndi[di] : -1;
-          if (idx < 0 || !lastIndividuals || !lastIndividuals[idx]) continue;
-          const ind = lastIndividuals[idx];
-          const dist = relDistCache.get(ind.id) ?? Infinity;
-          if (dist < bestRelDist) { bestRelDist = dist; bestDwell = di; }
-        }
-        if (bestDwell >= 0) {
-          pushHistory();
-          if (highlightedDwell === bestDwell && highlightInferredYear < 0) {
-            highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
-            _kfHidePersonCard();
-          } else {
-            highlightedDwell = bestDwell; highlightInferredYear = -1; highlightInferredSrcYear = -1;
-            if (playing) { playing = false; playBtn.textContent = "Play"; }
-            _kfShowPersonCard(bestDwell);
-          }
-          fxCtx.clearRect(0, 0, W, H);
-          applyExpansion();
-        }
-      }
+  // In cluster modes the individual dots are hidden, so clicking the map
+  // selects the cluster. Person selection happens from the cluster tab list.
+  if (_kfIsClusterSelectionMode()) {
+    const cluster = _kfPickClusterAt(x, y);
+    if (cluster && cluster.members && cluster.members.length) {
+      pushHistory();
+      highlightedDwell = -1;
+      highlightInferredYear = -1;
+      highlightInferredSrcYear = -1;
+      if (playing) { playing = false; playBtn.textContent = "Play"; }
+      _kfShowClusterCard(cluster);
+      fxCtx.clearRect(0, 0, W, H);
+      applyExpansion();
     }
     return;
   }
@@ -4627,9 +4709,11 @@ async function fetchCatalogTrees() {
       headers: { "Authorization": "Bearer " + _clerkToken },
     });
     const j = await r.json();
-    _kfCatalogTrees = j && Array.isArray(j.trees) ? j.trees : [];
-  } catch (_) {
-    _kfCatalogTrees = [];
+    const fetched = j && Array.isArray(j.trees) ? j.trees : [];
+    _kfCatalogTrees = fetched.length ? fetched : _kfCatalogFallbackTrees();
+  } catch (e) {
+    console.warn("[kf] fetchCatalogTrees:", e?.message || e);
+    _kfCatalogTrees = _kfCatalogFallbackTrees();
   }
   return _kfCatalogTrees;
 }
@@ -4643,10 +4727,25 @@ async function loadCatalogTree(key, opts = {}) {
   const r = await fetch("/api/catalog/tree?key=" + encodeURIComponent(key), {
     headers: { "Authorization": "Bearer " + _clerkToken },
   });
-  if (!r.ok) return false;
-  const j = await r.json();
-  const text = typeof j?.text === "string" ? j.text : "";
-  const name = typeof j?.name === "string" ? j.name : key;
+  if (!r.ok) {
+    let detail = String(r.status);
+    try {
+      const err = await r.json();
+      if (err?.error) detail += ` ${err.error}`;
+    } catch (_) {}
+    stats.textContent = `could not load VIP tree ${key}: ${detail}`;
+    return false;
+  }
+  const raw = await r.text();
+  let text = raw;
+  let name = r.headers.get("X-Catalog-Name") || key;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.text === "string") {
+      text = parsed.text;
+      name = typeof parsed?.name === "string" ? parsed.name : name;
+    }
+  } catch (_) {}
   if (!text) return false;
   const sourceName = _kfSourceNameFromFileName(name);
   if (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)) return true;
@@ -4675,11 +4774,21 @@ async function autoLoadVipCatalogTrees() {
     });
     if (!pending.length) { refreshSources(); return; }
     stats.textContent = `loading ${pending.length} VIP tree${pending.length === 1 ? "" : "s"}...`;
+    let loaded = 0;
+    let failed = 0;
     for (const tree of pending) {
       stats.textContent = `loading VIP tree ${tree.name || tree.key}...`;
-      await loadCatalogTree(tree.key, { suppressAutosave: true });
+      try {
+        if (await loadCatalogTree(tree.key, { suppressAutosave: true })) loaded++;
+        else failed++;
+      } catch (e) {
+        failed++;
+        console.warn("[kf] loadCatalogTree:", tree.key, e?.message || e);
+      }
     }
-    stats.textContent = `loaded ${pending.length} VIP tree${pending.length === 1 ? "" : "s"}`;
+    stats.textContent = failed
+      ? `loaded ${loaded} VIP tree${loaded === 1 ? "" : "s"}; ${failed} failed`
+      : `loaded ${loaded} VIP tree${loaded === 1 ? "" : "s"}`;
     refreshSources();
   } catch (e) {
     _kfVipCatalogAutoLoadUserKey = "";
@@ -6226,9 +6335,251 @@ const chatHistory = []; // [{ role, content }]
 const CHAT_KEY_LS = "kf-anthropic-key";
 
 const _spEl = $("selectedPerson");
+const _personEmptyEl = $("personEmpty");
+const _clusterEl = $("selectedCluster");
+const _clusterEmptyEl = $("clusterEmpty");
 let _kfShowNormalizedLocations = false;
 
+function _kfSetSideTab(tab) {
+  const next = tab === "person" || tab === "cluster" ? tab : "chat";
+  document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
+    btn.classList.toggle("on", btn.dataset.sideTab === next);
+  });
+  document.querySelectorAll("#chatPanel .sidePane").forEach(pane => {
+    pane.classList.toggle("on", pane.id === `${next}Pane`);
+  });
+}
+document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
+  btn.addEventListener("click", () => _kfSetSideTab(btn.dataset.sideTab));
+});
+
 const EVENT_LABEL = { BIRT:"Born", DEAT:"Died", MARR:"Married", RESI:"Lived", EMIG:"Emigrated", IMMI:"Immigrated", CENS:"Census", BURI:"Buried", CHR:"Christened", BAPM:"Baptized" };
+
+function _kfRgb(rgb) {
+  const r = Math.max(0, Math.min(255, Math.round(rgb?.[0] ?? 128)));
+  const g = Math.max(0, Math.min(255, Math.round(rgb?.[1] ?? 128)));
+  const b = Math.max(0, Math.min(255, Math.round(rgb?.[2] ?? 128)));
+  return `rgb(${r},${g},${b})`;
+}
+
+function _kfClusterModeLabel(mode = clusterMode) {
+  return ({
+    aggregate: "Density",
+    dispersion: "Density",
+    pie: "Lineage",
+    parents: "Parent knowledge",
+    gender: "Gender",
+    tree: "Tree",
+    state: "State",
+  })[mode] || "Cluster";
+}
+
+function _kfClusterSliceEntries(c) {
+  if (clusterMode === "parents") {
+    const counts = c.parents || [0, 0, 0];
+    return [
+      { label: "2 parents known", count: counts[0] || 0, color: [80, 160, 100] },
+      { label: "1 parent known", count: counts[1] || 0, color: [220, 150, 60] },
+      { label: "0 parents known", count: counts[2] || 0, color: [200, 80, 80] },
+    ];
+  }
+  if (clusterMode === "gender") {
+    const counts = c.genders || [0, 0, 0];
+    return [
+      { label: "Male", count: counts[0] || 0, color: COLOR_GENDER_M },
+      { label: "Female", count: counts[1] || 0, color: COLOR_GENDER_F },
+      { label: "Unknown", count: counts[2] || 0, color: COLOR_GENDER_U },
+    ];
+  }
+  if (clusterMode === "tree" && c.sourceCounts) {
+    return Array.from(c.sourceCounts.entries()).map(([sid, count]) => {
+      const name = c.sourceNames?.get(sid) || String(sid);
+      return { label: name.replace(/\.ged$/i, ""), count, color: TREE_PALETTE[_kfTreeColorFromName(name)] };
+    });
+  }
+  const counts = c.sides || [0, 0, 0];
+  return [
+    { label: "Paternal", count: counts[0] || 0, color: COLOR_PATERNAL },
+    { label: "Maternal", count: counts[1] || 0, color: COLOR_MATERNAL },
+    { label: "Other", count: counts[2] || 0, color: COLOR_OTHER },
+  ];
+}
+
+function _kfConicGradient(entries, fallback) {
+  const total = entries.reduce((sum, e) => sum + (e.count || 0), 0);
+  if (!total) return _kfRgb(fallback || COLOR_OTHER);
+  let start = 0;
+  const stops = [];
+  for (const e of entries) {
+    if (!e.count) continue;
+    const end = start + (e.count / total) * 100;
+    stops.push(`${_kfRgb(e.color)} ${start.toFixed(2)}% ${end.toFixed(2)}%`);
+    start = end;
+  }
+  return stops.length ? `conic-gradient(${stops.join(",")})` : _kfRgb(fallback || COLOR_OTHER);
+}
+
+function _kfClusterSwatchHtml(c) {
+  if (clusterMode === "state" && c.abbr) {
+    const col = TREE_PALETTE[_kfTreeColorFromName(c.abbr)];
+    return `<span class="cluster-swatch" style="background:${_kfRgb(col)};">${escHtml(c.abbr)}</span>`;
+  }
+  if (clusterMode === "aggregate" || clusterMode === "dispersion") {
+    return `<span class="cluster-swatch" style="background:${_kfRgb(c.color || clusterDominantColor(c))};"></span>`;
+  }
+  const bg = _kfConicGradient(_kfClusterSliceEntries(c), c.color || clusterDominantColor(c));
+  return `<span class="cluster-swatch" style="background:${bg};"></span>`;
+}
+
+function _kfClusterCount(c) {
+  return Number.isFinite(c?.count) ? c.count : (c?.members?.length || 0);
+}
+
+function _kfClusterBreakdownHtml(c) {
+  const rows = [
+    ["Year", String(Math.floor(curYear))],
+    ["Mode", _kfClusterModeLabel()],
+    ["People", String(_kfClusterCount(c))],
+  ];
+  if (c.abbr) rows.push(["Region", c.abbr]);
+  const entries = _kfClusterSliceEntries(c).filter(e => e.count);
+  if (entries.length) rows.push([
+    clusterMode === "parents" ? "Parents" : clusterMode === "gender" ? "Gender" : clusterMode === "tree" ? "Trees" : "Lineage",
+    entries.map(e => `${e.label} ${e.count}`).join(" · "),
+  ]);
+  return `<div class="cluster-breakdown">` + rows.map(([k, v]) =>
+    `<div><b>${escHtml(k)}</b><span>${escHtml(v)}</span></div>`
+  ).join("") + `</div>`;
+}
+
+function _kfClusterMemberColor(di, c) {
+  if (clusterMode === "parents") {
+    return dwellSrc[di] === 0 ? [80, 160, 100] : dwellSrc[di] === 1 ? [220, 150, 60] : [200, 80, 80];
+  }
+  if (clusterMode === "gender") {
+    const ind = lastIndividuals?.[dwellIndi[di]];
+    return ind?.sex === "M" ? COLOR_GENDER_M : ind?.sex === "F" ? COLOR_GENDER_F : COLOR_GENDER_U;
+  }
+  if (clusterMode === "tree") {
+    const sources = _kfPersonSources?.get(dwellIndi[di]);
+    const firstName = sources && sources.size ? Array.from(sources.values())[0] : (_kfActiveTreeName || lastFileName);
+    return TREE_PALETTE[_kfTreeColorFromName(firstName)];
+  }
+  if (clusterMode === "state" && c?.abbr) {
+    return TREE_PALETTE[_kfTreeColorFromName(c.abbr)];
+  }
+  return colorForFinal(dwellSide[di], dwellSrc[di], dwellIndi[di]);
+}
+
+function _kfClusterMemberMarkerHtml(di, c) {
+  const ps = dwellSrc[di];
+  const shape = ps === 2 ? "square" : ps === 1 ? "diamond" : "circle";
+  return `<span class="cluster-marker ${shape}" style="background:${_kfRgb(_kfClusterMemberColor(di, c))};"></span>`;
+}
+
+function _kfClusterMemberRows(c) {
+  const rows = [];
+  const seen = new Set();
+  for (const di of c.members || []) {
+    const idx = dwellIndi ? dwellIndi[di] : -1;
+    const ind = idx >= 0 && lastIndividuals ? lastIndividuals[idx] : null;
+    if (!ind || seen.has(ind.id)) continue;
+    seen.add(ind.id);
+    const life = [
+      ind.birth_year ? `b. ${ind.birth_year}` : "",
+      ind.death_year ? `d. ${ind.death_year}` : "",
+    ].filter(Boolean).join(" ");
+    const rel = relationCache.get(ind.id) || "";
+    const place = (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
+    const year = Number.isFinite(dwellY?.[di]) ? dwellY[di] : "";
+    const meta = [rel, life, place].filter(Boolean).join(" · ");
+    rows.push({
+      di,
+      name: ind.name || "?",
+      rel,
+      life,
+      place,
+      year,
+      sortDist: relDistCache.get(ind.id) ?? Infinity,
+      birthYear: Number.isFinite(ind.birth_year) ? ind.birth_year : 9999,
+      html: `<button type="button" class="cluster-person" data-di="${di}">` +
+        _kfClusterMemberMarkerHtml(di, c) +
+        `<span>` +
+          `<span class="cluster-person-name">${escHtml(ind.name || "?")}</span>` +
+          (meta ? `<span class="cluster-person-meta">${escHtml(meta)}</span>` : "") +
+        `</span>` +
+        `<span class="cluster-person-year">${escHtml(year)}</span>` +
+      `</button>`,
+    });
+  }
+  rows.sort((a, b) => {
+    const ad = Number.isFinite(a.sortDist) ? a.sortDist : 1e9;
+    const bd = Number.isFinite(b.sortDist) ? b.sortDist : 1e9;
+    return ad - bd || a.birthYear - b.birthYear || a.name.localeCompare(b.name);
+  });
+  return rows;
+}
+
+function _kfClusterPrompt(c, rows) {
+  const people = rows.slice(0, 30).map(r => {
+    const bits = [r.name, r.rel && r.rel !== "self" ? r.rel : "", r.life, r.place].filter(Boolean);
+    return bits.join(" / ");
+  }).join("; ");
+  const more = rows.length > 30 ? `; plus ${rows.length - 30} more` : "";
+  return `Analyze this ${_kfClusterModeLabel().toLowerCase()} cluster in ${Math.floor(curYear)}. It contains ${rows.length} people. People: ${people}${more}.`;
+}
+
+function _kfShowClusterCard(c) {
+  if (!_clusterEl) return;
+  const rows = _kfClusterMemberRows(c);
+  const title = c.abbr ? `${c.abbr} cluster` : `${_kfClusterModeLabel()} cluster`;
+  const prompt = _kfClusterPrompt(c, rows);
+  _clusterEl.innerHTML =
+    `<div class="cluster-head">` +
+      _kfClusterSwatchHtml(c) +
+      `<div>` +
+        `<div class="cluster-title">${escHtml(title)}</div>` +
+        `<div class="cluster-sub">${rows.length} ${rows.length === 1 ? "person" : "people"} visible in ${Math.floor(curYear)}</div>` +
+      `</div>` +
+    `</div>` +
+    _kfClusterBreakdownHtml(c) +
+    `<div class="cluster-list-head"><span>People</span><span>Click to select</span></div>` +
+    `<div class="cluster-list">${rows.map(r => r.html).join("")}</div>` +
+    `<div class="cluster-actions"><button type="button" class="cluster-ask" data-ask="${escHtml(prompt)}">Ask Kindred Genealogist about this cluster</button></div>`;
+  _clusterEl.hidden = false;
+  if (_clusterEmptyEl) _clusterEmptyEl.hidden = true;
+  _kfSetSideTab("cluster");
+
+  _clusterEl.querySelectorAll(".cluster-person").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const di = Number(btn.dataset.di);
+      if (!Number.isFinite(di) || di < 0) return;
+      pushHistory();
+      highlightedDwell = di;
+      highlightInferredYear = -1;
+      highlightInferredSrcYear = -1;
+      if (playing) { playing = false; playBtn.textContent = "Play"; }
+      _kfShowPersonCard(di);
+      fxCtx.clearRect(0, 0, W, H);
+      applyExpansion();
+    });
+  });
+
+  _clusterEl.querySelector(".cluster-ask")?.addEventListener("click", async () => {
+    const text = _clusterEl.querySelector(".cluster-ask")?.dataset.ask;
+    if (!text) return;
+    _kfSetSideTab("chat");
+    if (_chatBusy) { chatInputEl.value = text; chatInputEl.focus(); return; }
+    chatHistory.push({ role: "user", content: text });
+    renderChat();
+    _chatBusy = true;
+    chatSendBtn.disabled = true;
+    chatSendBtn.textContent = "...";
+    try { await runChatTurn(text); }
+    catch (err) { appendError(err.message || String(err)); }
+    finally { _chatBusy = false; chatSendBtn.disabled = false; chatSendBtn.textContent = "Send"; }
+  });
+}
 
 function _kfNormalizedPlaceForDisplay(place) {
   const rawPlace = String(place || "").trim();
@@ -6332,6 +6683,16 @@ function _kfRelativeBlockHtml(label, ind) {
   `</div>`;
 }
 
+function _kfLivingAgeLabel(ind) {
+  const birthYear = Number.parseInt(ind?.birth_year, 10);
+  if (!Number.isFinite(birthYear)) return "";
+  const thisYear = new Date().getFullYear();
+  if (birthYear > thisYear) return "";
+  if (ind?.death_year != null) return "";
+  if (typeof _kfPersonMayBeAliveAtYear === "function" && !_kfPersonMayBeAliveAtYear(ind, thisYear)) return "";
+  return `age ${thisYear - birthYear}`;
+}
+
 function _kfShowPersonCard(di) {
   if (!_spEl || !lastIndividuals) return;
   const idx = dwellIndi[di];
@@ -6339,9 +6700,10 @@ function _kfShowPersonCard(di) {
   if (!ind) return;
 
   const sex = ind.sex === "M" ? "Male" : ind.sex === "F" ? "Female" : "";
+  const age = _kfLivingAgeLabel(ind);
   const rel = (relationCache && ind.id !== lastRootId) ? (relationCache.get(ind.id) || "") : "";
   console.log("[kf] personCard rel:", ind.id, "->", JSON.stringify(rel), "cacheSize:", relationCache?.size, "rootId:", lastRootId);
-  const sub = [sex, rel].filter(Boolean).join(" · ");
+  const sub = [sex, age, rel].filter(Boolean).join(" · ");
 
   const clickedType = dwellType[di];
   const clickedYear = dwellY[di];
@@ -6399,10 +6761,12 @@ function _kfShowPersonCard(di) {
     childrenHtml +
     `<div class="sp-actions">` +
     `<button class="sp-loc-toggle${_kfShowNormalizedLocations ? " on" : ""}" data-loc-toggle>${_kfShowNormalizedLocations ? "Hide location comparison" : "Compare locations"}</button>` +
-    `<button class="sp-ask" data-ask="${escHtml(askText)}">Ask Claude about them</button>` +
+    `<button class="sp-ask" data-ask="${escHtml(askText)}">Ask Kindred Genealogist</button>` +
     `<button class="sp-dismiss">Dismiss</button>` +
     `</div>`;
   _spEl.hidden = false;
+  if (_personEmptyEl) _personEmptyEl.hidden = true;
+  _kfSetSideTab("person");
 
   _spEl.querySelectorAll(".sp-tab").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -6420,6 +6784,7 @@ function _kfShowPersonCard(di) {
   _spEl.querySelector(".sp-ask").addEventListener("click", async () => {
     const text = _spEl.querySelector(".sp-ask").dataset.ask;
     if (!text) return;
+    _kfSetSideTab("chat");
     if (_chatBusy) { chatInputEl.value = text; chatInputEl.focus(); return; }
     chatHistory.push({ role: "user", content: text });
     renderChat();
@@ -6442,6 +6807,7 @@ function _kfShowPersonCard(di) {
 
 function _kfHidePersonCard() {
   if (_spEl) { _spEl.hidden = true; _spEl.innerHTML = ""; }
+  if (_personEmptyEl) _personEmptyEl.hidden = false;
 }
 let _chatBusy = false;
 
@@ -6781,6 +7147,229 @@ function buildChatContext() {
     }
   }
   return lines.join("\n");
+}
+
+const _KF_LOOKUP_STOPWORDS = new Set([
+  "about", "again", "alive", "alaska", "all", "also", "and", "are", "ask", "at",
+  "back", "been", "case", "can", "cannot", "claude", "current", "data", "database",
+  "did", "does", "family", "for", "from", "get", "have", "how", "in", "into",
+  "living", "map", "not", "now", "of", "on", "people", "person", "place", "query",
+  "same", "see", "show", "that", "the", "their", "them", "there", "these", "they",
+  "this", "time", "tree", "was", "were", "what", "when", "where", "who", "with",
+]);
+
+function _kfSelectedSourceSnapshots() {
+  const selected = _kfSelectedSourceIds && _kfSelectedSourceIds.size ? _kfSelectedSourceIds : null;
+  return [..._kfLoadedSources.values()].filter(src => !selected || selected.has(src.source_id));
+}
+
+function _kfSingularizeSurnameToken(token) {
+  let s = String(token || "").toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, "");
+  if (!s) return "";
+  if (s.endsWith("ies") && s.length > 4) return s.slice(0, -3) + "y";
+  if (s.endsWith("s") && !s.endsWith("ss") && s.length > 3) return s.slice(0, -1);
+  return s;
+}
+
+function _kfSelectedSurnameSet() {
+  const out = new Set();
+  for (const src of _kfSelectedSourceSnapshots()) {
+    for (const ind of (src.individuals || [])) {
+      const surname = _kfSurnameOf(ind.name);
+      if (surname) out.add(surname.toLowerCase());
+    }
+  }
+  return out;
+}
+
+function _kfSurnameCandidatesFromQuestion(text) {
+  const known = _kfSelectedSurnameSet();
+  if (!known.size) return [];
+  const out = [];
+  const seen = new Set();
+  const words = String(text || "").toLowerCase().match(/[a-z][a-z'-]{2,}/g) || [];
+  for (const word of words) {
+    const base = _kfSingularizeSurnameToken(word);
+    if (!base || _KF_LOOKUP_STOPWORDS.has(base) || !known.has(base) || seen.has(base)) continue;
+    seen.add(base);
+    out.push(base);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function _kfKnownPlaceTokens() {
+  const out = new Set();
+  for (const src of _kfSelectedSourceSnapshots()) {
+    for (const ind of (src.individuals || [])) {
+      for (const ev of (ind.events || [])) {
+        const words = String(ev.place || "").toLowerCase().match(/[a-z][a-z'-]{2,}/g) || [];
+        for (const word of words) {
+          if (!_KF_LOOKUP_STOPWORDS.has(word)) out.add(word);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function _kfPlaceTermsFromText(text, surnames = []) {
+  const known = _kfKnownPlaceTokens();
+  if (!known.size) return [];
+  const surnameSet = new Set(surnames.map(s => String(s).toLowerCase()));
+  const out = [];
+  const seen = new Set();
+  const words = String(text || "").toLowerCase().match(/[a-z][a-z'-]{2,}/g) || [];
+  for (const word of words) {
+    const baseSurname = _kfSingularizeSurnameToken(word);
+    if (_KF_LOOKUP_STOPWORDS.has(word) || surnameSet.has(baseSurname)) continue;
+    if (!known.has(word) || seen.has(word)) continue;
+    seen.add(word);
+    out.push(word);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+function _kfNormalizePlaceTerms(place) {
+  if (Array.isArray(place)) {
+    return place.flatMap(p => _kfNormalizePlaceTerms(p));
+  }
+  return String(place || "")
+    .toLowerCase()
+    .match(/[a-z][a-z'-]{2,}/g)?.filter(w => !_KF_LOOKUP_STOPWORDS.has(w)) || [];
+}
+
+function _kfPlaceMatchesTerms(place, terms) {
+  if (!terms || !terms.length) return true;
+  const hay = String(place || "").toLowerCase();
+  return terms.some(term => hay.includes(term));
+}
+
+function _kfPlacedEvents(ind) {
+  return (ind?.events || [])
+    .filter(ev => ev && ev.place && Number.isFinite(parseInt(ev.year, 10)))
+    .map(ev => ({ type: ev.type || "", year: parseInt(ev.year, 10), place: String(ev.place || "") }))
+    .sort((a, b) => a.year - b.year || a.type.localeCompare(b.type));
+}
+
+function _kfLatestPlacedEvent(ind, throughYear) {
+  let latest = null;
+  for (const ev of _kfPlacedEvents(ind)) {
+    if (ev.year > throughYear) continue;
+    if (!latest || ev.year >= latest.year) latest = ev;
+  }
+  return latest;
+}
+
+function _kfDwellIntervalsForPerson(ind, throughYear) {
+  const events = _kfPlacedEvents(ind);
+  const out = [];
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    const next = events[i + 1];
+    let end = next ? next.year - 1 : throughYear;
+    if (ind?.death_year != null) end = Math.min(end, ind.death_year);
+    if (end < ev.year) end = ev.year;
+    out.push({ start: ev.year, end, type: ev.type, place: ev.place });
+  }
+  return out;
+}
+
+function _kfPersonLivingStatusNow(ind, year = new Date().getFullYear()) {
+  if (ind?.death_year != null) return "deceased";
+  return _kfPersonMayBeAliveAtYear(ind, year) ? "living_or_presumed_living" : "presumed_deceased";
+}
+
+function _kfFindPeopleRows(criteria = {}) {
+  const year = Number.isFinite(Number(criteria.year)) ? Number(criteria.year) : new Date().getFullYear();
+  const limit = Math.max(1, Math.min(100, parseInt(criteria.limit, 10) || 40));
+  const surname = criteria.surname ? _kfSingularizeSurnameToken(criteria.surname) : "";
+  const nameNeedle = criteria.name ? String(criteria.name).toLowerCase().trim() : "";
+  const livingOnly = criteria.living === true || String(criteria.status || "").toLowerCase() === "living";
+  const placeTerms = Array.isArray(criteria.placeTerms)
+    ? criteria.placeTerms.flatMap(p => _kfNormalizePlaceTerms(p))
+    : _kfNormalizePlaceTerms(criteria.placeTerms || criteria.place);
+  const mustHavePlace = !!criteria.mustHavePlace;
+  const rows = [];
+  let total = 0;
+
+  for (const src of _kfSelectedSourceSnapshots()) {
+    for (const ind of (src.individuals || [])) {
+      const personSurname = _kfSurnameOf(ind.name || "");
+      if (surname && String(personSurname || "").toLowerCase() !== surname) continue;
+      if (nameNeedle && !String(ind.name || "").toLowerCase().includes(nameNeedle)) continue;
+      const status = _kfPersonLivingStatusNow(ind, year);
+      if (livingOnly && status !== "living_or_presumed_living") continue;
+      const latest = _kfLatestPlacedEvent(ind, year);
+      const intervals = _kfDwellIntervalsForPerson(ind, year);
+      const matchingIntervals = placeTerms.length
+        ? intervals.filter(iv => _kfPlaceMatchesTerms(iv.place, placeTerms))
+        : [];
+      if (mustHavePlace && placeTerms.length && matchingIntervals.length === 0) continue;
+      total++;
+      if (rows.length >= limit) continue;
+      rows.push({
+        tree: src.name,
+        id: ind.id,
+        name: ind.name || "?",
+        sex: ind.sex || null,
+        birth: ind.birth_year ?? null,
+        death: ind.death_year ?? null,
+        status,
+        latest_place: latest?.place || null,
+        latest_year: latest?.year ?? null,
+        place_intervals: matchingIntervals.slice(0, 8),
+        placed_events: _kfPlacedEvents(ind).slice(-12),
+      });
+    }
+  }
+  rows.sort((a, b) => (a.birth ?? 9999) - (b.birth ?? 9999) || a.name.localeCompare(b.name));
+  return {
+    ok: true,
+    criteria: { surname: surname || null, name: nameNeedle || null, living: livingOnly, year, placeTerms, mustHavePlace },
+    total,
+    truncated: total > rows.length,
+    rows,
+  };
+}
+
+function _kfFormatInterval(iv) {
+  if (!iv) return "";
+  const range = iv.start === iv.end ? String(iv.start) : `${iv.start}-${iv.end}`;
+  return `${range} ${iv.place}`;
+}
+
+function buildQuestionDataContext(userMsg) {
+  if (!_kfLoadedSources.size) return "";
+  const lower = String(userMsg || "").toLowerCase();
+  const surnames = _kfSurnameCandidatesFromQuestion(userMsg);
+  if (!surnames.length) return "";
+  const shouldLookup = /\b(living|alive|all|everyone|where|when|same|together|database|db|people|surname|family|families)\b/.test(lower)
+    || surnames.some(s => lower.includes(`${s}s`));
+  if (!shouldLookup) return "";
+
+  const placeTerms = _kfPlaceTermsFromText(userMsg, surnames);
+  const living = /\b(living|alive)\b/.test(lower);
+  const blocks = [];
+  for (const surname of surnames.slice(0, 2)) {
+    const result = _kfFindPeopleRows({ surname, living, placeTerms, limit: 40 });
+    const label = surname.charAt(0).toUpperCase() + surname.slice(1);
+    const lines = [
+      `Database lookup for surname ${label} (scoped to checked trees): ${result.total} ${living ? "living/presumed-living " : ""}match${result.total === 1 ? "" : "es"}${result.truncated ? "; showing first 40" : ""}.`,
+    ];
+    if (placeTerms.length) lines.push(`Place terms recognized from question: ${placeTerms.join(", ")}.`);
+    for (const row of result.rows) {
+      const life = [row.birth ? `b. ${row.birth}` : "", row.death ? `d. ${row.death}` : row.status].filter(Boolean).join(", ");
+      const latest = row.latest_place ? `latest known ${row.latest_place} in ${row.latest_year}` : "no placed events";
+      const intervals = placeTerms.length
+        ? (row.place_intervals.length ? `matching intervals: ${row.place_intervals.map(_kfFormatInterval).join("; ")}` : `matching intervals: none`)
+        : "";
+      lines.push(`- ${row.name} (${life}; ${row.tree}): ${latest}${intervals ? `; ${intervals}` : ""}.`);
+    }
+    blocks.push(lines.join("\n"));
+  }
+  return `Database context precomputed for this question:\n${blocks.join("\n\n")}`;
 }
 
 // Page-control API for Claude. Each method returns a small status object that
@@ -7582,6 +8171,11 @@ window.kfApi = {
     return { ok: true, person: { id: ind.id, name: ind.name }, year: y, radiusYears, contemporaries: out, total: out.length };
   },
 
+  findPeople(criteria) {
+    if (!_kfLoadedSources.size) return { error: "no tree loaded" };
+    return _kfFindPeopleRows(criteria || {});
+  },
+
   setHighlight(idsOrNames, opts) {
     if (!lastIndividuals) return { error: "no tree loaded" };
     if (!Array.isArray(idsOrNames)) return { error: "expected array of person ids or names" };
@@ -7821,6 +8415,7 @@ Available tools. jsonArgs is a single JSON value:
 - getDescendants(name, maxGen?)    Same shape, descending through children. Default maxGen 6.
 - getMigrations(name)              Returns {moves: [{from, to, years_elapsed, miles}, ...]} sorted chronologically. Use this when narrating someone's life ("she moved 3 times: ...").
 - getContemporaries(name, year?, {radiusYears?})  Returns others alive at that year (default: their birth year). Use to ground "who else was alive when X was born?" or "who was Helen's generation?".
+- findPeople({surname?, name?, living?, place?, year?, limit?})  Search loaded/selected trees for groups of people. Use this before answering surname/group questions like "living Caseys" or "were they all in Alaska?" Returns birth/death/status, latest known place, placed events, and matching place intervals.
 - setHighlight([names...], {color?: [r,g,b]})  Draw a colored ring over the latest dwell of each named person. Use to visually answer "where were ALL the immigrants from Italy in 1900?" — pair with sql() to enumerate.
 - clearHighlight()                 Remove highlight rings.
 - sql(query)                       Run a read-only SELECT against the browser SQLite database spanning the currently loaded trees. Returns {ok, rows, truncated, totalRows}. Results capped at 200 rows. The visible tables are automatically scoped to the tree subset the user has checked in the trees panel, so the same query language works whether one tree or several are selected.
@@ -7881,8 +8476,10 @@ async function detectChatProxy() {
 
 async function callClaudeStream(userMsg, onDelta) {
   const ctx = buildChatContext();
+  const dataCtx = buildQuestionDataContext(userMsg);
+  const fullCtx = [ctx, dataCtx].filter(Boolean).join("\n\n");
   const messages = chatHistory.map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }));
-  messages.push({ role: "user", content: ctx ? `Context for current view:\n${ctx}\n\nQuestion: ${userMsg}` : userMsg });
+  messages.push({ role: "user", content: fullCtx ? `Context for current view:\n${fullCtx}\n\nQuestion: ${userMsg}` : userMsg });
   const requestBody = JSON.stringify({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
@@ -8199,6 +8796,143 @@ $("chatClear").addEventListener("click", async () => {
   if (proxy) { fetch(proxy + "/reset", { method: "POST" }).catch(() => {}); }
 });
 renderChat();
+
+let _kfHtml2CanvasReady = null;
+function _kfShortText(value, max = 1200) {
+  const s = String(value ?? "");
+  return s.length > max ? s.slice(0, max) + "...[truncated]" : s;
+}
+
+function _kfBuildIssueContext() {
+  const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
+  const root = lastRootId ? lastIndiById?.get(lastRootId) : null;
+  const selectedPlace = highlightedDwell >= 0 && dwellPlace?.[highlightedDwell] >= 0 ? placesList[dwellPlace[highlightedDwell]] : null;
+  const email = _clerkInstance?.user?.primaryEmailAddress?.emailAddress || "";
+  return {
+    page: {
+      url: location.href,
+      title: document.title,
+      commit: $("buildVersion")?.textContent?.trim() || "",
+      reported_at: new Date().toISOString(),
+      user_agent: navigator.userAgent,
+      viewport: { width: innerWidth, height: innerHeight, device_pixel_ratio: devicePixelRatio },
+    },
+    auth_client: {
+      tier: _clerkUserTier,
+      clerk_user_id: _clerkInstance?.user?.id || null,
+      email: email || null,
+    },
+    app_state: {
+      stats: stats?.textContent || "",
+      active_tree: _kfActiveTreeName,
+      loaded_trees: typeof _kfGetLoadedSourcesList === "function" ? _kfGetLoadedSourcesList() : [],
+      selected_source_ids: [...(_kfSelectedSourceIds || [])],
+      vip_catalog: _kfCatalogTrees,
+      year: Math.floor(curYear),
+      min_year: minYear,
+      max_year: maxYear,
+      playing,
+      cluster_mode: clusterMode,
+      kin_lines: kinLinesN,
+      filter: curFilter,
+      sex_filter: _kfSexFilter,
+      surname_filter: _kfSurnameFilter ? [..._kfSurnameFilter] : null,
+      root: root ? { id: root.id, name: root.name, birth: root.birth_year, death: root.death_year } : null,
+      selected_person: selected ? {
+        id: selected.id,
+        name: selected.name,
+        birth: selected.birth_year,
+        death: selected.death_year,
+        dwell_year: dwellY?.[highlightedDwell] ?? null,
+        dwell_place: selectedPlace,
+      } : null,
+    },
+    recent_chat: chatHistory.slice(-12).map(m => ({
+      role: m.role,
+      kind: m.kind || null,
+      content: _kfShortText(m.content, 1500),
+    })),
+    recent_client_errors: _kfClientErrors,
+  };
+}
+
+function _kfLoadHtml2Canvas() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  if (_kfHtml2CanvasReady) return _kfHtml2CanvasReady;
+  _kfHtml2CanvasReady = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    s.async = true;
+    s.onload = () => window.html2canvas ? resolve(window.html2canvas) : reject(new Error("html2canvas did not initialize"));
+    s.onerror = () => reject(new Error("html2canvas failed to load"));
+    document.head.appendChild(s);
+  });
+  return _kfHtml2CanvasReady;
+}
+
+async function _kfCaptureIssueSnapshot() {
+  try {
+    const html2canvas = await _kfLoadHtml2Canvas();
+    const canvas = await html2canvas(document.body, {
+      backgroundColor: "#ffffff",
+      logging: false,
+      useCORS: true,
+      allowTaint: false,
+      scale: Math.min(1.5, window.devicePixelRatio || 1),
+    });
+    return { kind: "window", dataUrl: canvas.toDataURL("image/jpeg", 0.72) };
+  } catch (e) {
+    try {
+      const map = window.kfApi?.capturePng?.();
+      if (map?.dataUrl) return { kind: "map-fallback", dataUrl: map.dataUrl, error: e?.message || String(e) };
+    } catch (_) {}
+    return { kind: "none", dataUrl: "", error: e?.message || String(e) };
+  }
+}
+
+async function _kfReportIssue() {
+  const description = prompt("Describe the issue. Include what you expected and what happened.");
+  if (!description || !description.trim()) return;
+  const btn = $("reportIssue");
+  const oldText = btn?.textContent || "Report issue";
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("busy");
+    btn.textContent = "Reporting...";
+  }
+  try {
+    const snapshot = await _kfCaptureIssueSnapshot();
+    const headers = { "Content-Type": "application/json" };
+    if (_clerkToken) headers["Authorization"] = "Bearer " + _clerkToken;
+    const resp = await fetch("/api/issues/report", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        description: description.trim(),
+        commit: $("buildVersion")?.textContent?.trim() || "",
+        snapshotDataUrl: snapshot.dataUrl || "",
+        snapshotKind: snapshot.kind,
+        context: _kfBuildIssueContext(),
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || `Issue report failed (${resp.status})`);
+    stats.textContent = `created issue #${data.number}`;
+    if (data.url && confirm(`Created GitHub issue #${data.number}. Open it now?`)) {
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    }
+  } catch (e) {
+    alert(`Could not create issue: ${e.message || e}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("busy");
+      btn.textContent = oldText;
+    }
+  }
+}
+$("reportIssue")?.addEventListener("click", _kfReportIssue);
+
 // Default to locked state; Clerk will unlock once it resolves auth
 applyChatAccess("anon");
 // Fire the auto-intro after first paint so the page lays out before the
