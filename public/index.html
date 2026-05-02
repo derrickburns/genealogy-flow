@@ -822,6 +822,8 @@ let lastTimeline = null, lastFileName = "genealogy";
 let _kfSourceId = null;      // D1 source_id for VIP server-side queries
 let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data already in D1)
 let _kfSkipNextSeedCount = 0; // suppress VIP autosave for N upcoming processFile() calls
+let _kfStartupLoadUserKey = "";
+let _kfVipCatalogAutoLoadUserKey = "";
 let _kfBrowserDb = null;     // sql.js in-memory SQLite DB built from the loaded GEDCOM
 let _sqlJsReady = null;      // Promise — resolves when sql.js WASM is loaded
 const CHAT_PROXY_LS = "kf-chat-proxy";
@@ -4661,7 +4663,11 @@ async function fetchCatalogTrees() {
   return _kfCatalogTrees;
 }
 
-async function loadCatalogTree(key) {
+function _kfSourceNameFromFileName(name) {
+  return String(name || "").replace(/\.(ged|gedcom)$/i, "").trim() || "untitled";
+}
+
+async function loadCatalogTree(key, opts = {}) {
   if (!key || !_clerkToken) return false;
   const r = await fetch("/api/catalog/tree?key=" + encodeURIComponent(key), {
     headers: { "Authorization": "Bearer " + _clerkToken },
@@ -4671,9 +4677,43 @@ async function loadCatalogTree(key) {
   const text = typeof j?.text === "string" ? j.text : "";
   const name = typeof j?.name === "string" ? j.name : key;
   if (!text) return false;
+  const sourceName = _kfSourceNameFromFileName(name);
+  if (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)) return true;
   const file = new File([text], name, { type: "text/plain" });
-  await processFile(file);
+  if (opts.suppressAutosave) _kfSkipNextSeed = true;
+  try {
+    await processFile(file);
+  } catch (e) {
+    if (opts.suppressAutosave) _kfSkipNextSeed = false;
+    throw e;
+  }
   return true;
+}
+
+async function autoLoadVipCatalogTrees() {
+  if (_clerkUserTier !== "vip" || !_clerkToken) return;
+  const userKey = _kfStartupLoadUserKey || _clerkToken;
+  if (_kfVipCatalogAutoLoadUserKey === userKey) return;
+  _kfVipCatalogAutoLoadUserKey = userKey;
+  try {
+    const trees = (_kfCatalogTrees.length ? _kfCatalogTrees : await fetchCatalogTrees())
+      .filter(t => t && t.available !== false);
+    const pending = trees.filter(t => {
+      const sourceName = _kfSourceNameFromFileName(t.name || t.key);
+      return !_kfTreeCache.has(sourceName) && !_kfLoadedSources.has(sourceName);
+    });
+    if (!pending.length) { refreshSources(); return; }
+    stats.textContent = `loading ${pending.length} VIP tree${pending.length === 1 ? "" : "s"}...`;
+    for (const tree of pending) {
+      stats.textContent = `loading VIP tree ${tree.name || tree.key}...`;
+      await loadCatalogTree(tree.key, { suppressAutosave: true });
+    }
+    stats.textContent = `loaded ${pending.length} VIP tree${pending.length === 1 ? "" : "s"}`;
+    refreshSources();
+  } catch (e) {
+    _kfVipCatalogAutoLoadUserKey = "";
+    console.warn("[kf] autoLoadVipCatalogTrees:", e?.message || e);
+  }
 }
 
 async function deleteSource(id) {
@@ -4715,8 +4755,10 @@ function renderSources(list) {
   if (_kfCatalogTrees.length) {
     parts.push(`<span class="label" style="margin-left:8px">vip library</span>`);
     for (const t of _kfCatalogTrees) {
-      const disabled = t.available === false ? " disabled" : "";
-      const title = t.available === false ? "Not available in storage yet" : "Load this server tree";
+      const sourceName = _kfSourceNameFromFileName(t.name || t.key);
+      const loaded = _kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName);
+      const disabled = t.available === false || loaded ? " disabled" : "";
+      const title = t.available === false ? "Not available in storage yet" : loaded ? "Already loaded" : "Load this server tree";
       parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}"${disabled} title="${escChat(title)}">${escChat(t.name)}</button>`);
     }
   }
@@ -4752,6 +4794,7 @@ function renderSources(list) {
           const text = _kfTreeCache.get(nextName);
           const fake = new File([text], nextName + ".ged", { type: "text/plain" });
           _kfSkipNextProxyLoad = true;
+          _kfSkipNextSeed = true;
           processFile(fake).catch(e => console.warn("[kf] post-delete switch:", e?.message || e));
         } else {
           lastIndividuals = null;
@@ -4776,7 +4819,7 @@ function renderSources(list) {
       const key = el.getAttribute("data-catalog") || "";
       if (!key) return;
       el.setAttribute("disabled", "disabled");
-      try { await loadCatalogTree(key); }
+      try { await loadCatalogTree(key, { suppressAutosave: true }); }
       finally { el.removeAttribute("disabled"); refreshSources(); }
     });
   });
@@ -7249,6 +7292,7 @@ window.kfApi = {
     const text = _kfTreeCache.get(target);
     const fake = new File([text], target + ".ged", { type: "text/plain" });
     _kfSkipNextProxyLoad = true;
+    _kfSkipNextSeed = true;
     // Fire and forget: processFile is async but we return synchronously so
     // Claude can chain calls. The caller can verify via getState() if needed.
     processFile(fake).catch(e => console.warn("[kf] setActiveTree:", e?.message || e));
@@ -8270,6 +8314,8 @@ async function updateAuthUI(user) {
     if (versionEl) versionEl.style.display = "none";
     applyChatAccess("anon");
     _kfCatalogTrees = [];
+    _kfStartupLoadUserKey = "";
+    _kfVipCatalogAutoLoadUserKey = "";
     refreshSources();
     return;
   }
@@ -8292,8 +8338,17 @@ async function updateAuthUI(user) {
   applyChatAccess(_clerkUserTier);
   refreshSources();
 
-  // Auto-load any previously uploaded GEDCOM for this user
-  autoLoadCloudGedcom();
+  const startupUserKey = user.id || email || "signed-in";
+  if (_kfStartupLoadUserKey !== startupUserKey) {
+    _kfStartupLoadUserKey = startupUserKey;
+    autoLoadStartupTrees().catch(e => console.warn("[kf] autoLoadStartupTrees:", e?.message || e));
+  }
+}
+
+async function autoLoadStartupTrees() {
+  await autoLoadCloudGedcom();
+  if (_clerkUserTier === "vip") await autoLoadVipCatalogTrees();
+  autoIntroOnce();
 }
 
 async function autoLoadCloudGedcom() {
