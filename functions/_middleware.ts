@@ -23,14 +23,19 @@ const DEFAULT_VIP_EMAILS = [
   "mayasylvia.burns@gmail.com",
   "jamil.burns@gmail.com",
   "derrickrburns@gmail.com",
+  "derrickburns@gmail.com",
+  "derrick.burns@gmail.com",
+  "derrick@kindredsearch.com",
+  "derrickburns@kindredsearch.com",
   "paigeunterberg@gmail.com",
   "james.raby@gmail.com",
 ];
 
 function getVipEmails(env: Env): Set<string> {
-  const raw = typeof env.VIP_EMAILS === "string" && env.VIP_EMAILS.trim()
-    ? env.VIP_EMAILS
-    : DEFAULT_VIP_EMAILS.join(",");
+  const raw = [
+    typeof env.VIP_EMAILS === "string" ? env.VIP_EMAILS : "",
+    DEFAULT_VIP_EMAILS.join(","),
+  ].join(",");
   return new Set(
     raw
       .split(",")

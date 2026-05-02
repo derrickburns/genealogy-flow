@@ -458,7 +458,7 @@
     <button id="apiKeySave">Save</button>
   </span>
   <span class="authSpacer"></span>
-  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">fda533f</span>
+  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">ad8df0b</span>
   <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
   <button id="authBtn">Sign in</button>
 </div>
@@ -4791,10 +4791,12 @@ async function fetchCatalogTrees() {
       headers: { "Authorization": "Bearer " + _clerkToken },
     });
     const j = await r.json();
+    if (!r.ok) throw new Error(j?.error ? `${r.status} ${j.error}` : `catalog ${r.status}`);
     const fetched = j && Array.isArray(j.trees) ? j.trees : [];
     _kfCatalogTrees = fetched.length ? fetched : _kfCatalogFallbackTrees();
   } catch (e) {
     console.warn("[kf] fetchCatalogTrees:", e?.message || e);
+    if (_clerkUserTier === "vip") stats.textContent = `VIP catalog unavailable: ${e?.message || e}`;
     _kfCatalogTrees = _kfCatalogFallbackTrees();
   }
   return _kfCatalogTrees;
@@ -9006,14 +9008,28 @@ requestAnimationFrame(() => {
 let _clerkToken = null;
 let _clerkUserTier = "anon";
 let _clerkInstance = null;
+let _kfAuthTokenRetryCount = 0;
+let _kfAuthTokenRetryTimer = 0;
 
 const VIP_EMAILS = new Set([
   "ginagregoryburns@gmail.com","mayasylvia.burns@gmail.com",
-  "jamil.burns@gmail.com","derrickrburns@gmail.com","paigeunterberg@gmail.com",
+  "jamil.burns@gmail.com","derrickrburns@gmail.com","derrickburns@gmail.com",
+  "derrick.burns@gmail.com","derrick@kindredsearch.com","derrickburns@kindredsearch.com",
+  "paigeunterberg@gmail.com",
   "james.raby@gmail.com"
 ]);
 
 let _clerkReady = false;
+
+function _kfScheduleAuthTokenRetry() {
+  if (!_clerkInstance?.user || _kfAuthTokenRetryCount >= 12) return;
+  clearTimeout(_kfAuthTokenRetryTimer);
+  _kfAuthTokenRetryCount++;
+  const delay = Math.min(2500, 250 * _kfAuthTokenRetryCount);
+  _kfAuthTokenRetryTimer = setTimeout(() => {
+    updateAuthUI(_clerkInstance.user);
+  }, delay);
+}
 
 async function fetchServerAuthContext() {
   if (!_clerkToken) return null;
@@ -9087,16 +9103,34 @@ async function updateAuthUI(user) {
     return;
   }
 
+  let email = user.primaryEmailAddress?.emailAddress ?? "";
   try {
     _clerkToken = await _clerkInstance.session.getToken();
   } catch (_) { _clerkToken = null; }
 
-  let email = user.primaryEmailAddress?.emailAddress ?? "";
+  if (!_clerkToken) {
+    _clerkUserTier = VIP_EMAILS.has(email.toLowerCase()) ? "vip" : "regular";
+    statusEl.textContent = _clerkUserTier === "vip" ? "VIP" : "member";
+    statusEl.className = "authTier " + _clerkUserTier;
+    emailEl.textContent = email;
+    emailEl.style.display = "inline";
+    btnEl.textContent = "Sign out";
+    apiKeyRowEl.style.display = _clerkUserTier === "regular" ? "flex" : "none";
+    if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
+    if (versionEl) versionEl.style.display = "inline";
+    applyChatAccess(_clerkUserTier);
+    refreshSources();
+    _kfScheduleAuthTokenRetry();
+    return;
+  }
+
+  _kfAuthTokenRetryCount = 0;
+  clearTimeout(_kfAuthTokenRetryTimer);
   const serverUser = await fetchServerAuthContext();
   if (serverUser?.email) email = serverUser.email;
   _clerkUserTier = serverUser?.type === "vip"
     ? "vip"
-    : serverUser?.type === "regular" || serverUser?.type === "anon"
+    : serverUser?.type === "regular"
       ? "regular"
       : VIP_EMAILS.has(email.toLowerCase()) ? "vip" : "regular";
 

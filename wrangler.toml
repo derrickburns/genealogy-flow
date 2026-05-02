@@ -13,7 +13,7 @@ binding = "STORAGE"
 bucket_name = "genealogy-flow"
 
 [vars]
-VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@gmail.com,derrickrburns@gmail.com,paigeunterberg@gmail.com,james.raby@gmail.com"
+VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@gmail.com,derrickrburns@gmail.com,derrickburns@gmail.com,derrick.burns@gmail.com,derrick@kindredsearch.com,derrickburns@kindredsearch.com,paigeunterberg@gmail.com,james.raby@gmail.com"
 # CLERK_PUBLISHABLE_KEY set after Clerk project creation
 
 # Cron (02:00 UTC daily) is configured in Cloudflare dashboard after first deploy.
