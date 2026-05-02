@@ -6,6 +6,10 @@
 const _kfDerivedCache = {
   treeFacts: null,
   visible: null,
+  visibleByYear: new Map(),
+  visibleByYearIndividuals: null,
+  yearDigest: new Map(),
+  yearDigestIndividuals: null,
   cluster: new Map(),
   clusterIndividuals: null,
   activeClusterLabel: "",
@@ -32,6 +36,11 @@ function _kfEventLabelForDwell(di) {
 
 function _kfDwellPlace(di) {
   return (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
+}
+
+function _kfShortPlace(place, maxParts = 2) {
+  const parts = String(place || "").split(",").map(s => s.trim()).filter(Boolean);
+  return parts.slice(0, maxParts).join(", ") || "";
 }
 
 function _kfPlaceEvidence(place, exact = false) {
@@ -294,6 +303,160 @@ function _kfVisibleMarkerData() {
   return data;
 }
 
+function _kfVisibleRowsForYear(yint) {
+  if (_kfDerivedCache.visibleByYearIndividuals !== lastIndividuals) {
+    _kfDerivedCache.visibleByYear.clear();
+    _kfDerivedCache.yearDigest.clear();
+    _kfDerivedCache.visibleByYearIndividuals = lastIndividuals;
+    _kfDerivedCache.yearDigestIndividuals = lastIndividuals;
+  }
+  const key = `${_kfSourceSelectionKey()}|${lastRootId || ""}|${yint}|${_kfFilterKey()}`;
+  const cached = _kfDerivedCache.visibleByYear.get(key);
+  if (cached) return cached;
+  if (!timelineLoaded || !lastIndividuals || !indiDwells || !dwellY) {
+    const empty = { key, y: yint, rows: [], count: 0, exact: 0, weak: 0, sourceCounts: new Map(), placeCounts: new Map() };
+    _kfDerivedCache.visibleByYear.set(key, empty);
+    return empty;
+  }
+  const rows = [];
+  const sourceCounts = new Map();
+  const placeCounts = new Map();
+  let exact = 0;
+  let weak = 0;
+  for (let idx = 0; idx < lastIndividuals.length; idx++) {
+    const ind = lastIndividuals[idx];
+    if (!ind) continue;
+    if (!_kfPersonMayBeAliveAtYear(ind, yint)) continue;
+    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(idx)) continue;
+    if (curFilter === "blood" && lastBloodSet && !lastBloodSet.has(ind.id)) continue;
+    if (_kfSexFilter && ind.sex !== _kfSexFilter) continue;
+    if (_kfSurnameFilter) {
+      const sn = _kfSurnameOf(ind.name);
+      if (!sn || !_kfSurnameFilter.has(sn)) continue;
+    }
+    const di = _kfLatestValidDwellForIndi(idx, yint);
+    if (di < 0) continue;
+    const source = _kfSourceNameForIndiIdx(idx);
+    const place = _kfDwellPlace(di);
+    const placeHead = _kfShortPlace(place, 1);
+    const evidence = _kfPlaceEvidence(place, !!dwellExact?.[di]);
+    if (evidence.rank <= 1) exact++;
+    if (evidence.rank >= 3) weak++;
+    if (source) sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
+    if (placeHead) placeCounts.set(placeHead, (placeCounts.get(placeHead) || 0) + 1);
+    rows.push({
+      marker: rows.length,
+      di,
+      idx,
+      ind,
+      source,
+      place,
+      placeShort: _kfShortPlace(place, 2),
+      year: Number.isFinite(dwellY?.[di]) ? dwellY[di] : "",
+      eventLabel: _kfEventLabelForDwell(di),
+      evidence,
+    });
+  }
+  const data = { key, y: yint, rows, count: rows.length, exact, weak, sourceCounts, placeCounts };
+  if (_kfDerivedCache.visibleByYear.size > 140) _kfDerivedCache.visibleByYear.clear();
+  _kfDerivedCache.visibleByYear.set(key, data);
+  return data;
+}
+
+function _kfYearDigestPersonLabel(row) {
+  if (!row) return "";
+  const name = _kfNameShort(row.ind?.name);
+  const place = row.placeShort || _kfShortPlace(row.place, 2);
+  return place ? `${name} (${place})` : name;
+}
+
+function _kfYearDigestData(yint) {
+  if (_kfDerivedCache.yearDigestIndividuals !== lastIndividuals) {
+    _kfDerivedCache.yearDigest.clear();
+    _kfDerivedCache.yearDigestIndividuals = lastIndividuals;
+  }
+  const key = `${_kfSourceSelectionKey()}|${lastRootId || ""}|${yint}|${_kfFilterKey()}`;
+  const cached = _kfDerivedCache.yearDigest.get(key);
+  if (cached) return cached;
+  const current = _kfVisibleRowsForYear(yint);
+  const previous = _kfVisibleRowsForYear(yint - 1);
+  const currentById = new Map(current.rows.map(r => [r.ind.id, r]));
+  const previousById = new Map(previous.rows.map(r => [r.ind.id, r]));
+  const appeared = [];
+  const disappeared = [];
+  const moved = [];
+  const weak = [];
+  const issues = [];
+  for (const row of current.rows) {
+    const prev = previousById.get(row.ind.id);
+    if (!prev) appeared.push(row);
+    else if (prev.di !== row.di && prev.place !== row.place) moved.push({ row, prev });
+    if (row.evidence.rank >= 3) weak.push(row);
+    const facts = _kfFactsForInd(row.ind);
+    if (facts?.issues.length) issues.push({ row, issue: facts.issues[0] });
+  }
+  for (const row of previous.rows) {
+    if (!currentById.has(row.ind.id)) disappeared.push(row);
+  }
+  appeared.sort((a, b) => Math.abs((a.ind.birth_year ?? yint) - yint) - Math.abs((b.ind.birth_year ?? yint) - yint) || _kfNameShort(a.ind.name).localeCompare(_kfNameShort(b.ind.name)));
+  disappeared.sort((a, b) => Math.abs((a.ind.death_year ?? yint) - (yint - 1)) - Math.abs((b.ind.death_year ?? yint) - (yint - 1)) || _kfNameShort(a.ind.name).localeCompare(_kfNameShort(b.ind.name)));
+  moved.sort((a, b) => Math.abs((a.row.year || yint) - yint) - Math.abs((b.row.year || yint) - yint) || _kfNameShort(a.row.ind.name).localeCompare(_kfNameShort(b.row.ind.name)));
+  weak.sort((a, b) => b.evidence.rank - a.evidence.rank || _kfNameShort(a.ind.name).localeCompare(_kfNameShort(b.ind.name)));
+  const topPlaces = Array.from(current.placeCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const data = { key, y: yint, current, previous, appeared, disappeared, moved, weak, issues, topPlaces };
+  if (_kfDerivedCache.yearDigest.size > 140) _kfDerivedCache.yearDigest.clear();
+  _kfDerivedCache.yearDigest.set(key, data);
+  return data;
+}
+
+function _kfYearDigestMetricHtml(value, label) {
+  return `<div class="year-digest-metric"><span class="year-digest-num">${escHtml(value)}</span><span class="year-digest-label">${escHtml(label)}</span></div>`;
+}
+
+function _kfYearDigestHtml() {
+  const y = Math.floor(curYear);
+  const d = _kfYearDigestData(y);
+  const lines = [];
+  if (d.moved.length) {
+    const examples = d.moved.slice(0, 2).map(m => `${_kfNameShort(m.row.ind.name)}: ${m.prev.placeShort || _kfShortPlace(m.prev.place, 2) || "unknown"} -> ${m.row.placeShort || _kfShortPlace(m.row.place, 2) || "unknown"}`);
+    lines.push(`Location updates: ${examples.join("; ")}.`);
+  }
+  if (d.appeared.length) {
+    const examples = d.appeared.slice(0, 2).map(r => {
+      const born = r.ind.birth_year === y ? "born" : "first shown";
+      return `${_kfNameShort(r.ind.name)} ${born}${r.placeShort ? " at " + r.placeShort : ""}`;
+    });
+    lines.push(`New on map: ${examples.join("; ")}.`);
+  }
+  if (d.disappeared.length) {
+    const examples = d.disappeared.slice(0, 2).map(r => {
+      const died = r.ind.death_year === y - 1 ? "died" : "left visible lifespan";
+      return `${_kfNameShort(r.ind.name)} ${died}`;
+    });
+    lines.push(`No longer shown: ${examples.join("; ")}.`);
+  }
+  if (!lines.length && d.topPlaces.length) {
+    lines.push(`No person-marker changes from ${y - 1}. Top places: ${d.topPlaces.map(([p, n]) => `${p} ${n}`).join(", ")}.`);
+  } else if (!lines.length) {
+    lines.push(`No person-marker changes from ${y - 1}.`);
+  }
+  if (d.weak.length) {
+    const examples = d.weak.slice(0, 2).map(_kfYearDigestPersonLabel);
+    lines.push(`Weak place evidence: ${d.weak.length.toLocaleString()} marker${d.weak.length === 1 ? "" : "s"}${examples.length ? `, including ${examples.join("; ")}` : ""}.`);
+  } else if (d.issues.length) {
+    const ex = d.issues[0];
+    lines.push(`Data check: ${_kfNameShort(ex.row.ind.name)} - ${ex.issue}.`);
+  }
+  return `<div class="year-digest-head"><span class="year-digest-title">What changed in ${y}</span><span class="year-digest-sub">vs ${y - 1}</span></div>` +
+    `<div class="year-digest-metrics">` +
+      _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
+      _kfYearDigestMetricHtml(`+${d.appeared.length.toLocaleString()}`, "appear") +
+      _kfYearDigestMetricHtml(d.disappeared.length.toLocaleString(), "leave") +
+      _kfYearDigestMetricHtml(d.moved.length.toLocaleString(), "move") +
+    `</div>` +
+    `<ul class="year-digest-list">${lines.slice(0, 4).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
+}
+
 function _kfViewModeLabel() {
   const cluster = clusterMode === "none" ? "not clustered" : `clustered by ${_kfClusterModeLabel(clusterMode).toLowerCase()}`;
   const filter = curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
@@ -304,13 +467,14 @@ function _kfViewModeLabel() {
 function _kfRefreshViewChrome(force = false) {
   const summaryEl = $("viewSummary");
   const breadEl = $("focusBreadcrumb");
-  if (!summaryEl && !breadEl) return;
+  const digestEl = $("yearDigest");
+  if (!summaryEl && !breadEl && !digestEl) return;
   const y = Math.floor(curYear);
   const data = _kfVisibleMarkerData();
   const sourceCount = (typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList().length : 0) || (_kfLoadedSources?.size || 0);
   const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
   const root = lastRootId && lastIndiById ? lastIndiById.get(lastRootId) : null;
-  const key = `${y}|${data.count}|${sourceCount}|${_kfViewModeLabel()}|${root?.id || ""}|${selected?.id || ""}|${_kfDerivedCache.activeClusterLabel}`;
+  const key = `${_kfSourceSelectionKey()}|${y}|${data.count}|${sourceCount}|${_kfViewModeLabel()}|${root?.id || ""}|${selected?.id || ""}|${_kfDerivedCache.activeClusterLabel}`;
   if (!force && key === _kfDerivedCache.lastChromeKey) return;
   _kfDerivedCache.lastChromeKey = key;
   if (summaryEl) {
@@ -324,6 +488,10 @@ function _kfRefreshViewChrome(force = false) {
     if (selected) bits.push(`Selected: ${_kfNameShort(selected.name)}`);
     if (_kfDerivedCache.activeClusterLabel && clusterMode !== "none") bits.push(`Cluster: ${_kfDerivedCache.activeClusterLabel}`);
     breadEl.textContent = bits.length ? bits.join(" > ") : "Home: none";
+  }
+  if (digestEl) {
+    digestEl.hidden = !timelineLoaded || !lastIndividuals;
+    if (!digestEl.hidden) digestEl.innerHTML = _kfYearDigestHtml();
   }
 }
 

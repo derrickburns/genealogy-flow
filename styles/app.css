@@ -415,6 +415,17 @@
   #viewSummary, #focusBreadcrumb { background:rgba(255,255,255,0.9); border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 2px 10px rgba(20,28,48,0.09); padding:6px 9px; font-size:11px; line-height:1.3; backdrop-filter:blur(6px); }
   #viewSummary { font-weight:800; color:#102033; }
   #focusBreadcrumb { margin-left:auto; max-width:44%; color:#566480; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #yearDigest { position:absolute; z-index:12; top:48px; left:10px; width:min(390px, calc(100% - 20px)); pointer-events:none; background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px; box-shadow:0 6px 22px rgba(20,28,48,0.13); padding:9px 10px; color:#1c2433; backdrop-filter:blur(8px); }
+  #yearDigest[hidden] { display:none; }
+  .year-digest-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:7px; }
+  .year-digest-title { font-size:11px; font-weight:900; color:#102033; letter-spacing:0.03em; text-transform:uppercase; }
+  .year-digest-sub { font-size:10px; color:#718096; white-space:nowrap; }
+  .year-digest-metrics { display:grid; grid-template-columns:repeat(4, 1fr); gap:5px; margin-bottom:7px; }
+  .year-digest-metric { border:1px solid #d6dde7; border-radius:7px; background:#f8fafc; padding:5px 4px; text-align:center; }
+  .year-digest-num { display:block; font-size:13px; line-height:1; font-weight:900; color:#1e40af; font-variant-numeric:tabular-nums; }
+  .year-digest-label { display:block; margin-top:2px; font-size:9px; color:#64748b; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; }
+  .year-digest-list { margin:0; padding-left:15px; color:#334155; font-size:10.5px; line-height:1.35; }
+  .year-digest-list li { margin:2px 0; }
   .ux-section { background:#fff; border:1px solid #d6dde7; border-radius:8px; padding:8px 9px; margin:8px 0; }
   .ux-section h4 { margin:0 0 5px; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#566480; }
   .ux-list { margin:0; padding-left:16px; color:#2a3a58; line-height:1.45; }
@@ -456,5 +467,7 @@
   @media (max-width:700px) {
     #viewChrome { flex-direction:column; right:auto; max-width:calc(100% - 20px); }
     #focusBreadcrumb { margin-left:0; max-width:100%; }
+    #yearDigest { top:78px; max-width:calc(100% - 20px); }
+    .year-digest-metrics { grid-template-columns:repeat(2, 1fr); }
   }
   .cluster-ask:hover { background:#1c3669; }
