@@ -606,6 +606,57 @@ function _kfClearSubtreeFilter() {
   return true;
 }
 
+function _kfActionValue(input, keys) {
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    for (const key of keys) {
+      if (input[key] != null) return input[key];
+    }
+  }
+  return input;
+}
+
+function _kfNormalizeClusterMode(input) {
+  const raw = _kfActionValue(input, ["mode", "clusterMode", "value", "label", "name"]);
+  const text = String(raw ?? "").trim();
+  const key = text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const aliases = new Map([
+    ["none", "none"],
+    ["no clustering", "none"],
+    ["individuals", "none"],
+    ["individual dots", "none"],
+    ["pie", "pie"],
+    ["lineage", "pie"],
+    ["lineage clusters", "pie"],
+    ["lineage pies", "pie"],
+    ["parents", "parents"],
+    ["parent", "parents"],
+    ["parent knowledge", "parents"],
+    ["known parents", "parents"],
+    ["gender", "gender"],
+    ["sex", "gender"],
+    ["gender breakdown", "gender"],
+    ["tree", "tree"],
+    ["trees", "tree"],
+    ["source", "tree"],
+    ["sources", "tree"],
+    ["gedcom", "tree"],
+    ["gedcom tree", "tree"],
+    ["by gedcom tree", "tree"],
+    ["state", "state"],
+    ["states", "state"],
+    ["by state", "state"],
+    ["us state", "state"],
+    ["us states", "state"],
+    ["by us state", "state"],
+    ["by us states", "state"],
+    ["dispersion", "dispersion"],
+    ["on zoom", "dispersion"],
+    ["density", "dispersion"],
+    ["aggregate", "dispersion"],
+  ]);
+  return aliases.get(key) || key;
+}
+
 window.kfApi = {
   setYear(year) {
     const y = Math.max(minYear, Math.min(maxYear, Number(year)));
@@ -667,11 +718,13 @@ window.kfApi = {
     return { ok: true, projection: "natural", note: "only Natural Earth is available" };
   },
   setKinLines(n) {
+    n = _kfActionValue(n, ["n", "count", "value", "lines"]);
     n = Math.max(0, Math.min(20, parseInt(n, 10) || 0));
     _kfSetKinLines(n);
     return { ok: true, kinLines: n };
   },
   setClusterMode(mode) {
+    mode = _kfNormalizeClusterMode(mode);
     const valid = ["none", "pie", "parents", "gender", "tree", "state", "dispersion"];
     if (!valid.includes(mode)) return { error: "valid modes: " + valid.join(", ") };
     $("clusterMode").value = mode;
