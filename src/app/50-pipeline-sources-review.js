@@ -579,49 +579,30 @@ async function deleteSource(id) {
 function renderSources(list) {
   const wrap = document.getElementById("sourcesPanel");
   const inner = document.getElementById("sourcesList");
-  const summaryEl = document.getElementById("sourcesSummaryText");
   if (!wrap || !inner) return;
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
   _kfLoadedTreeCount = filtered.length;
   if (filtered.length === 0 && _kfCatalogTrees.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
-    if (summaryEl) summaryEl.textContent = "No trees loaded";
     if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
     return;
   }
   wrap.classList.remove("hidden");
-  const selected = filtered.filter(s => s.selected);
-  const excluded = filtered.filter(s => !s.selected);
-  const selectedLabel = filtered.length
-    ? (excluded.length
-      ? `${selected.length.toLocaleString()}/${filtered.length.toLocaleString()} trees in use`
-      : `${filtered.length.toLocaleString()} tree${filtered.length === 1 ? "" : "s"} in use`)
-    : "VIP library available";
-  if (summaryEl) summaryEl.textContent = selectedLabel;
-  const sourceChip = (s, isExcluded = false) => {
+  const sourceChip = s => {
     const n = (s.n_individuals || 0).toLocaleString();
     return (
-      `<span class="src${s.active ? " on" : ""}${isExcluded ? " excluded" : ""}" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
+      `<label class="src${s.active ? " on" : ""}${s.selected ? "" : " excluded"}" data-id="${s.id}" title="${n} people${s.loaded_at ? ` | ${escChat(s.loaded_at)}` : ""}">` +
       `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in queries, maps, clusters, and animations">` +
-      `<span class="name" data-activate="${escChat(s.name)}" title="Use this tree as the home/detail tree">${escChat(s.name)}</span>` +
-      `<span class="meta">${n}</span>` +
-      `<span class="x" data-del="${s.id}" data-name="${escChat(s.name)}" title="Remove this tree">x</span>` +
-      `</span>`
+      `<span class="name">${escChat(s.name)}</span>` +
+      `</label>`
     );
   };
   const parts = [];
   if (filtered.length) {
-    parts.push(
-      `<div class="scopeSection"><span class="scopeTitle">Data in use</span><button type="button" class="srcAction" data-select="all">select all</button>`,
-    );
-    for (const s of selected) parts.push(sourceChip(s));
+    parts.push(`<div class="scopeSection">`);
+    for (const s of filtered) parts.push(sourceChip(s));
     parts.push(`</div>`);
-    if (excluded.length) {
-      parts.push(`<div class="scopeSection"><span class="scopeTitle">Loaded but excluded</span>`);
-      for (const s of excluded) parts.push(sourceChip(s, true));
-      parts.push(`</div>`);
-    }
   } else {
     parts.push(`<div class="sourceScopeSummary">No trees loaded yet. Load a VIP library tree or drop a GEDCOM file.</div>`);
   }
@@ -647,48 +628,6 @@ function renderSources(list) {
       if (el.checked) _kfSelectedSourceIds.add(id);
       else _kfSelectedSourceIds.delete(id);
       _kfEnsureSelectedSources();
-      _kfRefreshBrowserViews();
-      _kfRebuildSelectedVisualization({ preserveYear: true });
-      if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
-      renderSources(_kfGetLoadedSourcesList());
-    });
-  });
-  inner.querySelectorAll(".name[data-activate]").forEach(el => {
-    el.addEventListener("click", () => {
-      const name = el.getAttribute("data-activate") || "";
-      if (name) kfApi.setActiveTree(name);
-    });
-  });
-  inner.querySelectorAll(".x[data-del]").forEach(el => {
-    el.addEventListener("click", async () => {
-      const id = Number(el.getAttribute("data-del"));
-      const name = el.getAttribute("data-name") || "";
-      const ok = await deleteSource(id);
-      if (!ok) return;
-      _kfTreeCache.delete(name);
-      if (name === _kfActiveTreeName) {
-        const remaining = [..._kfTreeCache.keys()];
-        if (remaining.length > 0) {
-          const nextName = remaining[0];
-          const text = _kfTreeCache.get(nextName);
-          const fake = new File([text], nextName + ".ged", { type: "text/plain" });
-          _kfSkipNextProxyLoad = true;
-          _kfSkipNextSeed = true;
-          processFile(fake).catch(e => console.warn("[kf] post-delete switch:", e?.message || e));
-        } else {
-          lastIndividuals = null;
-          _kfActiveTreeName = null;
-          _kfSurnamesTop = null;
-          _kfSurnameFilter = null;
-          _kfRenderSurnameChips();
-        }
-      }
-      refreshSources();
-    });
-  });
-  inner.querySelectorAll(".srcAction[data-select='all']").forEach(el => {
-    el.addEventListener("click", () => {
-      _kfSelectedSourceIds = new Set(filtered.map(s => s.id));
       _kfRefreshBrowserViews();
       _kfRebuildSelectedVisualization({ preserveYear: true });
       if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);

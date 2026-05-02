@@ -22,7 +22,7 @@ function _kfUpdateMobileSheetTitle(tab) {
     tab === "cluster" ? "Cluster" :
     tab === "options" ? "Options" :
     tab === "tour" ? "Tour" :
-    "Explore";
+    "AI";
 }
 
 function _kfSyncMobileControlHeight() {
