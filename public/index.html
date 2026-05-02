@@ -458,7 +458,7 @@
     <button id="apiKeySave">Save</button>
   </span>
   <span class="authSpacer"></span>
-  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">1eed6f7</span>
+  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">833bb0f</span>
   <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
   <button id="authBtn">Sign in</button>
 </div>
@@ -4974,14 +4974,17 @@ function renderSources(list) {
       `</span>`,
     );
   }
-  if (_kfCatalogTrees.length) {
+  const catalogActions = [];
+  for (const t of _kfCatalogTrees) {
+    const sourceName = _kfSourceNameFromFileName(t.name || t.key);
+    const loaded = _kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName);
+    if (t.available === false || loaded) continue;
+    catalogActions.push(t);
+  }
+  if (catalogActions.length) {
     parts.push(`<span class="label" style="margin-left:8px">vip library</span>`);
-    for (const t of _kfCatalogTrees) {
-      const sourceName = _kfSourceNameFromFileName(t.name || t.key);
-      const loaded = _kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName);
-      const disabled = t.available === false || loaded ? " disabled" : "";
-      const title = t.available === false ? "Not available in storage yet" : loaded ? "Already loaded" : "Load this server tree";
-      parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}"${disabled} title="${escChat(title)}">${escChat(t.name)}</button>`);
+    for (const t of catalogActions) {
+      parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}" title="Load this server tree">${escChat(t.name)}</button>`);
     }
   }
   inner.innerHTML = parts.join("");
