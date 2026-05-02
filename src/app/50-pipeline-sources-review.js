@@ -603,8 +603,11 @@ function renderSources(list) {
   };
   const parts = [];
   if (filtered.length) {
+    const summary = excluded.length
+      ? `Using ${selected.length.toLocaleString()} of ${filtered.length.toLocaleString()} loaded tree${filtered.length === 1 ? "" : "s"} for maps, clusters, animations, and chat queries.`
+      : "All loaded trees are in use for maps, clusters, animations, and chat queries.";
     parts.push(
-      `<div class="sourceScopeSummary">Using ${selected.length.toLocaleString()} of ${filtered.length.toLocaleString()} loaded tree${filtered.length === 1 ? "" : "s"} for maps, clusters, animations, and chat queries.</div>`,
+      `<div class="sourceScopeSummary">${escChat(summary)}</div>`,
       `<div class="scopeSection"><span class="scopeTitle">Data in use</span><button type="button" class="srcAction" data-select="all">select all</button>`,
     );
     for (const s of selected) parts.push(sourceChip(s));

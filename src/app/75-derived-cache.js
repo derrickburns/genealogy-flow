@@ -185,19 +185,6 @@ function _kfDwellEvidenceBadgesHtml(di) {
   return _kfBadgesHtml(_kfDwellEvidenceBadges(di));
 }
 
-function _kfWhyPersonHereHtml(di) {
-  const idx = dwellIndi?.[di];
-  const ind = idx >= 0 && lastIndividuals ? lastIndividuals[idx] : null;
-  if (!ind) return "";
-  const y = Math.floor(curYear);
-  const eventYear = Number.isFinite(dwellY?.[di]) ? dwellY[di] : "";
-  const place = _kfDwellPlace(di);
-  const eventLabel = _kfEventLabelForDwell(di);
-  const living = ind.death_year == null ? "is presumed alive" : "was alive";
-  const loc = place ? ` Its location comes from the ${eventYear} ${eventLabel} record: ${place}.` : "";
-  return `<div class="ux-section"><h4>Why this marker is here</h4><div class="ux-muted">${escHtml(`${_kfNameShort(ind.name)} is shown because ${living} in ${y}.${loc}`)}</div>${_kfDwellEvidenceBadgesHtml(di)}</div>`;
-}
-
 function _kfPersonStoryHtml(ind, di) {
   const facts = _kfFactsForInd(ind);
   if (!facts) return "";
@@ -602,15 +589,15 @@ function _kfRefreshViewChrome(force = false) {
   _kfDerivedCache.lastChromeKey = key;
   if (summaryEl) {
     summaryEl.textContent = timelineLoaded
-      ? `${y} | ${sourceCount || 0} tree${sourceCount === 1 ? "" : "s"} | ${_kfViewModeLabel()} | ${data.count.toLocaleString()} visible people`
+      ? `${y} | ${_kfViewModeLabel()} | ${data.count.toLocaleString()} visible people`
       : "Load GEDCOM data to begin.";
   }
   if (breadEl) {
     const bits = [];
-    if (root) bits.push(`Home: ${_kfNameShort(root.name)}`);
-    if (selected) bits.push(`Selected: ${_kfNameShort(selected.name)}`);
+    if (selected && selected.id !== root?.id) bits.push(`Selected: ${_kfNameShort(selected.name)}`);
     if (_kfDerivedCache.activeClusterLabel && clusterMode !== "none") bits.push(`Cluster: ${_kfDerivedCache.activeClusterLabel}`);
-    breadEl.textContent = bits.length ? bits.join(" > ") : "Home: none";
+    breadEl.hidden = bits.length === 0;
+    breadEl.textContent = bits.join(" > ");
   }
   if (whyEl) whyEl.hidden = !timelineLoaded || !lastIndividuals;
   if (digestEl) {
