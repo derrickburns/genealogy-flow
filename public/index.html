@@ -458,7 +458,7 @@
     <button id="apiKeySave">Save</button>
   </span>
   <span class="authSpacer"></span>
-  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">66b5409</span>
+  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">40678e7</span>
   <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
   <button id="authBtn">Sign in</button>
 </div>
@@ -623,7 +623,7 @@
     </span>
     <span class="chipGroup" data-grp="overlay">
       <span class="chipLabel">overlay:</span>
-      <button class="quickChip" data-overlay="treeMatches" title="Highlight people the record linker matched between two or more loaded GEDCOMs. Each match draws halo rings on both endpoints and a connecting line, so you can see geographic overlap at a glance. Requires the chat-proxy and at least 2 loaded trees.">tree matches</button>
+      <button class="quickChip" data-overlay="treeMatches" title="Highlight likely same-person matches between two or more checked GEDCOMs. Each match draws halo rings on both endpoints and a connecting line, so you can see geographic overlap at a glance.">tree matches</button>
     </span>
     <span class="chipGroup" style="align-items:center; gap:4px;">
       <span class="chipLabel">kin lines:</span>
@@ -1463,16 +1463,202 @@ function makeLensLatLonLayer(lens, rows) {
 }
 
 // Tree-match overlay -----------------------------------------------------
-// Pulls confirmed cross-tree person matches from the proxy SQL and renders
-// each match as halo rings on both endpoints connected by a thin line.
+// Renders cross-tree person matches as halo rings on both endpoints connected
+// by a thin line. Production uses a conservative browser-side matcher over
+// checked GEDCOMs; localhost can still fall back to proxy person_links.
 // Linked endpoints come from the events table (latest event with lat/lon).
 // Year filter: only shows matches where at least one endpoint has its
 // latest event year <= curYear (so the visualization respects the timeline).
+const _KF_MATCH_SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
+
+function _kfMatchNormText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function _kfMatchNameParts(name) {
+  const tokens = _kfMatchNormText(name).split(/\s+/).filter(Boolean);
+  while (tokens.length > 1 && _KF_MATCH_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
+  const first = tokens[0] || "";
+  const surname = tokens.length > 1 ? tokens[tokens.length - 1] : "";
+  return { first, surname, full: tokens.join(" "), tokens };
+}
+
+function _kfMatchNameScore(a, b) {
+  if (!a.first || !a.surname || !b.first || !b.surname) return 0;
+  if (a.first !== b.first || a.surname !== b.surname) return 0;
+  if (a.full === b.full) return 1;
+  const at = new Set(a.tokens), bt = new Set(b.tokens);
+  let shared = 0;
+  for (const t of at) if (bt.has(t)) shared++;
+  const union = new Set([...a.tokens, ...b.tokens]).size || 1;
+  return 0.78 + 0.18 * (shared / union);
+}
+
+function _kfMatchYearScore(a, b, missingScore) {
+  if (a == null || b == null) return missingScore;
+  const d = Math.abs(Number(a) - Number(b));
+  if (d === 0) return 1;
+  if (d <= 1) return 0.9;
+  if (d <= 2) return 0.75;
+  if (d <= 5) return 0.45;
+  return 0;
+}
+
+function _kfMatchParentNames(src, ind) {
+  const fam = ind?.famc ? src.families?.get(ind.famc) : null;
+  if (!fam) return [];
+  const byId = new Map((src.individuals || []).map(p => [p.id, p]));
+  return [fam.husb, fam.wife].map(id => id ? byId.get(id)?.name || "" : "").filter(Boolean);
+}
+
+function _kfMatchParentScore(srcA, indA, srcB, indB) {
+  const pa = _kfMatchParentNames(srcA, indA).map(_kfMatchNameParts);
+  const pb = _kfMatchParentNames(srcB, indB).map(_kfMatchNameParts);
+  if (!pa.length || !pb.length) return 0.5;
+  let best = 0;
+  for (const a of pa) {
+    for (const b of pb) {
+      const full = a.full && a.full === b.full;
+      const surname = a.surname && a.surname === b.surname;
+      if (full) best = Math.max(best, 1);
+      else if (surname) best = Math.max(best, 0.7);
+    }
+  }
+  return best;
+}
+
+function _kfLatestMatchEvent(ind) {
+  if (!ind || !geocoder) return null;
+  const birthYear = Number.isFinite(ind.birth_year) ? ind.birth_year : null;
+  const deathYear = Number.isFinite(ind.death_year) ? ind.death_year : null;
+  let best = null;
+  for (const ev of (ind.events || [])) {
+    const y = Number(ev.year);
+    if (!Number.isFinite(y) || !ev.place) continue;
+    if (birthYear != null && y < birthYear - 1) continue;
+    if (deathYear != null && y > deathYear + 1) continue;
+    const g = geocoder(ev.place);
+    if (!g) continue;
+    if (!best || y > best.year) best = { lat: g.lat, lon: g.lon, year: y };
+  }
+  return best;
+}
+
+function _kfBuildBrowserMatchData() {
+  const sources = _kfSelectedSourceSnapshots().filter(src => src && (src.individuals || []).length);
+  if (sources.length < 2) return { ok: false, reason: "select at least two trees" };
+  if (!geocoder) return { ok: false, reason: "geocoder not ready" };
+
+  const rows = [];
+  for (let ai = 0; ai < sources.length; ai++) {
+    for (let bi = ai + 1; bi < sources.length; bi++) {
+      const srcA = sources[ai], srcB = sources[bi];
+      const indexB = new Map();
+      for (const indB of srcB.individuals || []) {
+        const nb = _kfMatchNameParts(indB.name);
+        if (!nb.first || !nb.surname) continue;
+        const by = Number.isFinite(indB.birth_year) ? indB.birth_year : null;
+        const years = by == null ? [null] : [by - 1, by, by + 1];
+        for (const y of years) {
+          const key = `${nb.first}|${nb.surname}|${y == null ? "unknown" : y}`;
+          let bucket = indexB.get(key);
+          if (!bucket) { bucket = []; indexB.set(key, bucket); }
+          bucket.push({ ind: indB, name: nb });
+        }
+      }
+      const candidates = [];
+      for (const indA of srcA.individuals || []) {
+        const na = _kfMatchNameParts(indA.name);
+        if (!na.first || !na.surname) continue;
+        const ay = Number.isFinite(indA.birth_year) ? indA.birth_year : null;
+        const keys = ay == null
+          ? [`${na.first}|${na.surname}|unknown`]
+          : [`${na.first}|${na.surname}|${ay - 1}`, `${na.first}|${na.surname}|${ay}`, `${na.first}|${na.surname}|${ay + 1}`, `${na.first}|${na.surname}|unknown`];
+        const seen = new Set();
+        for (const key of keys) {
+          const bucket = indexB.get(key) || [];
+          for (const item of bucket) {
+            const indB = item.ind;
+            if (seen.has(indB.id)) continue;
+            seen.add(indB.id);
+            if (indA.sex && indB.sex && indA.sex !== "U" && indB.sex !== "U" && indA.sex !== indB.sex) continue;
+            const nameScore = _kfMatchNameScore(na, item.name);
+            if (nameScore <= 0) continue;
+            const birthScore = _kfMatchYearScore(indA.birth_year, indB.birth_year, 0.45);
+            const deathScore = _kfMatchYearScore(indA.death_year, indB.death_year, 0.35);
+            const parentScore = _kfMatchParentScore(srcA, indA, srcB, indB);
+            const score = 0.46 * nameScore + 0.28 * birthScore + 0.14 * deathScore + 0.12 * parentScore;
+            if (score < 0.82) continue;
+            const ea = _kfLatestMatchEvent(indA);
+            const eb = _kfLatestMatchEvent(indB);
+            if (!ea || !eb) continue;
+            candidates.push({ score, indA, indB, ea, eb });
+          }
+        }
+      }
+      candidates.sort((a, b) => b.score - a.score);
+      const usedA = new Set(), usedB = new Set();
+      for (const c of candidates) {
+        if (usedA.has(c.indA.id) || usedB.has(c.indB.id)) continue;
+        usedA.add(c.indA.id);
+        usedB.add(c.indB.id);
+        rows.push({
+          score: Number(c.score.toFixed(3)),
+          origin: "browser:auto",
+          source_a: srcA.source_id,
+          indi_a: c.indA.id,
+          name_a: c.indA.name || c.indA.id,
+          by_a: c.indA.birth_year ?? null,
+          dy_a: c.indA.death_year ?? null,
+          lat_a: c.ea.lat,
+          lon_a: c.ea.lon,
+          year_a: c.ea.year,
+          source_a_name: srcA.name,
+          source_b: srcB.source_id,
+          indi_b: c.indB.id,
+          name_b: c.indB.name || c.indB.id,
+          by_b: c.indB.birth_year ?? null,
+          dy_b: c.indB.death_year ?? null,
+          lat_b: c.eb.lat,
+          lon_b: c.eb.lon,
+          year_b: c.eb.year,
+          source_b_name: srcB.name,
+        });
+        if (rows.length >= 2000) break;
+      }
+    }
+  }
+  rows.sort((a, b) => b.score - a.score);
+  return { ok: true, rows: rows.slice(0, 2000), count: rows.length };
+}
+
 async function _kfFetchMatchData() {
+  const browserMatches = _kfBuildBrowserMatchData();
+  if (browserMatches.ok) {
+    const local = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    if ((browserMatches.rows || []).length || !local) {
+      _kfMatchData = browserMatches.rows || [];
+      _kfMatchSrcNames = new Map();
+      for (const row of _kfMatchData) {
+        _kfMatchSrcNames.set(row.source_a, row.source_a_name);
+        _kfMatchSrcNames.set(row.source_b, row.source_b_name);
+      }
+      return { ok: true, count: _kfMatchData.length };
+    }
+  }
+  if (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    _kfMatchData = null;
+    return browserMatches;
+  }
   const proxy = await detectChatProxy();
   if (!proxy) {
     _kfMatchData = null;
-    return { ok: false, reason: "no proxy running" };
+    return browserMatches.reason ? browserMatches : { ok: false, reason: "no proxy running" };
   }
   if (_kfMatchFetching) return { ok: false, reason: "already fetching" };
   _kfMatchFetching = true;
@@ -5908,13 +6094,13 @@ async function _kfToggleMatchOverlay() {
   _kfRefreshQuickChips();  // show "loading" state
   const r = await _kfFetchMatchData();
   if (!r.ok) {
-    alert(`Tree matches unavailable: ${r.reason}.\n\nMake sure the chat proxy is running and at least 2 GEDCOMs are loaded so the record linker has something to match.`);
+    alert(`Tree matches unavailable: ${r.reason}.\n\nCheck at least two loaded trees. The hosted app computes conservative browser-side matches and does not require the local dev proxy.`);
     _kfMatchOverlayOn = false;
     _kfRefreshQuickChips();
     return;
   }
   if (!_kfMatchData || !_kfMatchData.length) {
-    alert("No cross-tree matches found yet. Load a second GEDCOM (or wait for record linking to finish) and try again.");
+    alert("No high-confidence cross-tree matches found for the checked trees.");
     _kfMatchOverlayOn = false;
     _kfRefreshQuickChips();
     return;
@@ -8915,7 +9101,7 @@ SQLite schema (browser mode: multi-source, automatically scoped to the selected 
 Schema rules:
   - The visible tables are already filtered to the checked trees in the UI. If only one tree is checked, queries behave as if the DB contains only that tree.
   - There is NO events_geo table.
-  - There are NO browser-side person_links, person_clusters, or data_anomalies tables yet.
+  - There are NO browser SQL person_links, person_clusters, or data_anomalies tables yet. The tree-matches map overlay uses its own conservative browser-side matcher outside SQL.
 
 Examples:
   User: "show me at 1925"        ->  <<KFCALL:setYear(1925)>>
