@@ -303,8 +303,8 @@ function _kfPlaceMatchesTerms(place, terms) {
 function _kfPlacedEvents(ind) {
   return (ind?.events || [])
     .filter(ev => ev && ev.place && Number.isFinite(parseInt(ev.year, 10)))
-    .map(ev => ({ type: ev.type || "", year: parseInt(ev.year, 10), place: String(ev.place || "") }))
-    .sort((a, b) => a.year - b.year || a.type.localeCompare(b.type));
+    .map(ev => ({ event: _kfEventPlainLabel(ev.type, { noun: true }), year: parseInt(ev.year, 10), place: String(ev.place || "") }))
+    .sort((a, b) => a.year - b.year || a.event.localeCompare(b.event));
 }
 
 function _kfLatestPlacedEvent(ind, throughYear) {
@@ -325,7 +325,7 @@ function _kfDwellIntervalsForPerson(ind, throughYear) {
     let end = next ? next.year - 1 : throughYear;
     if (ind?.death_year != null) end = Math.min(end, ind.death_year);
     if (end < ev.year) end = ev.year;
-    out.push({ start: ev.year, end, type: ev.type, place: ev.place });
+    out.push({ start: ev.year, end, event: ev.event, place: ev.place });
   }
   return out;
 }

@@ -486,7 +486,7 @@ function updateMapLegend() {
   if (total > 0) {
     const viewStr = bounds ? `${inView} / ${total}` : `${total}`;
     html += `<div style="border-top:1px solid #e0e6ee;margin-top:5px;padding-top:4px;font-size:10px;color:#566480;font-variant-numeric:tabular-nums;">`;
-    html += `<span style="font-weight:700;">${viewStr}</span> alive in ${Math.floor(curYear)}`;
+    html += `<span style="font-weight:700;">${viewStr}</span> shown in ${Math.floor(curYear)}`;
     if (bounds) html += ` <span style="color:#9aa6bc;">(view / total)</span>`;
     html += `</div>`;
   }

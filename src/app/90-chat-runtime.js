@@ -162,7 +162,7 @@ Examples:
             {"method":"traceLineage","args":["Helen Curtis","Eugene Rosenberg"]}
           ])>>
 
-Audience: the user is a family-history researcher, not a GEDCOM engineer. Schema details (tag codes like BIRT/DEAT/RESI/EMIG/IMMI/MARR/CENS/BAPM/BURI/CHR, xref ids, table names, SQL) are for YOUR internal reasoning only. In your replies, translate to plain English: "born", "died", "lived in", "emigrated", "immigrated", "married", "appears in the census", "baptized", "buried", "christened". Never quote tag codes, schema fragments, "no rows", "EMIG/IMMI not tagged", or similar database-speak to the user. If a category is missing from the data, say "I don't see any emigration records for this branch" — not "no EMIG events". If you have to reference an event whose tag is none of the above, just describe it ("a recorded event in...").
+Audience: the user is a family-history researcher, not a GEDCOM engineer. Schema details (record codes, xref ids, table names, SQL) are for YOUR internal reasoning only. In visible replies, always use plain English: "born", "died", "lived in", "emigrated", "immigrated", "married", "appears in the census", "baptized", "buried", "christened". Never quote GEDCOM record codes, schema fragments, "no rows", "not tagged", or similar database-speak to the user. If a category is missing from the data, say "I don't see any emigration records for this branch." If you have to reference an unfamiliar record type, call it "a recorded event".
 
 Style: keep prose short. After a tool call, you don't need to repeat what you did unless the user asked. If a call errored, explain briefly and try a sensible fallback. Never invent facts not in the context. **Bold** names; *italics* sparingly.`;
 
@@ -495,17 +495,17 @@ async function runChatTurn(userText) {
     // Pull KFCHIP markers out of the (already stripped of KFCALL) text and
     // attach them to the message so renderChat shows clickable buttons.
     const chipParse = parseChips(stripped);
-    pending.content = chipParse.stripped || (results.length ? "_using the data..._" : "");
+    pending.content = _kfPlainEnglishEventText(chipParse.stripped || (results.length ? "_using the data..._" : ""));
     if (chipParse.chips.length) pending.chips = chipParse.chips;
     renderChat();
     if (!results.length) return;  // no tool calls -> Claude is done
     // Surface KFCALL errors visibly -- otherwise showViz failures are silent.
     const kfErrors = results.filter(r => r.result && r.result.error);
     if (kfErrors.length) {
-      chatHistory.push({ role: "bot", kind: "tool", content: "*[KFCALL error]* " + kfErrors.map(r => `\`${r.call}\`: ${r.result.error}`).join("; ") });
+      chatHistory.push({ role: "bot", kind: "tool", content: _kfPlainEnglishEventText("*[KFCALL error]* " + kfErrors.map(r => `\`${r.call}\`: ${r.result.error}`).join("; ")) });
       renderChat();
     }
-    const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
+    const log = _kfPlainEnglishEventText(results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n"));
     chatHistory.push({ role: "bot", kind: "tool", content: "*[tool calls]*\n" + log });
     renderChat();
     nextInput = "Tool results:\n" + log + "\n\nIf you have enough to answer, write the final answer now without further tool calls. Otherwise issue more tool calls.";

@@ -102,8 +102,9 @@ function _kfTreeFacts() {
       const fallbackKey = _kfEventDwellKey(y, place, "");
       if (!exactEventBuckets.has(exactKey)) exactEventBuckets.set(exactKey, ev);
       if (!fallbackEventBuckets.has(fallbackKey)) fallbackEventBuckets.set(fallbackKey, ev);
-      if (birth != null && y < birth - 1) issues.push(`${ev.type || "event"} before birth (${y})`);
-      if (death != null && y > death + 1) issues.push(`${ev.type || "event"} after death (${y})`);
+      const eventLabel = _kfEventPlainLabel(ev.type, { noun: true });
+      if (birth != null && y < birth - 1) issues.push(`${eventLabel} before birth (${y})`);
+      if (death != null && y > death + 1) issues.push(`${eventLabel} after death (${y})`);
       const yEnd = Number(ev.year_end ?? ev.year);
       if (Number.isFinite(yEnd) && yEnd - y > 10) {
         rangedEvents++;
@@ -436,10 +437,10 @@ function _kfYearDigestHtml() {
   }
   return `<div class="year-digest-head"><span class="year-digest-title">What changed in ${y}</span><span class="year-digest-sub">vs ${y - 1}</span></div>` +
     `<div class="year-digest-metrics">` +
-      _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
       _kfYearDigestMetricHtml(`+${d.appeared.length.toLocaleString()}`, "appear") +
       _kfYearDigestMetricHtml(d.disappeared.length.toLocaleString(), "leave") +
       _kfYearDigestMetricHtml(d.moved.length.toLocaleString(), "move") +
+      _kfYearDigestMetricHtml(d.weak.length.toLocaleString(), "weak") +
     `</div>` +
     `<ul class="year-digest-list">${lines.slice(0, 4).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
 }
@@ -589,7 +590,7 @@ function _kfRefreshViewChrome(force = false) {
   _kfDerivedCache.lastChromeKey = key;
   if (summaryEl) {
     summaryEl.textContent = timelineLoaded
-      ? `${y} | ${_kfViewModeLabel()} | ${data.count.toLocaleString()} visible people`
+      ? `${y} | ${_kfViewModeLabel()}`
       : "Load GEDCOM data to begin.";
   }
   if (breadEl) {

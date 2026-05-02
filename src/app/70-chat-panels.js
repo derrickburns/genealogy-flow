@@ -25,7 +25,54 @@ document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
   btn.addEventListener("click", () => _kfSetSideTab(btn.dataset.sideTab));
 });
 
-const EVENT_LABEL = { BIRT:"Born", DEAT:"Died", MARR:"Married", RESI:"Lived", EMIG:"Emigrated", IMMI:"Immigrated", CENS:"Census", BURI:"Buried", CHR:"Christened", BAPM:"Baptized" };
+const EVENT_LABEL = {
+  BIRT: "Born",
+  DEAT: "Died",
+  MARR: "Married",
+  RESI: "Lived",
+  EMIG: "Emigrated",
+  IMMI: "Immigrated",
+  CENS: "Census",
+  BURI: "Buried",
+  CHR: "Christened",
+  BAPM: "Baptized",
+  OCCU: "Occupation",
+  EDUC: "Education",
+  RELI: "Religion",
+  NATU: "Naturalization",
+  WILL: "Will",
+};
+const EVENT_NOUN_LABEL = {
+  BIRT: "birth",
+  DEAT: "death",
+  MARR: "marriage",
+  RESI: "residence",
+  EMIG: "emigration",
+  IMMI: "immigration",
+  CENS: "census",
+  BURI: "burial",
+  CHR: "christening",
+  BAPM: "baptism",
+  OCCU: "occupation",
+  EDUC: "education",
+  RELI: "religion",
+  NATU: "naturalization",
+  WILL: "will",
+};
+
+function _kfEventPlainLabel(type, opts = {}) {
+  const tag = String(type || "").trim().toUpperCase();
+  const noun = EVENT_NOUN_LABEL[tag];
+  const title = EVENT_LABEL[tag];
+  const label = opts.noun ? noun : title;
+  if (!label) return opts.noun ? "recorded event" : "Recorded event";
+  return opts.lower ? label.toLowerCase() : label;
+}
+
+function _kfPlainEnglishEventText(text) {
+  const tags = Object.keys(EVENT_NOUN_LABEL).join("|");
+  return String(text || "").replace(new RegExp(`\\b(${tags})\\b`, "g"), tag => _kfEventPlainLabel(tag, { noun: true }));
+}
 
 function _kfRgb(rgb) {
   const r = Math.max(0, Math.min(255, Math.round(rgb?.[0] ?? 128)));
@@ -407,7 +454,7 @@ function _kfPersonTimelineHtml(ind, clickedType, clickedYear) {
   const birthYear = parseInt(ind.birth_year, 10);
   const items = events.map(ev => {
     const yr = parseInt(ev.year, 10);
-    const label = EVENT_LABEL[ev.type] || ev.type;
+    const label = _kfEventPlainLabel(ev.type);
     const placeHtml = _kfPersonTimelinePlaceHtml(ev.place || "");
     const isActive = clickedType !== undefined
       && ev.type === clickedType && String(ev.year) === String(clickedYear);
@@ -781,9 +828,9 @@ function renderChat() {
     chatHistoryEl.scrollHeight - chatHistoryEl.scrollTop - chatHistoryEl.clientHeight < stickThreshold;
   const prevScrollTop = chatHistoryEl.scrollTop;
   chatHistoryEl.innerHTML = visible.map((m, mi) => {
-    const body = m.role === "user" ? escChat(m.content) : renderMd(m.content);
+    const body = m.role === "user" ? escChat(m.content) : renderMd(_kfPlainEnglishEventText(m.content));
     const chips = (m.chips && m.chips.length)
-      ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}">${escChat(c.label || "(chip)")}</button>`).join("")}</div>`
+      ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}">${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}</button>`).join("")}</div>`
       : "";
     return `<div class="msg ${m.role}${m.kind === "tool" ? " tool" : ""}"><span class="who">${m.role === "user" ? "you" : m.kind === "tool" ? "tool" : "claude"}</span><div class="body">${body}</div>${chips}</div>`;
   }).join("");
@@ -892,7 +939,7 @@ function _kfReportChipResult(chip, r) {
   }
 }
 function appendError(text) {
-  chatHistoryEl.insertAdjacentHTML("beforeend", `<div class="msg bot err"><span class="who">error</span><div class="body">${escChat(text)}</div></div>`);
+  chatHistoryEl.insertAdjacentHTML("beforeend", `<div class="msg bot err"><span class="who">error</span><div class="body">${escChat(_kfPlainEnglishEventText(text))}</div></div>`);
   chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 }
 
