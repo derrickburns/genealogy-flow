@@ -12,6 +12,7 @@ const _personEmptyEl = $("personEmpty");
 const _clusterEl = $("selectedCluster");
 const _clusterEmptyEl = $("clusterEmpty");
 const _mobileSheetHandleEl = $("mobileSheetHandle");
+const _mobileSheetTabsEl = $("sideTabs");
 const _mobileSheetTitleEl = $("mobileSheetTitle");
 
 function _kfUpdateMobileSheetTitle(tab) {
@@ -84,23 +85,31 @@ const _kfMobileUiResizeObserver = typeof ResizeObserver !== "undefined"
   ? new ResizeObserver(() => _kfSyncMobileControlHeight())
   : null;
 if (_kfMobileUiResizeObserver && $("ui")) _kfMobileUiResizeObserver.observe($("ui"));
-if (_mobileSheetHandleEl) {
+
+function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
+  if (!handleEl) return;
   let drag = null;
-  _mobileSheetHandleEl.addEventListener("pointerdown", e => {
+  handleEl.addEventListener("pointerdown", e => {
     if (!_kfIsMobileLayout()) return;
-    drag = { y: e.clientY, moved: false };
-    _mobileSheetHandleEl.setPointerCapture?.(e.pointerId);
+    drag = {
+      y: e.clientY,
+      moved: false,
+      ignoreTap: !!opts.ignoreTapSelector && !!e.target.closest(opts.ignoreTapSelector),
+    };
+    handleEl.setPointerCapture?.(e.pointerId);
   });
-  _mobileSheetHandleEl.addEventListener("pointermove", e => {
+  handleEl.addEventListener("pointermove", e => {
     if (!drag) return;
     if (Math.abs(e.clientY - drag.y) > 8) drag.moved = true;
   });
-  _mobileSheetHandleEl.addEventListener("pointerup", e => {
+  handleEl.addEventListener("pointerup", e => {
     if (!drag) return;
     const dy = e.clientY - drag.y;
     const moved = drag.moved;
+    const ignoreTap = drag.ignoreTap;
     drag = null;
     if (!moved) {
+      if (ignoreTap) return;
       const cur = $("panel")?.dataset.sheet || "peek";
       if (cur === "peek") _kfSetMobileSheetState("open");
       else if (cur === "open") _kfSetMobileSheetState("full");
@@ -111,7 +120,7 @@ if (_mobileSheetHandleEl) {
       _kfDemoteMobileSheet();
     }
   });
-  _mobileSheetHandleEl.addEventListener("keydown", e => {
+  handleEl.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const cur = $("panel")?.dataset.sheet || "peek";
@@ -125,6 +134,8 @@ if (_mobileSheetHandleEl) {
     }
   });
 }
+_kfInstallMobileSheetHandle(_mobileSheetHandleEl);
+_kfInstallMobileSheetHandle(_mobileSheetTabsEl, { ignoreTapSelector: "[data-side-tab]" });
 
 const EVENT_LABEL = {
   BIRT: "Born",

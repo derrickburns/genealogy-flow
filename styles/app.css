@@ -6,6 +6,7 @@
   @media (max-width: 900px) { #middle { grid-template-columns: 1fr 260px; } }
   #vizArea { display:flex; flex-direction:column; min-width:0; min-height:0; border-radius:10px; overflow:hidden; }
   #vizTabBar { display:flex; align-items:flex-end; gap:2px; padding:4px 8px 0; background:#dce8f0; flex-shrink:0; overflow-x:auto; }
+  #vizTabBar[hidden] { display:none; }
   .vizTab { padding:5px 14px; border:1px solid #b0c4d0; border-bottom:none; border-radius:6px 6px 0 0; background:#c8dde8; color:#4a6070; font:inherit; font-size:12px; font-weight:500; cursor:pointer; white-space:nowrap; transition:background 0.1s; }
   .vizTab:hover:not(.on) { background:#d8eaf4; color:#1c2433; }
   .vizTab.on { background:#fff; color:#1c2433; font-weight:700; border-color:#b0c4d0; position:relative; }
@@ -519,16 +520,20 @@
     #focusBreadcrumb { display:none; }
     #mapLegend { display:none !important; }
 
-    #authBar { flex-wrap:wrap; gap:5px; padding:4px 8px; font-size:11px; }
+    #authBar { position:relative; flex-wrap:nowrap; gap:5px; padding:3px 6px; font-size:10.5px; min-height:34px; box-sizing:border-box; }
+    #authBar .authTier.anon { display:none; }
+    #authBar .authTier { padding:1px 6px; font-size:9px; }
     #authBar .authEmail { max-width:42vw; }
-    #authBar button { min-height:34px; padding:5px 9px; }
-    #apiKeyRow { flex-wrap:wrap; flex:1 1 100%; }
-    #apiKeyRow input { width:min(100%, 230px); min-height:32px; }
+    #authBar .authSpacer { flex:1 1 auto; }
+    #authBar button { min-height:28px; padding:4px 8px; font-size:10.5px; white-space:nowrap; }
+    #reportIssue { display:none; }
+    #apiKeyRow { display:none !important; }
+    .apiKeyHelp { display:none !important; }
 
-    #title { gap:6px; padding:6px 8px; font-size:13px; border-radius:8px; }
-    #title b { font-size:14px; }
-    #stats { order:20; flex:1 1 100%; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; }
-    #pick, #uploadCloud { min-height:36px; padding:6px 10px; }
+    #title { gap:5px; padding:4px 6px; font-size:12px; border-radius:8px; flex-wrap:nowrap; min-height:34px; box-sizing:border-box; }
+    #title b { display:none; }
+    #stats { order:0; flex:1 1 auto; min-width:44px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
+    #pick, #uploadCloud { min-height:30px; padding:4px 8px; font-size:11px; white-space:nowrap; }
     #rootwrap { order:18; flex:1 1 100%; margin-left:0 !important; }
     #rootSearchBox { width:100%; box-sizing:border-box; }
     #rootSearch { width:100% !important; min-width:0; }
@@ -572,19 +577,21 @@
       position:fixed; left:0; right:0; bottom:var(--kf-mobile-ui-h); z-index:45;
       height:min(48dvh, 430px); max-height:calc(100dvh - var(--kf-mobile-ui-h) - 12px);
       border-radius:18px 18px 0 0; border-left:0; border-right:0; border-bottom:0;
-      transform:translateY(calc(100% - 52px)); transition:transform 180ms ease, height 180ms ease;
+      transform:translateY(calc(100% - 44px)); transition:transform 180ms ease, height 180ms ease;
       box-shadow:0 -14px 42px rgba(15,23,42,0.25);
     }
     #panel[data-sheet="open"] { transform:translateY(0); height:min(50dvh, 460px); }
     #panel[data-sheet="full"] { transform:translateY(0); height:calc(100dvh - var(--kf-mobile-ui-h) - 12px); }
     #mobileSheetHandle {
-      display:flex; flex:0 0 52px; align-items:center; justify-content:center; flex-direction:column; gap:5px;
+      display:none;
+      flex:0 0 52px; align-items:center; justify-content:center; flex-direction:column; gap:5px;
       width:100%; border:0; border-bottom:1px solid #e0e6ee; background:linear-gradient(180deg,#ffffff 0%,#f5f8fd 100%);
       color:#334155; font:inherit; font-size:11px; font-weight:900; letter-spacing:0.07em; text-transform:uppercase;
       cursor:pointer; touch-action:pan-y;
     }
     #mobileSheetHandle .grabber { width:42px; height:5px; border-radius:999px; background:#b7c3d4; }
-    #chatPanel { height:calc(100% - 52px); min-height:0; }
+    #chatPanel { height:100%; min-height:0; }
+    #sideTabs { touch-action:pan-y; }
     #sideTabs button { min-height:44px; padding:8px 6px; font-size:10px; letter-spacing:0.04em; }
     #chatPanel .sidePane { min-height:0; }
     #personPane, #clusterPane, #chatPane { overflow:hidden; }

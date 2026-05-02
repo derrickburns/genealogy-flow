@@ -71,7 +71,7 @@
 </div>
 <div id="middle">
 <div id="vizArea">
-<div id="vizTabBar"><button class="vizTab on" data-tab="map">Map</button></div>
+<div id="vizTabBar" hidden></div>
 <div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div>
 <div id="viewChrome">
   <div id="viewSummary">Load GEDCOM data to begin.</div>
@@ -120,9 +120,9 @@
           <li>Use the <b>filter</b> chips to focus on blood relatives, ancestors, men, or women</li>
           <li>Click any dot to select that person and see their events in the right panel</li>
           <li>Type a name in the <b>home person</b> box to re-center the tree on someone else</li>
-          <li>Save your Anthropic key or sign in as VIP to unlock AI chat</li>
+          <li class="apiKeyHelp">Save your Anthropic key or sign in as VIP to unlock AI chat</li>
         </ul>
-        <button type="button" onclick="document.getElementById('apiKeyInput').focus()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Add API key</button>
+        <button type="button" class="apiKeyHelp" onclick="document.getElementById('apiKeyInput').focus()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Add API key</button>
         <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #c0ccd8; border-radius:5px; background:#fff; color:#2a4a8c; font:inherit; cursor:pointer;">Sign in</button>
       </div>
       <div id="chatScope">Load GEDCOM data to enable scoped genealogy answers.</div>

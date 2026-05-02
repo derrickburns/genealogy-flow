@@ -262,6 +262,12 @@ function _kfRenderViz(id) {
 function _kfRenderVizTabs() {
   const bar = $("vizTabBar");
   if (!bar) return;
+  const hasExtraVizTabs = _kfVizList.length > 0;
+  bar.hidden = !hasExtraVizTabs;
+  if (!hasExtraVizTabs) {
+    bar.innerHTML = "";
+    return;
+  }
   const isMapActive = !$("vizPane").classList.contains("on");
   let html = `<button class="vizTab${isMapActive ? " on" : ""}" data-tab="map">Map</button>`;
   for (const v of _kfVizList) {
