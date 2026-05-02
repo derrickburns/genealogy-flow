@@ -2631,20 +2631,72 @@ const COLOR_ONE_PARENT = [110, 110, 115];
 const COLOR_GENDER_M   = [40, 100, 220];
 const COLOR_GENDER_F   = [220, 60, 90];
 const COLOR_GENDER_U   = [140, 140, 150];
-// Tree palette — one stable color per loaded GEDCOM, chosen by hashing the
-// tree name. With single-tree rendering all dots share one color; switching
-// trees flips the whole map to that tree's slot.
+// Tree palette. The selected-tree color cache starts from a stable name hash
+// but linearly probes to avoid same-color tree slices within the active set.
 const TREE_PALETTE = [
   [40, 100, 220], [220, 60, 90],  [80, 160, 100],
   [200, 130, 50], [140, 80, 200], [60, 180, 200],
   [200, 80, 160], [140, 150, 60],
 ];
 let _kfTreeColorIdx = 0;
-function _kfTreeColorFromName(name) {
+function _kfHashString(name) {
   if (!name) return 0;
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return h % TREE_PALETTE.length;
+  return h;
+}
+function _kfTreeColorFromName(name) {
+  return _kfHashString(name) % TREE_PALETTE.length;
+}
+function _kfHslToRgb(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60)      { r = c; g = x; }
+  else if (h < 120){ r = x; g = c; }
+  else if (h < 180){ g = c; b = x; }
+  else if (h < 240){ g = x; b = c; }
+  else if (h < 300){ r = x; b = c; }
+  else             { r = c; b = x; }
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+function _kfTreeColorKey(rgb) {
+  return `${rgb[0]},${rgb[1]},${rgb[2]}`;
+}
+let _kfTreeColorCacheKey = "";
+let _kfTreeColorCache = new Map();
+function _kfBuildTreeColorCache() {
+  const sources = _kfSelectedVizSourceList();
+  const key = sources.map(s => `${s.source_id}:${s.name}`).join("|");
+  if (key === _kfTreeColorCacheKey) return;
+  _kfTreeColorCacheKey = key;
+  _kfTreeColorCache = new Map();
+  const used = new Set();
+  const sorted = sources.slice().sort((a, b) => (a.source_id || 0) - (b.source_id || 0) || a.name.localeCompare(b.name));
+  for (const src of sorted) {
+    const start = _kfTreeColorFromName(src.name);
+    let color = null;
+    for (let step = 0; step < TREE_PALETTE.length; step++) {
+      const candidate = TREE_PALETTE[(start + step) % TREE_PALETTE.length];
+      const colorKey = _kfTreeColorKey(candidate);
+      if (!used.has(colorKey)) { color = candidate; break; }
+    }
+    if (!color) {
+      let salt = 0;
+      do {
+        const hue = (_kfHashString(`${src.name}:${salt}`) % 360 + 360) % 360;
+        color = _kfHslToRgb(hue, 0.62, 0.48);
+        salt++;
+      } while (used.has(_kfTreeColorKey(color)) && salt < 720);
+    }
+    _kfTreeColorCache.set(src.name, color);
+    used.add(_kfTreeColorKey(color));
+  }
+}
+function _kfTreeColorForName(name) {
+  _kfBuildTreeColorCache();
+  return _kfTreeColorCache.get(name) || TREE_PALETTE[_kfTreeColorFromName(name)];
 }
 let colorMode = "lineage";  // "lineage" | "gender" | "tree"
 function colorFor(s) { return s === 0 ? COLOR_PATERNAL : s === 1 ? COLOR_MATERNAL : COLOR_OTHER; }
@@ -2656,7 +2708,7 @@ function colorForFinal(side, _parStat, indiIdx) {
   }
   if (colorMode === "tree") {
     const name = _kfSourceNameForIndiIdx(indiIdx);
-    return TREE_PALETTE[_kfTreeColorFromName(name)];
+    return _kfTreeColorForName(name);
   }
   return colorFor(side);
 }
@@ -2768,7 +2820,7 @@ function updateMapLegend() {
   } else if (clusterMode === "tree") {
     html += hdr("Tree clusters");
     for (const src of _kfSelectedVizSourceList()) {
-      html += dot(TREE_PALETTE[_kfTreeColorFromName(src.name)], src.name.replace(/\.ged$/i, ""));
+      html += dot(_kfTreeColorForName(src.name), src.name.replace(/\.ged$/i, ""));
     }
     html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count</div>`;
   } else if (clusterMode === "aggregate" || clusterMode === "dispersion") {
@@ -2790,7 +2842,7 @@ function updateMapLegend() {
       const sources = _kfSelectedVizSourceList();
       for (const src of sources) {
         html += dot(
-          TREE_PALETTE[_kfTreeColorFromName(src.name)],
+          _kfTreeColorForName(src.name),
           src.name.replace(/\.ged$/i, ""),
           treeTot.get(src.name) || 0,
           treeView.get(src.name) || 0,
@@ -3389,8 +3441,7 @@ function drawClusters(visible, radius, mode, year, dw) {
       const sorted = Array.from(sourceCounts.entries()).sort((a, b) => a[0] - b[0]);
       for (const [sid, count] of sorted) {
         const slice = (count / total) * Math.PI * 2;
-        const colorIdx = _kfTreeColorFromName(sourceNames.get(sid) || "");
-        const c = TREE_PALETTE[colorIdx];
+        const c = _kfTreeColorForName(sourceNames.get(sid) || "");
         fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.85)`;
         fxCtx.beginPath();
         fxCtx.moveTo(cl.cx, cl.cy);
@@ -6576,7 +6627,7 @@ function _kfClusterSliceEntries(c) {
   if (clusterMode === "tree" && c.sourceCounts) {
     return Array.from(c.sourceCounts.entries()).map(([sid, count]) => {
       const name = c.sourceNames?.get(sid) || String(sid);
-      return { label: name.replace(/\.ged$/i, ""), count, color: TREE_PALETTE[_kfTreeColorFromName(name)] };
+      return { label: name.replace(/\.ged$/i, ""), count, color: _kfTreeColorForName(name) };
     });
   }
   const counts = c.sides || [0, 0, 0];
@@ -6643,7 +6694,7 @@ function _kfClusterMemberColor(di, c) {
     return ind?.sex === "M" ? COLOR_GENDER_M : ind?.sex === "F" ? COLOR_GENDER_F : COLOR_GENDER_U;
   }
   if (clusterMode === "tree") {
-    return TREE_PALETTE[_kfTreeColorFromName(_kfSourceNameForIndiIdx(dwellIndi[di]))];
+    return _kfTreeColorForName(_kfSourceNameForIndiIdx(dwellIndi[di]));
   }
   if (clusterMode === "state" && c?.abbr) {
     return TREE_PALETTE[_kfTreeColorFromName(c.abbr)];
