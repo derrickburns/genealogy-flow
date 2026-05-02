@@ -1259,58 +1259,7 @@ function _kfFormatClusterTooltip(c) {
     ? `${c.abbr} &nbsp;${total} ${total === 1 ? "person" : "people"}`
     : `${total} ${total === 1 ? "person" : "people"}`;
   const lines = [`<div class="tipName">${title}</div>`];
-  if (c.sides) {
-    const [pat, mat, oth] = c.sides;
-    if (pat + mat + oth > 0) {
-      lines.push(`<div class="tipYrs">lineage &nbsp;paternal ${pat} &middot; maternal ${mat} &middot; other ${oth}</div>`);
-    }
-  }
-  if (c.parents) {
-    const [both, one, none] = c.parents;
-    if (both + one + none > 0) {
-      lines.push(`<div class="tipYrs">parents known &nbsp;both ${both} &middot; one ${one} &middot; neither ${none}</div>`);
-    }
-  }
-  if (c.genders) {
-    const [m, f, u] = c.genders;
-    if (m + f + u > 0) {
-      lines.push(`<div class="tipYrs">gender &nbsp;M ${m} &middot; F ${f} &middot; unknown ${u}</div>`);
-    }
-  }
-  if (c.stateCounts) {
-    const top = Array.from(c.stateCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    lines.push(`<div class="tipYrs">${top.map(([s, n]) => `${s} ${n}`).join(" &middot; ")}</div>`);
-  }
-  if (c.sourceCounts) {
-    const top = Array.from(c.sourceCounts.entries()).sort((a, b) => b[1] - a[1]);
-    lines.push(`<div class="tipYrs">${top.map(([sid, n]) => `${escHtml(c.sourceNames?.get(sid) || String(sid))} ${n}`).join(" &middot; ")}</div>`);
-  }
-  // Top 5 nearest relatives of the home person in this cluster
-  if (c.members && c.members.length && lastIndividuals && relDistCache.size) {
-    const N_REL = 5;
-    const rels = [];
-    for (const di of c.members) {
-      const idx = dwellIndi ? dwellIndi[di] : -1;
-      if (idx < 0 || !lastIndividuals[idx]) continue;
-      const ind = lastIndividuals[idx];
-      const dist = relDistCache.get(ind.id) ?? Infinity;
-      if (!isFinite(dist) || dist === 0) continue; // skip unknown / self
-      const rel = relationCache.get(ind.id) || "";
-      const place = (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
-      const shortPlace = place ? place.split(",")[0].trim() : "";
-      rels.push({ name: ind.name || "?", rel, dist, place: shortPlace });
-    }
-    rels.sort((a, b) => a.dist - b.dist || a.name.localeCompare(b.name));
-    const top = rels.slice(0, N_REL);
-    if (top.length) {
-      lines.push(`<div style="border-top:1px solid #e0e6ee;margin-top:4px;padding-top:3px;font-size:10.5px;color:#566480;font-weight:700;">Closest relatives</div>`);
-      for (const r of top) {
-        const relBadge = r.rel ? `<span style="background:#e8eef8;border-radius:3px;padding:1px 4px;font-size:9.5px;color:#2a4a8c;margin-right:4px;font-weight:700;">${r.rel}</span>` : "";
-        const place = r.place ? ` <span style="color:#9aa6bc;font-size:10px;">${escHtml(r.place)}</span>` : "";
-        lines.push(`<div style="font-size:10.5px;padding:1px 0;">${relBadge}${escHtml(r.name)}${place}</div>`);
-      }
-    }
-  }
+  lines.push(`<div class="tipYrs">Click for people, relatives, and evidence details.</div>`);
   return lines.join("");
 }
 function _kfGetClustersForDeck() {

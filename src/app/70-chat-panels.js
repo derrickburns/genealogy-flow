@@ -353,7 +353,6 @@ function _kfShowClusterCard(c, opts = {}) {
     `</div>` +
     _kfClusterBreakdownHtml(c) +
     _kfClusterDigestHtml(c, rows) +
-    _kfClusterStoryHtml(c, rows) +
     _kfClusterIssuesHtml(c, rows) +
     _kfClusterQuestionHtml(rows) +
     `<div class="cluster-list-head"><span>People</span><span>${escHtml(orderText)}</span></div>` +
