@@ -233,15 +233,7 @@ function _kfRelationMapsForFocus(focusId) {
 
 function _kfClusterLocationEvidenceRank(di) {
   const place = (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
-  const y = Number.isFinite(dwellY?.[di]) ? dwellY[di] : null;
-  const yearDelta = y == null ? Infinity : Math.abs(y - Math.floor(curYear));
-  if (!place) return 5;
-  if (dwellExact?.[di] && yearDelta <= 1) return 0;
-  if (dwellExact?.[di]) return 1;
-  const parts = place.split(",").map(s => s.trim()).filter(Boolean).length;
-  if (parts >= 3) return 2;
-  if (parts === 2) return 3;
-  return 4;
+  return _kfPlaceEvidence(place, !!dwellExact?.[di]).rank;
 }
 
 function _kfClusterFocus(c, opts = {}) {
@@ -303,6 +295,7 @@ function _kfClusterMemberRows(c, opts = {}) {
         `<span>` +
           `<span class="cluster-person-name">${escHtml(ind.name || "?")}</span>` +
           (meta ? `<span class="cluster-person-meta">${escHtml(meta)}</span>` : "") +
+          _kfDwellEvidenceBadgesHtml(di) +
         `</span>` +
         `<span class="cluster-person-year">${escHtml(year)}</span>` +
       `</button>`,
@@ -348,6 +341,7 @@ function _kfShowClusterCard(c, opts = {}) {
   const orderText = focusName
     ? `Ordered by relation to ${focusName}${clusterMode === "tree" ? ", grouped by tree" : ""}`
     : "Ordered by relation, evidence quality, and event year";
+  _kfSetActiveClusterLabel(title);
   _clusterEl.innerHTML =
     `<div class="cluster-head">` +
       _kfClusterSwatchHtml(c) +
@@ -357,6 +351,10 @@ function _kfShowClusterCard(c, opts = {}) {
       `</div>` +
     `</div>` +
     _kfClusterBreakdownHtml(c) +
+    _kfClusterDigestHtml(c, rows) +
+    _kfClusterStoryHtml(c, rows) +
+    _kfClusterIssuesHtml(c, rows) +
+    _kfClusterQuestionHtml(rows) +
     `<div class="cluster-list-head"><span>People</span><span>${escHtml(orderText)}</span></div>` +
     `<div class="cluster-list">${rows.map(r => r.html).join("")}</div>` +
     `<div class="cluster-actions"><button type="button" class="cluster-ask" data-ask="${escHtml(prompt)}">Ask Kindred Genealogist about this cluster</button></div>`;
@@ -381,18 +379,9 @@ function _kfShowClusterCard(c, opts = {}) {
 
   _clusterEl.querySelector(".cluster-ask")?.addEventListener("click", async () => {
     const text = _clusterEl.querySelector(".cluster-ask")?.dataset.ask;
-    if (!text) return;
-    _kfSetSideTab("chat");
-    if (_chatBusy) { chatInputEl.value = text; chatInputEl.focus(); return; }
-    chatHistory.push({ role: "user", content: text });
-    renderChat();
-    _chatBusy = true;
-    chatSendBtn.disabled = true;
-    chatSendBtn.textContent = "...";
-    try { await runChatTurn(text); }
-    catch (err) { appendError(err.message || String(err)); }
-    finally { _chatBusy = false; chatSendBtn.disabled = false; chatSendBtn.textContent = "Send"; }
+    await _kfAskQuestion(text);
   });
+  _kfBindQuestionChips(_clusterEl);
 }
 
 function _kfNormalizedPlaceForDisplay(place) {
@@ -521,6 +510,11 @@ function _kfShowPersonCard(di) {
 
   const clickedType = dwellType[di];
   const clickedYear = dwellY[di];
+  const evidenceHtml = _kfDwellEvidenceBadgesHtml(di);
+  const whyHtml = _kfWhyPersonHereHtml(di);
+  const storyHtml = _kfPersonStoryHtml(ind, di);
+  const issuesHtml = _kfPersonIssuesHtml(ind, di);
+  const questionsHtml = _kfPersonQuestionHtml(ind);
   const evHtml = _kfPersonTimelineHtml(ind, clickedType, clickedYear, _kfShowNormalizedLocations);
   const lineageHtml = _kfPersonLineageHtml(ind);
   const hasLineage = !!lineageHtml;
@@ -569,6 +563,11 @@ function _kfShowPersonCard(di) {
   _spEl.innerHTML =
     `<div class="sp-name">${escHtml(ind.name)}</div>` +
     (sub ? `<div class="sp-sub">${escHtml(sub)}</div>` : "") +
+    evidenceHtml +
+    whyHtml +
+    storyHtml +
+    issuesHtml +
+    questionsHtml +
     tabsHtml +
     panesHtml +
     parentsHtml +
@@ -597,18 +596,9 @@ function _kfShowPersonCard(di) {
 
   _spEl.querySelector(".sp-ask").addEventListener("click", async () => {
     const text = _spEl.querySelector(".sp-ask").dataset.ask;
-    if (!text) return;
-    _kfSetSideTab("chat");
-    if (_chatBusy) { chatInputEl.value = text; chatInputEl.focus(); return; }
-    chatHistory.push({ role: "user", content: text });
-    renderChat();
-    _chatBusy = true;
-    chatSendBtn.disabled = true;
-    chatSendBtn.textContent = "...";
-    try { await runChatTurn(text); }
-    catch (err) { appendError(err.message || String(err)); }
-    finally { _chatBusy = false; chatSendBtn.disabled = false; chatSendBtn.textContent = "Send"; }
+    await _kfAskQuestion(text);
   });
+  _kfBindQuestionChips(_spEl);
   _spEl.querySelector(".sp-dismiss").addEventListener("click", () => {
     _kfHidePersonCard();
     highlightedDwell = -1;
@@ -928,11 +918,16 @@ function buildChatContext() {
     lines.push(`Tree: ${lastIndividuals.length.toLocaleString()} individuals, ${dwellY ? dwellY.length.toLocaleString() : 0} events.`);
     lines.push(`Year range: ${minYear}-${maxYear}.`);
   }
+  if (typeof _kfSelectedVizSourceList === "function") {
+    const sources = _kfSelectedVizSourceList();
+    if (sources.length) lines.push(`Selected trees: ${sources.map(s => s.name).join("; ")}.`);
+  }
   if (lastRootId) {
     const root = lastIndiById?.get(lastRootId);
     if (root) lines.push(`Root: ${root.name} (${root.birth_year ?? "?"}-${root.death_year ?? "?"}).`);
   }
   lines.push(`Currently viewing year: ${Math.floor(curYear)}, year-window: ${dwellWindow}y back.`);
+  if (typeof _kfViewModeLabel === "function") lines.push(`Current map filters: ${_kfViewModeLabel()}.`);
   if (highlightedDwell >= 0 && lastIndividuals) {
     const sel = lastIndividuals[dwellIndi[highlightedDwell]];
     if (sel) {
@@ -940,24 +935,19 @@ function buildChatContext() {
       lines.push(`Selected: ${sel.name} (${sel.birth_year ?? "?"}-${sel.death_year ?? "?"})${place ? ", at " + place : ""}, dwell year ${dwellY[highlightedDwell]}.`);
     }
   }
-  // Visible people in current year window
+  // Visible people in the actual map marker set: one marker per person,
+  // using the latest valid dwell at the current year after all filters.
   if (timelineLoaded) {
-    const yint = Math.floor(curYear);
-    const lo = lowerBound(dwellY, dwellOrder, yint - dwellWindow);
-    const hi = lowerBound(dwellY, dwellOrder, yint + 1);
-    const visible = new Map();
-    for (let k = lo; k < hi; k++) {
-      const i = dwellOrder[k];
-      const ind = lastIndividuals[dwellIndi[i]];
-      if (!ind) continue;
-      if (!visible.has(ind.id)) {
-        const place = dwellPlace[i] >= 0 ? placesList[dwellPlace[i]] : "";
-        visible.set(ind.id, `${ind.name} (${dwellY[i]}, ${place})`);
-      }
-      if (visible.size >= 80) break;
+    const visibleRows = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData().rows : [];
+    const showSource = typeof _kfSelectedVizSourceList === "function" && _kfSelectedVizSourceList().length > 1;
+    const values = [];
+    for (const row of visibleRows) {
+      const source = showSource && row.source ? `; ${row.source}` : "";
+      values.push(`${row.ind.name} (${row.year}, ${row.place || "unknown place"}${source})`);
+      if (values.length >= 80) break;
     }
-    if (visible.size > 0) {
-      lines.push(`Visible at this year (max 80): ${[...visible.values()].join("; ")}.`);
+    if (values.length > 0) {
+      lines.push(`Currently rendered map markers (max 80; alive/presumed-alive after filters): ${values.join("; ")}.`);
     }
   }
   return lines.join("\n");

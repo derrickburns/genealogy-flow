@@ -1,0 +1,413 @@
+// ---------- Derived UX/cache layer ----------
+//
+// These helpers keep explanatory UI cheap. Expensive-ish summaries are keyed
+// by the state boundary that changes them: tree graph, focus person, visible
+// marker set, or selected cluster membership.
+const _kfDerivedCache = {
+  treeFacts: null,
+  visible: null,
+  cluster: new Map(),
+  clusterIndividuals: null,
+  activeClusterLabel: "",
+  lastChromeKey: "",
+};
+
+function _kfNameShort(name) {
+  return String(name || "?").replace(/\s+/g, " ").trim();
+}
+
+function _kfSourceSelectionKey() {
+  const sources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
+  return sources.map(s => s.source_id || s.name).sort().join(",");
+}
+
+function _kfFilterKey() {
+  const surn = _kfSurnameFilter ? Array.from(_kfSurnameFilter).sort().join(",") : "";
+  return `${curFilter}|${_kfSexFilter || ""}|${surn}`;
+}
+
+function _kfEventLabelForDwell(di) {
+  return EVENT_TYPE_LABEL[dwellType?.[di]] || "event";
+}
+
+function _kfDwellPlace(di) {
+  return (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
+}
+
+function _kfPlaceEvidence(place, exact = false) {
+  if (!place) return { label: "no place", rank: 5, tone: "risk" };
+  if (exact) return { label: "city exact", rank: 0, tone: "good" };
+  const parts = String(place).split(",").map(s => s.trim()).filter(Boolean);
+  if (parts.length >= 4) return { label: "city/county/state", rank: 1, tone: "good" };
+  if (parts.length === 3) return { label: "partial place", rank: 2, tone: "info" };
+  if (parts.length === 2) return { label: "state only", rank: 3, tone: "warn" };
+  return { label: "vague place", rank: 4, tone: "warn" };
+}
+
+function _kfEventForDwell(di) {
+  const idx = dwellIndi?.[di];
+  const ind = idx >= 0 && lastIndividuals ? lastIndividuals[idx] : null;
+  if (!ind) return null;
+  return _kfTreeFacts().eventByDwell?.[di] || null;
+}
+
+function _kfEventDwellKey(year, place, typeCode = "") {
+  return `${year}|${place || ""}|${typeCode}`;
+}
+
+function _kfTreeFacts() {
+  if (_kfDerivedCache.treeFacts &&
+      _kfDerivedCache.treeFacts.individuals === lastIndividuals &&
+      _kfDerivedCache.treeFacts.dwellY === dwellY &&
+      _kfDerivedCache.treeFacts.indiDwells === indiDwells) {
+    return _kfDerivedCache.treeFacts;
+  }
+
+  const byId = new Map();
+  const byIdx = [];
+  const eventByDwell = [];
+  if (!lastIndividuals) {
+    _kfDerivedCache.treeFacts = { individuals: lastIndividuals, dwellY, indiDwells, byId, byIdx, eventByDwell };
+    return _kfDerivedCache.treeFacts;
+  }
+
+  for (let idx = 0; idx < lastIndividuals.length; idx++) {
+    const ind = lastIndividuals[idx];
+    const issues = [];
+    const events = (ind.events || [])
+      .filter(ev => ev && Number.isFinite(Number(ev.year)))
+      .slice()
+      .sort((a, b) => Number(a.year) - Number(b.year));
+    const birth = Number.isFinite(Number(ind.birth_year)) ? Number(ind.birth_year) : null;
+    const death = Number.isFinite(Number(ind.death_year)) ? Number(ind.death_year) : null;
+    const seenPlaces = new Set();
+    let vaguePlaces = 0;
+    let rangedEvents = 0;
+    const exactEventBuckets = new Map();
+    const fallbackEventBuckets = new Map();
+    for (const ev of events) {
+      const y = Number(ev.year);
+      const place = String(ev.place || "").trim();
+      const typeCode = EVENT_TYPE_CODE[ev.type] ?? 10;
+      const exactKey = _kfEventDwellKey(y, place, typeCode);
+      const fallbackKey = _kfEventDwellKey(y, place, "");
+      if (!exactEventBuckets.has(exactKey)) exactEventBuckets.set(exactKey, ev);
+      if (!fallbackEventBuckets.has(fallbackKey)) fallbackEventBuckets.set(fallbackKey, ev);
+      if (birth != null && y < birth - 1) issues.push(`${ev.type || "event"} before birth (${y})`);
+      if (death != null && y > death + 1) issues.push(`${ev.type || "event"} after death (${y})`);
+      const yEnd = Number(ev.year_end ?? ev.year);
+      if (Number.isFinite(yEnd) && yEnd - y > 10) {
+        rangedEvents++;
+        issues.push(`wide date range ${y}-${yEnd}`);
+      }
+      if (place) {
+        seenPlaces.add(place);
+        if (_kfPlaceEvidence(place, false).rank >= 3) vaguePlaces++;
+      }
+    }
+    const dwellsForInd = indiDwells?.get(idx) || [];
+    for (const di of dwellsForInd) {
+      const y = dwellY?.[di];
+      const place = _kfDwellPlace(di);
+      const typeCode = dwellType?.[di] ?? "";
+      eventByDwell[di] =
+        exactEventBuckets.get(_kfEventDwellKey(y, place, typeCode)) ||
+        fallbackEventBuckets.get(_kfEventDwellKey(y, place, "")) ||
+        null;
+    }
+    const first = events[0] || null;
+    const last = events[events.length - 1] || null;
+    const birthEv = events.find(ev => ev.type === "BIRT") || null;
+    const deathEv = events.find(ev => ev.type === "DEAT") || null;
+    const facts = {
+      ind,
+      idx,
+      events,
+      issues: Array.from(new Set(issues)).slice(0, 8),
+      vaguePlaces,
+      rangedEvents,
+      placeCount: seenPlaces.size,
+      first,
+      last,
+      birthEv,
+      deathEv,
+    };
+    byIdx[idx] = facts;
+    byId.set(ind.id, facts);
+  }
+
+  _kfDerivedCache.treeFacts = { individuals: lastIndividuals, dwellY, indiDwells, byId, byIdx, eventByDwell };
+  return _kfDerivedCache.treeFacts;
+}
+
+function _kfFactsForInd(ind) {
+  if (!ind) return null;
+  return _kfTreeFacts().byId.get(ind.id) || null;
+}
+
+function _kfBadgeHtml(label, tone = "") {
+  return `<span class="ux-badge${tone ? " " + tone : ""}">${escHtml(label)}</span>`;
+}
+
+function _kfBadgesHtml(badges) {
+  const html = badges.filter(Boolean).map(b => _kfBadgeHtml(b.label, b.tone)).join("");
+  return html ? `<div class="ux-badges">${html}</div>` : "";
+}
+
+function _kfDwellEvidenceBadges(di) {
+  const idx = dwellIndi?.[di];
+  const ind = idx >= 0 && lastIndividuals ? lastIndividuals[idx] : null;
+  const place = _kfDwellPlace(di);
+  const ev = _kfEventForDwell(di);
+  const placeEvidence = _kfPlaceEvidence(place, !!dwellExact?.[di]);
+  const badges = [placeEvidence];
+  if (ev && Number(ev.year_end ?? ev.year) > Number(ev.year)) {
+    const gap = Number(ev.year_end ?? ev.year) - Number(ev.year);
+    badges.push({ label: gap > 10 ? "wide date range" : "date range", tone: gap > 10 ? "warn" : "info" });
+  }
+  if (ind && ind.death_year == null && Number.isFinite(Number(ind.birth_year))) {
+    badges.push({ label: _kfPersonMayBeAliveAtYear(ind, Math.floor(curYear)) ? "presumed living" : "past lifespan", tone: "info" });
+  }
+  if (ind && ind.death_year != null) badges.push({ label: "deceased", tone: "info" });
+  return badges;
+}
+
+function _kfDwellEvidenceBadgesHtml(di) {
+  return _kfBadgesHtml(_kfDwellEvidenceBadges(di));
+}
+
+function _kfWhyPersonHereHtml(di) {
+  const idx = dwellIndi?.[di];
+  const ind = idx >= 0 && lastIndividuals ? lastIndividuals[idx] : null;
+  if (!ind) return "";
+  const y = Math.floor(curYear);
+  const eventYear = Number.isFinite(dwellY?.[di]) ? dwellY[di] : "";
+  const place = _kfDwellPlace(di);
+  const eventLabel = _kfEventLabelForDwell(di);
+  const living = ind.death_year == null ? "is presumed alive" : "was alive";
+  const loc = place ? ` Its location comes from the ${eventYear} ${eventLabel} record: ${place}.` : "";
+  return `<div class="ux-section"><h4>Why this marker is here</h4><div class="ux-muted">${escHtml(`${_kfNameShort(ind.name)} is shown because ${living} in ${y}.${loc}`)}</div>${_kfDwellEvidenceBadgesHtml(di)}</div>`;
+}
+
+function _kfPersonStoryHtml(ind, di) {
+  const facts = _kfFactsForInd(ind);
+  if (!facts) return "";
+  const bits = [];
+  if (facts.birthEv) bits.push(`Born ${facts.birthEv.year}${facts.birthEv.place ? " in " + facts.birthEv.place : ""}.`);
+  const moves = facts.events
+    .filter(ev => ev.place && ev.type !== "BIRT" && ev.type !== "DEAT" && ev.type !== "BURI")
+    .filter((ev, i, arr) => i === 0 || ev.place !== arr[i - 1].place)
+    .slice(0, 4);
+  if (moves.length) {
+    bits.push(`Records place them at ${moves.map(ev => `${ev.place} (${ev.year})`).join(" -> ")}.`);
+  }
+  if (facts.deathEv) bits.push(`Died ${facts.deathEv.year}${facts.deathEv.place ? " in " + facts.deathEv.place : ""}.`);
+  if (!bits.length && facts.last) bits.push(`Last known record: ${facts.last.year}${facts.last.place ? " in " + facts.last.place : ""}.`);
+  const current = di >= 0 ? _kfDwellPlace(di) : "";
+  if (current) bits.push(`The current marker uses ${current}.`);
+  return bits.length
+    ? `<div class="ux-section"><h4>Story mode</h4><div class="ux-muted">${escHtml(bits.join(" "))}</div></div>`
+    : "";
+}
+
+function _kfPersonIssuesHtml(ind, di = -1) {
+  const facts = _kfFactsForInd(ind);
+  if (!facts) return "";
+  const issues = facts.issues.slice();
+  const place = di >= 0 ? _kfDwellPlace(di) : "";
+  if (place && _kfPlaceEvidence(place, !!dwellExact?.[di]).rank >= 3) issues.push(`weak current-place evidence: ${place}`);
+  if (!issues.length) return "";
+  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.slice(0, 5).map(i => `<li>${escHtml(i)}</li>`).join("")}</ul></div>`;
+}
+
+function _kfQuestionChipsHtml(questions) {
+  const uniq = [];
+  const seen = new Set();
+  for (const q of questions) {
+    const text = String(q || "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    uniq.push(text);
+  }
+  if (!uniq.length) return "";
+  return `<div class="ux-section"><h4>Useful questions</h4><div class="ux-question-row">` +
+    uniq.slice(0, 5).map(q => `<button type="button" class="ux-question" data-question="${escHtml(q)}">${escHtml(q)}</button>`).join("") +
+    `</div></div>`;
+}
+
+async function _kfAskQuestion(text) {
+  if (!text) return;
+  _kfSetSideTab("chat");
+  if (_chatBusy) { chatInputEl.value = text; chatInputEl.focus(); return; }
+  chatHistory.push({ role: "user", content: text });
+  renderChat();
+  _chatBusy = true;
+  chatSendBtn.disabled = true;
+  chatSendBtn.textContent = "...";
+  try { await runChatTurn(text); }
+  catch (err) { appendError(err.message || String(err)); }
+  finally { _chatBusy = false; chatSendBtn.disabled = false; chatSendBtn.textContent = "Send"; }
+}
+
+function _kfBindQuestionChips(root) {
+  if (!root) return;
+  root.querySelectorAll(".ux-question[data-question]").forEach(btn => {
+    btn.addEventListener("click", () => _kfAskQuestion(btn.dataset.question || ""));
+  });
+}
+
+function _kfVisibleMarkerData() {
+  const y = Math.floor(curYear);
+  const key = `${_kfSourceSelectionKey()}|${lastRootId || ""}|${y}|${_kfFilterKey()}|${colorMode}`;
+  if (_kfDerivedCache.visible &&
+      _kfDerivedCache.visible.key === key &&
+      _kfDerivedCache.visible.individuals === lastIndividuals &&
+      _kfDerivedCache.visible.personDwell === _kfPersonDwell) {
+    return _kfDerivedCache.visible;
+  }
+  if (!timelineLoaded || !lastIndividuals) {
+    _kfDerivedCache.visible = { key, individuals: lastIndividuals, personDwell: _kfPersonDwell, rows: [], count: 0 };
+    return _kfDerivedCache.visible;
+  }
+  rebuildPersonMarkers();
+  const rows = [];
+  const sourceCounts = new Map();
+  let exact = 0;
+  let weak = 0;
+  for (let m = 0; m < (_kfDwellCount || 0); m++) {
+    const di = _kfPersonDwell[m];
+    const idx = _kfPersonIndi[m];
+    const ind = lastIndividuals[idx];
+    if (!ind) continue;
+    const source = _kfSourceNameForIndiIdx(idx);
+    sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
+    const place = _kfDwellPlace(di);
+    const year = Number.isFinite(dwellY?.[di]) ? dwellY[di] : "";
+    const eventLabel = _kfEventLabelForDwell(di);
+    const ev = _kfPlaceEvidence(place, !!dwellExact?.[di]);
+    if (ev.rank <= 1) exact++;
+    if (ev.rank >= 3) weak++;
+    rows.push({ marker: m, di, idx, ind, source, place, year, eventLabel, evidence: ev });
+  }
+  const data = { key, individuals: lastIndividuals, personDwell: _kfPersonDwell, rows, count: rows.length, sourceCounts, exact, weak };
+  _kfDerivedCache.visible = data;
+  return data;
+}
+
+function _kfViewModeLabel() {
+  const cluster = clusterMode === "none" ? "not clustered" : `clustered by ${_kfClusterModeLabel(clusterMode).toLowerCase()}`;
+  const filter = curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
+  const sex = _kfSexFilter === "M" ? "men" : _kfSexFilter === "F" ? "women" : "";
+  return [filter, sex, cluster].filter(Boolean).join(" | ");
+}
+
+function _kfRefreshViewChrome(force = false) {
+  const summaryEl = $("viewSummary");
+  const breadEl = $("focusBreadcrumb");
+  if (!summaryEl && !breadEl) return;
+  const y = Math.floor(curYear);
+  const data = _kfVisibleMarkerData();
+  const sourceCount = (typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList().length : 0) || (_kfLoadedSources?.size || 0);
+  const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
+  const root = lastRootId && lastIndiById ? lastIndiById.get(lastRootId) : null;
+  const key = `${y}|${data.count}|${sourceCount}|${_kfViewModeLabel()}|${root?.id || ""}|${selected?.id || ""}|${_kfDerivedCache.activeClusterLabel}`;
+  if (!force && key === _kfDerivedCache.lastChromeKey) return;
+  _kfDerivedCache.lastChromeKey = key;
+  if (summaryEl) {
+    summaryEl.textContent = timelineLoaded
+      ? `${y} | ${sourceCount || 0} tree${sourceCount === 1 ? "" : "s"} | ${_kfViewModeLabel()} | ${data.count.toLocaleString()} visible people`
+      : "Load GEDCOM data to begin.";
+  }
+  if (breadEl) {
+    const bits = [];
+    if (root) bits.push(`Home: ${_kfNameShort(root.name)}`);
+    if (selected) bits.push(`Selected: ${_kfNameShort(selected.name)}`);
+    if (_kfDerivedCache.activeClusterLabel && clusterMode !== "none") bits.push(`Cluster: ${_kfDerivedCache.activeClusterLabel}`);
+    breadEl.textContent = bits.length ? bits.join(" > ") : "Home: none";
+  }
+}
+
+function _kfSetActiveClusterLabel(label) {
+  _kfDerivedCache.activeClusterLabel = label || "";
+  _kfRefreshViewChrome(true);
+}
+
+function _kfClusterDigestHtml(c, rows) {
+  if (_kfDerivedCache.clusterIndividuals !== lastIndividuals) {
+    _kfDerivedCache.cluster.clear();
+    _kfDerivedCache.clusterIndividuals = lastIndividuals;
+  }
+  const key = `${_kfSourceSelectionKey()}|${lastRootId || ""}|${clusterMode}|${Math.floor(curYear)}|${rows.map(r => r.di).join(",")}|${rows.focus?.focusId || ""}`;
+  const cached = _kfDerivedCache.cluster.get(key);
+  if (cached?.digestHtml) return cached.digestHtml;
+  const bullets = [];
+  const total = rows.length;
+  bullets.push(`${total} ${total === 1 ? "person is" : "people are"} visible here in ${Math.floor(curYear)}.`);
+  const sourceCounts = new Map();
+  const placeCounts = new Map();
+  let exact = 0, weak = 0, issueCount = 0;
+  for (const r of rows) {
+    if (r.sourceName) sourceCounts.set(r.sourceName, (sourceCounts.get(r.sourceName) || 0) + 1);
+    const placeHead = r.place ? r.place.split(",")[0].trim() : "";
+    if (placeHead) placeCounts.set(placeHead, (placeCounts.get(placeHead) || 0) + 1);
+    if (r.locationEvidenceRank <= 1) exact++;
+    if (r.locationEvidenceRank >= 3) weak++;
+    const ind = lastIndividuals?.[dwellIndi?.[r.di]];
+    issueCount += _kfFactsForInd(ind)?.issues.length ? 1 : 0;
+  }
+  const topSource = Array.from(sourceCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+  if (topSource) bullets.push(`Largest source: ${topSource[0].replace(/\.ged$/i, "")} (${topSource[1]}).`);
+  const closest = rows.find(r => Number.isFinite(r.sortDist) && r.sortDist > 0) || rows[0];
+  if (closest) bullets.push(`Closest listed person to the focus: ${closest.name}${closest.rel ? ` (${closest.rel})` : ""}.`);
+  const topPlace = Array.from(placeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+  if (topPlace) bullets.push(`Most common place label: ${topPlace[0]} (${topPlace[1]}).`);
+  bullets.push(`Evidence: ${exact} city/specific markers, ${weak} weak place markers.`);
+  if (issueCount) bullets.push(`${issueCount} ${issueCount === 1 ? "person has" : "people have"} data issues worth checking.`);
+  const html = `<div class="ux-section cluster-digest"><h4>Cluster digest</h4><ul class="ux-list">${bullets.map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`;
+  if (_kfDerivedCache.cluster.size > 200) _kfDerivedCache.cluster.clear();
+  _kfDerivedCache.cluster.set(key, { ...(cached || {}), digestHtml: html });
+  return html;
+}
+
+function _kfClusterStoryHtml(c, rows) {
+  const places = rows.map(r => r.place).filter(Boolean);
+  const place = c.abbr || (places[0] ? places[0].split(",").slice(0, 2).join(", ") : "");
+  const focus = rows.focus?.focus?.name ? ` relative to ${rows.focus.focus.name}` : "";
+  const text = place
+    ? `This view is a ${_kfClusterModeLabel().toLowerCase()} grouping${focus} around ${place} in ${Math.floor(curYear)}. Use it to compare who is nearby, how strong the location evidence is, and which records explain the marker.`
+    : `This view is a ${_kfClusterModeLabel().toLowerCase()} grouping${focus} in ${Math.floor(curYear)}.`;
+  return `<div class="ux-section"><h4>Story mode</h4><div class="ux-muted">${escHtml(text)}</div></div>`;
+}
+
+function _kfClusterIssuesHtml(c, rows) {
+  const issues = [];
+  for (const r of rows) {
+    const ind = lastIndividuals?.[dwellIndi?.[r.di]];
+    const facts = _kfFactsForInd(ind);
+    if (facts?.issues.length) issues.push(`${r.name}: ${facts.issues[0]}`);
+    else if (r.locationEvidenceRank >= 3 && r.place) issues.push(`${r.name}: weak place evidence (${r.place})`);
+    if (issues.length >= 5) break;
+  }
+  if (!issues.length) return "";
+  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.map(i => `<li>${escHtml(i)}</li>`).join("")}</ul></div>`;
+}
+
+function _kfClusterQuestionHtml(rows) {
+  const focusName = rows.focus?.focus?.name || "the focus person";
+  return _kfQuestionChipsHtml([
+    `Why are these people clustered in ${Math.floor(curYear)}?`,
+    `Who are the closest relatives to ${focusName} in this cluster?`,
+    `Which records explain this cluster's locations?`,
+    `Find data problems in this cluster.`,
+  ]);
+}
+
+function _kfPersonQuestionHtml(ind) {
+  const name = ind?.name || "this person";
+  return _kfQuestionChipsHtml([
+    `Why is ${name} shown here in ${Math.floor(curYear)}?`,
+    `Summarize ${name}'s migration story.`,
+    `What evidence is weakest for ${name}?`,
+    `Who are ${name}'s closest relatives?`,
+  ]);
+}

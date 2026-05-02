@@ -203,6 +203,7 @@ $("rootSel").addEventListener("change", e => {
 $("filt").addEventListener("change", e => {
   curFilter = e.target.value;
   fxCtx.clearRect(0, 0, W, H);
+  _kfRefreshViewChrome(true);
 });
 $("borderLayer").addEventListener("change", e => {
   borderLayer = e.target.value;
@@ -215,6 +216,7 @@ $("colorMode").addEventListener("change", e => {
   if (_kfFlowsOnDeck)  refreshDeckFlowColors();
   if (_kfDwellsOnDeck || _kfFlowsOnDeck) updateDeckDwellLayer();
   updateMapLegend();
+  _kfRefreshViewChrome(true);
 });
 if (migrationViewSel) {
   migrationViewSel.addEventListener("change", e => {
@@ -356,6 +358,7 @@ function _kfRenderSurnameChips() {
     _kfSurnameFilter = val ? new Set([val]) : null;
     _kfPersonsCacheYear = "";
     if (_kfDeckOverlay) updateDeckDwellLayer();
+    _kfRefreshViewChrome(true);
   };
 }
 
@@ -429,6 +432,7 @@ document.querySelectorAll("#quickChips .quickChip").forEach(el => {
         _kfSexFilter = (_kfSexFilter === val) ? null : val;
         _kfPersonsCacheYear = "";
         if (_kfDeckOverlay) updateDeckDwellLayer();
+        _kfRefreshViewChrome(true);
       }
     } else if (overlay === "treeMatches") {
       _kfToggleMatchOverlay();
@@ -439,10 +443,12 @@ document.querySelectorAll("#quickChips .quickChip").forEach(el => {
 });
 $("clusterMode").addEventListener("change", e => {
   clusterMode = e.target.value;
+  if (clusterMode === "none") _kfSetActiveClusterLabel("");
   fxCtx.clearRect(0, 0, W, H);
   if (_kfDeckOverlay) updateDeckDwellLayer();
   if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
   updateMapLegend();
+  _kfRefreshViewChrome(true);
 });
 $("clusterRadius").addEventListener("input", e => {
   clusterRadius = parseInt(e.target.value, 10) || 30;

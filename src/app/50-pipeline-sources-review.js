@@ -602,6 +602,7 @@ function renderSources(list) {
       _kfEnsureSelectedSources();
       _kfRefreshBrowserViews();
       _kfRebuildSelectedVisualization({ preserveYear: true });
+      if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
       renderSources(_kfGetLoadedSourcesList());
     });
   });
@@ -643,6 +644,7 @@ function renderSources(list) {
       _kfSelectedSourceIds = new Set(filtered.map(s => s.id));
       _kfRefreshBrowserViews();
       _kfRebuildSelectedVisualization({ preserveYear: true });
+      if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
       renderSources(_kfGetLoadedSourcesList());
     });
   });
@@ -661,6 +663,7 @@ function renderSources(list) {
 async function refreshSources() {
   if (_clerkUserTier === "vip") await fetchCatalogTrees();
   renderSources(_kfGetLoadedSourcesList());
+  if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
   refreshReviewBadge();
 }
 

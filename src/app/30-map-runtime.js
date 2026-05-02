@@ -574,6 +574,7 @@ function frame(activeTrailFade) {
     fxCtx.globalCompositeOperation = "source-over";
   }
   if (!timelineLoaded) return;
+  _kfRefreshViewChrome();
 
   const y = curYear, dw = dwellWindow;
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
@@ -1271,8 +1272,9 @@ function clearHighlight() {
   highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
   fxCtx.clearRect(0, 0, W, H);
   updatePanel(true);
+  _kfRefreshViewChrome(true);
 }
-range.addEventListener("input", () => { curYear = parseFloat(range.value); clearHighlight(); });
+range.addEventListener("input", () => { curYear = parseFloat(range.value); clearHighlight(); _kfRefreshViewChrome(true); });
 range.addEventListener("pointerdown", () => { isDraggingSlider = true; pushHistory(); });
 range.addEventListener("pointerup", () => { isDraggingSlider = false; });
 range.addEventListener("pointercancel", () => { isDraggingSlider = false; });
