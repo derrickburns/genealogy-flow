@@ -3360,6 +3360,17 @@ function drawClusters(visible, radius, mode, year, dw) {
 function drawHighlight() {
   const i = highlightedDwell;
   if (i < 0) return;
+  const yint = Math.floor(curYear);
+  if (highlightInferredYear >= 0) {
+    if (yint !== highlightInferredYear) return;
+  } else {
+    const ind = lastIndividuals && lastIndividuals[dwellIndi[i]];
+    if (dwellY[i] < yint - dwellWindow || dwellY[i] > yint) return;
+    if (ind) {
+      if (ind.birth_year != null && ind.birth_year > yint) return;
+      if (ind.death_year != null && ind.death_year < yint) return;
+    }
+  }
   const sx = dwellSx[i], sy = dwellSy[i];
   if (sx <= -1000) return;
   const sd = dwellSide[i], ps = dwellSrc[i];
@@ -3378,6 +3389,22 @@ function drawHighlight() {
     fxCtx.strokeStyle = `rgba(255,180,30,${(0.7 * (1 - phase)).toFixed(3)})`;
     fxCtx.lineWidth = 3;
     fxCtx.beginPath(); fxCtx.arc(sx, sy, radius, 0, Math.PI * 2); fxCtx.stroke();
+  }
+}
+
+function pruneInvalidHighlightSelection() {
+  const i = highlightedDwell;
+  if (i < 0) return;
+  const yint = Math.floor(curYear);
+  if (highlightInferredYear >= 0) {
+    if (yint !== highlightInferredYear) clearHighlight();
+    return;
+  }
+  const ind = lastIndividuals && lastIndividuals[dwellIndi[i]];
+  if (dwellY[i] < yint - dwellWindow || dwellY[i] > yint) { clearHighlight(); return; }
+  if (ind) {
+    if (ind.birth_year != null && ind.birth_year > yint) { clearHighlight(); return; }
+    if (ind.death_year != null && ind.death_year < yint) { clearHighlight(); return; }
   }
 }
 
@@ -3430,6 +3457,7 @@ function tick(now) {
   // whether the deck overlay has finished initializing. Cache key inside
   // rebuildPersonMarkers makes this near-free when nothing changed.
   if (timelineLoaded) rebuildPersonMarkers();
+  if (timelineLoaded) pruneInvalidHighlightSelection();
   // Year-varying lenses re-fetch when curYear changes. Cache key inside
   // makes this a no-op for static lenses (and during the same year).
   if (_kfActiveLens) _kfFetchLensData();
@@ -4162,8 +4190,15 @@ function buildTimeline(individuals, geocode, parentsOf) {
     const ind = individuals[idx];
     if (!ind.events.length) continue;
     const isSource = parentStatus(ind.id, parentsOf);
+    const birthYear = Number.isFinite(ind.birth_year) ? ind.birth_year : null;
+    const deathYear = Number.isFinite(ind.death_year) ? ind.death_year : null;
     const coded = [];
     for (const e of ind.events) {
+      // Guard against clearly impossible event chronology in source data.
+      // A stray late residence/census/imported fact after someone's recorded
+      // death can keep them visible decades too long on the map.
+      if (birthYear != null && e.year != null && e.year < birthYear - 1) continue;
+      if (deathYear != null && e.year != null && e.year > deathYear + 1) continue;
       let g = cache.get(e.place);
       if (g === undefined) { g = geocode(e.place); cache.set(e.place, g); }
       if (!g) { missed++; continue; }
