@@ -1654,6 +1654,30 @@ function _kfInferredDeathYear(ind) {
   return ind.birth_year + life;
 }
 
+function _kfPersonMayBeAliveAtYear(ind, yint) {
+  if (!ind) return false;
+  if (ind.birth_year != null && ind.birth_year > yint) return false;
+  if (ind.death_year != null) return ind.death_year >= yint;
+  if (ind.birth_year == null) return true;
+  if (yint - ind.birth_year >= 115) return false;
+  const inferred = _kfInferredDeathYear(ind);
+  return inferred == null || yint <= inferred + 15;
+}
+
+function _kfLatestValidDwellForIndi(indiIdx, yint) {
+  if (!lastIndividuals || !indiDwells || !dwellY) return -1;
+  const ind = lastIndividuals[indiIdx];
+  if (!_kfPersonMayBeAliveAtYear(ind, yint)) return -1;
+  const dwells = indiDwells.get(indiIdx);
+  if (!dwells || !dwells.length) return -1;
+  let bestDi = -1, bestY = -Infinity;
+  for (const di of dwells) {
+    const y = dwellY[di];
+    if (y <= yint && y > bestY) { bestY = y; bestDi = di; }
+  }
+  return bestDi;
+}
+
 function rebuildPersonMarkers() {
   if (!lastIndividuals || !indiDwells || !dwellY) return;
   // Allocate buffers if they don't exist yet — guards against ticks that fire
@@ -1679,20 +1703,7 @@ function rebuildPersonMarkers() {
   for (let idx = 0; idx < N; idx++) {
     const ind = lastIndividuals[idx];
     if (!ind) continue;
-    if (ind.birth_year != null && ind.birth_year > yint) continue;
-    // Exclude if death is recorded and has passed.
-    if (ind.death_year != null && ind.death_year < yint) continue;
-    // No recorded death: apply life-expectancy estimate only for historical
-    // people where the estimate is reliable. Anyone born within 115 years of
-    // curYear could plausibly still be alive — don't infer them dead.
-    if (ind.death_year == null && ind.birth_year != null) {
-      if (yint - ind.birth_year >= 115) continue; // biologically impossible to be alive
-      const inferred = _kfInferredDeathYear(ind);
-      // Only remove marker if yint is meaningfully past the cohort median — a
-      // 15-year buffer means we keep showing e.g. a 1945-born male until age
-      // 85 (2030) rather than cutting them at age 80 (2025).
-      if (inferred != null && yint > inferred + 15) continue;
-    }
+    if (!_kfPersonMayBeAliveAtYear(ind, yint)) continue;
     // Lineage / blood / status filters still apply
     if (curFilter === "ancestors") {
       const sd = lastSideById ? lastSideById.get(ind.id) : null;
@@ -1704,13 +1715,7 @@ function rebuildPersonMarkers() {
       const sn = _kfSurnameOf(ind.name);
       if (!sn || !_kfSurnameFilter.has(sn)) continue;
     }
-    const dwells = indiDwells.get(idx);
-    if (!dwells || !dwells.length) continue;
-    let bestDi = -1, bestY = -Infinity;
-    for (const di of dwells) {
-      const y = dwellY[di];
-      if (y <= yint && y > bestY) { bestY = y; bestDi = di; }
-    }
+    const bestDi = _kfLatestValidDwellForIndi(idx, yint);
     if (bestDi < 0) continue;
     _kfDwellPositions[count * 2]     = dwellLon[bestDi];
     _kfDwellPositions[count * 2 + 1] = dwellLat[bestDi];
@@ -1897,14 +1902,13 @@ function makeLineageLayer() {
 
 function makeHighlightLayer() {
   if (!_kfHighlightSet || !lastIndiIdxById || !indiDwells || !deck || !deck.ScatterplotLayer) return null;
+  const yint = Math.floor(curYear);
   const points = [];
   for (const id of _kfHighlightSet) {
     const idx = lastIndiIdxById.get(id);
     if (idx == null) continue;
-    const dwells = indiDwells.get(idx);
-    if (!dwells || !dwells.length) continue;
-    let latest = dwells[0];
-    for (const di of dwells) if (dwellY[di] > dwellY[latest]) latest = di;
+    const latest = _kfLatestValidDwellForIndi(idx, yint);
+    if (latest < 0) continue;
     points.push([dwellLon[latest], dwellLat[latest]]);
   }
   if (!points.length) return null;
@@ -2348,17 +2352,11 @@ let _baseDirty = false;
 
   const HIT_RADIUS = 14;
   const HIT_R2 = HIT_RADIUS * HIT_RADIUS;
-  const dw = dwellWindow;
-  const yint = Math.floor(curYear);
-  const lo = lowerBound(dwellY, dwellOrder, yint - dw);
-  const hi = lowerBound(dwellY, dwellOrder, yint + 1);
+  rebuildPersonMarkers();
   let bestI = -1, bestDist = Infinity;
-  for (let k = lo; k < hi; k++) {
-    const i = dwellOrder[k];
-    if (curFilter === "ancestors" && dwellSide[i] !== 0 && dwellSide[i] !== 1) continue;
-    if (curFilter === "blood" && !dwellBlood[i]) continue;
-    if (!typeFilter.has(dwellType[i])) continue;
-    if (!passesStatus(dwellIndi[i])) continue;
+  for (let m = 0; m < _kfDwellCount; m++) {
+    const i = _kfPersonDwell[m];
+    if (i == null || i < 0) continue;
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
     const ddx = sx - x, ddy = sy - y;
@@ -2386,17 +2384,11 @@ let _baseDirty = false;
 
 function hitTestMap(x, y, hitR2 = 14 * 14) {
   if (!timelineLoaded) return -1;
-  const dw = dwellWindow;
-  const yint = Math.floor(curYear);
-  const lo = lowerBound(dwellY, dwellOrder, yint - dw);
-  const hi = lowerBound(dwellY, dwellOrder, yint + 1);
+  rebuildPersonMarkers();
   let bestI = -1, bestDist = Infinity;
-  for (let k = lo; k < hi; k++) {
-    const i = dwellOrder[k];
-    if (curFilter === "ancestors" && dwellSide[i] !== 0 && dwellSide[i] !== 1) continue;
-    if (curFilter === "blood" && !dwellBlood[i]) continue;
-    if (!typeFilter.has(dwellType[i])) continue;
-    if (!passesStatus(dwellIndi[i])) continue;
+  for (let m = 0; m < _kfDwellCount; m++) {
+    const i = _kfPersonDwell[m];
+    if (i == null || i < 0) continue;
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
     const ddx = sx - x, ddy = sy - y;
@@ -2821,25 +2813,18 @@ function frame(activeTrailFade) {
     if (highlightedDwell >= 0) drawHighlight();
     return;
   }
-  for (let k = lo; k < hi; k++) {
-    const i = dwellOrder[k];
-    const dy = y - dwellY[i]; if (dy < 0) continue;
-    const sd = dwellSide[i], ps = dwellSrc[i], idi = dwellIndi[i];
-    if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
-    if (curFilter === "blood" && !dwellBlood[i]) continue;
-    if (!typeFilter.has(dwellType[i])) continue;
-    if (!passesStatus(dwellIndi[i])) continue;
-    const a = Math.max(0, 1 - dy / dw) * 0.85;
-    const exact = dwellExact[i];
-    if (!_kfDwellsOnDeck) {
-      const c = colorForFinal(sd, ps, idi);
-      fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
-      const r = (2.6 + (1 - dy / dw) * 2.0) * (exact ? 1.4 : 1);
-      drawShape(fxCtx, dwellSx[i], dwellSy[i], r, ps);
+  if (!_kfDwellsOnDeck) {
+    rebuildPersonMarkers();
+    for (let m = 0; m < _kfDwellCount; m++) {
+      const i = _kfPersonDwell[m];
+      if (i == null || i < 0) continue;
+      const sx = dwellSx[i], sy = dwellSy[i];
+      if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
+      const c = colorForFinal(dwellSide[i], dwellSrc[i], dwellIndi[i]);
+      fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.88)`;
+      const r = dwellExact[i] ? 4.2 : 3.2;
+      drawShape(fxCtx, sx, sy, r, dwellSrc[i]);
     }
-    // Event-city labels removed per the user's ask. MapLibre's basemap tiles
-    // already provide place labels; per-event labels were noisy on top of
-    // them.
   }
 
   if (_kfFlowsOnDeck) {
