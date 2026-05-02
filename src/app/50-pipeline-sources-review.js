@@ -514,7 +514,11 @@ async function autoLoadVipCatalogTrees() {
       const sourceName = _kfSourceNameFromFileName(t.name || t.key);
       return !_kfTreeCache.has(sourceName) && !_kfLoadedSources.has(sourceName);
     });
-    if (!pending.length) { refreshSources(); return; }
+    if (!pending.length) {
+      refreshSources();
+      _kfRefreshStatsSummary();
+      return;
+    }
     stats.textContent = `loading ${pending.length} VIP tree${pending.length === 1 ? "" : "s"}...`;
     let loaded = 0;
     let failed = 0;
@@ -528,14 +532,31 @@ async function autoLoadVipCatalogTrees() {
         console.warn("[kf] loadCatalogTree:", tree.key, e?.message || e);
       }
     }
-    stats.textContent = failed
-      ? `loaded ${loaded} VIP tree${loaded === 1 ? "" : "s"}; ${failed} failed`
-      : `loaded ${loaded} VIP tree${loaded === 1 ? "" : "s"}`;
     refreshSources();
+    _kfRefreshStatsSummary(failed ? { suffix: `${failed} VIP failed` } : {});
   } catch (e) {
     _kfVipCatalogAutoLoadUserKey = "";
     console.warn("[kf] autoLoadVipCatalogTrees:", e?.message || e);
   }
+}
+
+function _kfRefreshStatsSummary(opts = {}) {
+  if (!timelineLoaded || !lastIndividuals) return;
+  const selectedCount = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList().length : 0;
+  const loadedCount = _kfLoadedSources?.size || selectedCount || 0;
+  const visibleTreeCount = selectedCount || loadedCount || 1;
+  const scope = loadedCount > visibleTreeCount
+    ? `${visibleTreeCount} of ${loadedCount} trees selected`
+    : `${visibleTreeCount} tree${visibleTreeCount === 1 ? "" : "s"}`;
+  const parts = [
+    scope,
+    `${lastIndividuals.length.toLocaleString()} people`,
+    `${dwellY.length.toLocaleString()} events`,
+    `${flowFromY.length.toLocaleString()} migrations`,
+    `${minYear}-${maxYear}`,
+  ];
+  if (opts.suffix) parts.push(opts.suffix);
+  stats.textContent = parts.join("  |  ");
 }
 
 async function deleteSource(id) {
@@ -1018,9 +1039,7 @@ function applyRoot(rootId, opts = {}) {
   const rootInd = lastIndiById.get(rootId);
   const sel = $("rootSel");
   for (const opt of sel.options) opt.selected = (opt.value === rootId);
-  const treeCount = _kfSelectedVizSourceList().length || 1;
-  const treeLabel = treeCount > 1 ? `${treeCount} trees  |  ` : "";
-  stats.textContent = `${treeLabel}${lastIndividuals.length.toLocaleString()} people  |  ${dwellY.length.toLocaleString()} events  |  ${flowFromY.length.toLocaleString()} migrations  |  ${minYear}-${maxYear}`;
+  _kfRefreshStatsSummary();
   updateSliderMarkers();
   _kfRefreshHomeBtn();
 }
