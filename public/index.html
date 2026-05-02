@@ -458,7 +458,7 @@
     <button id="apiKeySave">Save</button>
   </span>
   <span class="authSpacer"></span>
-  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">eb3ab2c</span>
+  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">d4246fb</span>
   <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
   <button id="authBtn">Sign in</button>
 </div>
@@ -3668,28 +3668,76 @@ function expandRangedEvent(e) {
   return [base, { ...e, year: y1 }];
 }
 
+function _kfCatalogRecords(value) {
+  if (Array.isArray(value)) {
+    return value
+      .filter(item => item && typeof item === "object")
+      .map(item => ({ ...item }));
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .filter(([, item]) => item && typeof item === "object")
+      .map(([id, item]) => ({ id, ...item }));
+  }
+  return [];
+}
+
+function _kfCatalogId(record, keys = ["id"]) {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (value != null && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function _kfCatalogChildIds(value) {
+  const rows = Array.isArray(value) ? value : value ? [value] : [];
+  return rows
+    .map(child => {
+      if (child == null) return "";
+      if (typeof child === "object") return _kfCatalogId(child, ["id", "child_id", "child", "xref"]);
+      return String(child).trim();
+    })
+    .filter(Boolean);
+}
+
 function parseGedcomFromJson(json) {
-  const individuals = (json.individuals || []).map(ind => ({
-    id: ind.id,
-    name: ind.name || ind.id,
-    sex: ind.sex || "U",
-    famc: ind.famc || null,
-    raw: "",
-    birth_year: ind.birth_year ?? null,
-    death_year: ind.death_year ?? null,
-    events: (ind.events || [])
-      .flatMap(e => expandRangedEvent({
-        type: e.tag,
-        date: e.date || "",
-        year: e.year,
-        year_end: e.year_end ?? e.year ?? null,
-        place: e.place || "",
-      }))
-      .filter(e => e.year != null),
-  }));
+  const individuals = _kfCatalogRecords(json?.individuals)
+    .map(ind => {
+      const id = _kfCatalogId(ind, ["id", "xref", "individual_id"]);
+      if (!id) return null;
+      const birthYear = ind.birth_year ?? ind.birthYear ?? null;
+      const deathYear = ind.death_year ?? ind.deathYear ?? null;
+      return {
+        id,
+        name: ind.name || id,
+        sex: ind.sex || "U",
+        famc: ind.famc || ind.family_child || null,
+        raw: "",
+        birth_year: birthYear,
+        death_year: deathYear,
+        events: _kfCatalogRecords(ind.events)
+          .flatMap(e => expandRangedEvent({
+            type: e.tag || e.type || "",
+            date: e.date || "",
+            year: e.year,
+            year_end: e.year_end ?? e.yearEnd ?? e.year ?? null,
+            place: e.place || "",
+          }))
+          .filter(e => e.year != null),
+      };
+    })
+    .filter(Boolean);
   const families = new Map();
-  for (const fam of (json.families || [])) {
-    families.set(fam.id, { id: fam.id, husb: fam.husb || null, wife: fam.wife || null, chil: fam.chil || [] });
+  for (const fam of _kfCatalogRecords(json?.families)) {
+    const id = _kfCatalogId(fam, ["id", "xref", "family_id"]);
+    if (!id) continue;
+    families.set(id, {
+      id,
+      husb: _kfCatalogId(fam, ["husb", "husb_id", "husband", "husband_id"]) || null,
+      wife: _kfCatalogId(fam, ["wife", "wife_id"]) || null,
+      chil: _kfCatalogChildIds(fam.chil ?? fam.children ?? fam.child_ids),
+    });
   }
   return { individuals, families };
 }
@@ -4505,11 +4553,13 @@ function rebuildSideArrays() {
   if (!lastTimeline || !lastSideById || !lastIndividuals) return;
   for (let i = 0; i < dwellIndi.length; i++) {
     const ind = lastIndividuals[dwellIndi[i]];
+    if (!ind) { dwellSide[i] = 2; dwellBlood[i] = 0; continue; }
     dwellSide[i] = lastSideById.get(ind.id) ?? 2;
     dwellBlood[i] = lastBloodSet && lastBloodSet.has(ind.id) ? 1 : 0;
   }
   for (let i = 0; i < flowIndi.length; i++) {
     const ind = lastIndividuals[flowIndi[i]];
+    if (!ind) { flowSide[i] = 2; flowBlood[i] = 0; continue; }
     flowSide[i] = lastSideById.get(ind.id) ?? 2;
     flowBlood[i] = lastBloodSet && lastBloodSet.has(ind.id) ? 1 : 0;
   }
@@ -5222,6 +5272,9 @@ async function processFile(file) {
   await new Promise(r => requestAnimationFrame(r));
   const tl = buildTimeline(individuals, geocoder, parentsOf);
   lastTimeline = tl;
+  // A newly parsed tree needs fresh typed arrays. Otherwise loading a smaller
+  // VIP tree after a larger one reuses stale person indices from the old tree.
+  timelineLoaded = false;
   eventCities = tl.eventCities || [];
   lastFileName = file.name.replace(/\.(ged|gedcom)$/i, "") || "genealogy";
   // Cache the raw GEDCOM text so kfApi.setActiveTree(name) can re-activate
