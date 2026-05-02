@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * Seeds the demo GEDCOM (Golden-Rosenberg.ged) into:
- *   - D1 tables: demo_individuals, demo_events, demo_families, demo_sources
- *   - R2: demo/golden-rosenberg.json  (pre-processed JSON for fast /api/demo)
+ * Seeds a catalog GEDCOM into:
+ *   - D1 tables: demo_individuals, demo_events, demo_families, demo_sources (optional legacy demo path)
+ *   - R2: demo/<slug>.json  (pre-processed JSON for VIP catalog loading)
  *
  * Prereqs:
  *   - wrangler.toml with correct database_id and bucket name
- *   - Golden-Rosenberg.ged in the project root (or pass path as first arg)
+ *   - A GEDCOM file in the project root (or pass path as first arg)
  *   - gazetteer.json in the project root (or skip geocoding if absent)
  *
  * Usage:
- *   node scripts/seed-demo.mjs [path/to/Golden-Rosenberg.ged] [path/to/gazetteer.json]
+ *   node scripts/seed-demo.mjs [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug]
  *   CLOUDFLARE_API_TOKEN=... node scripts/seed-demo.mjs
  */
 
@@ -28,6 +28,7 @@ function extractYear(dateStr) {
 
 const gedPath = process.argv[2] ?? "Golden-Rosenberg.ged";
 const gazPath = process.argv[3] ?? "gazetteer.json";
+const catalogSlug = (process.argv[4] ?? "golden-rosenberg").toLowerCase();
 
 if (!existsSync(gedPath)) {
   console.error(`GEDCOM file not found: ${gedPath}`);
@@ -101,7 +102,7 @@ for (const [id, src] of gedcom.sources) {
   demoJson.sources.push({ id, title: src.title, auth: src.auth, publ: src.publ });
 }
 
-const jsonPath = join(tmpdir(), "golden-rosenberg.json");
+const jsonPath = join(tmpdir(), `${catalogSlug}.json`);
 writeFileSync(jsonPath, JSON.stringify(demoJson));
 console.log(`\nWritten demo JSON (${(Buffer.byteLength(readFileSync(jsonPath)) / 1024).toFixed(1)} KB)`);
 
@@ -142,8 +143,8 @@ async function d1Query(sql) {
   return j;
 }
 
-console.log("\nUploading demo JSON to R2...");
-await r2Put("demo/golden-rosenberg.json", jsonPath, "application/json");
+console.log(`\nUploading catalog JSON to R2 as demo/${catalogSlug}.json...`);
+await r2Put(`demo/${catalogSlug}.json`, jsonPath, "application/json");
 console.log("  done");
 
 if (existsSync(gazPath)) {

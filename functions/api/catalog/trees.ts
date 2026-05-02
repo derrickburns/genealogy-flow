@@ -3,6 +3,7 @@ import type { Env, UserContext } from "../../_middleware";
 const TREE_CATALOG = [
   { key: "golden-rosenberg", name: "Golden-Rosenberg.ged", storageKey: "demo/golden-rosenberg.json" },
   { key: "gregory-henry", name: "Gregory-Henry.ged", storageKey: "demo/gregory-henry.json" },
+  { key: "archer", name: "Archer.ged", storageKey: "demo/archer.json" },
 ];
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
