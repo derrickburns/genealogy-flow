@@ -913,6 +913,34 @@ function appendError(text) {
   chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 }
 
+function _kfChatScopeQuestions(root, selected, visible) {
+  const y = Math.floor(curYear);
+  const questions = [
+    `Explain what changed on the map in ${y}.`,
+    `Summarize the migration story for the visible people in ${y}.`,
+    `Find the weakest location evidence in the checked trees at ${y}.`,
+  ];
+  if (selected?.name) questions.unshift(`Why is ${selected.name} shown here in ${y}?`);
+  else if (root?.name) questions.unshift(`What should I notice about ${root.name}'s family in ${y}?`);
+  if (visible?.count > 500) questions.push(`Give me the simplest way to understand these ${visible.count} visible people.`);
+  return questions.slice(0, 5);
+}
+
+function _kfBindChatScopeQuestions() {
+  if (!chatScopeEl) return;
+  chatScopeEl.querySelectorAll("[data-chat-scope-question]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const text = btn.getAttribute("data-chat-scope-question") || "";
+      if (!text) return;
+      if (typeof _kfAskQuestion === "function") _kfAskQuestion(text);
+      else {
+        chatInputEl.value = text;
+        chatInputEl.focus();
+      }
+    });
+  });
+}
+
 function _kfRefreshChatScope() {
   if (!chatScopeEl) return;
   if (!timelineLoaded || !lastIndividuals) {
@@ -932,10 +960,16 @@ function _kfRefreshChatScope() {
   if (root) pills.push(`<span class="chat-scope-pill">home ${escChat(_kfNameShort(root.name))}</span>`);
   if (selected) pills.push(`<span class="chat-scope-pill">selected ${escChat(_kfNameShort(selected.name))}</span>`);
   if (visible?.weak) pills.push(`<span class="chat-scope-pill warn">${visible.weak.toLocaleString()} weak places</span>`);
+  const questions = _kfChatScopeQuestions(root, selected, visible);
+  const questionHtml = questions.length
+    ? `<div class="chat-scope-actions">${questions.map(q => `<button type="button" class="chat-scope-question" data-chat-scope-question="${escChat(q)}">${escChat(q)}</button>`).join("")}</div>`
+    : "";
   chatScopeEl.innerHTML =
     `<div class="chat-scope-main">Using ${escChat(sourceLabel)} | ${Math.floor(curYear)} | ${escChat(mode)} | ${(visible?.count || 0).toLocaleString()} visible people</div>` +
     `<div class="chat-scope-sub">Claude answers are grounded in the checked trees and current map filters.</div>` +
-    (pills.length ? `<div>${pills.join("")}</div>` : "");
+    (pills.length ? `<div>${pills.join("")}</div>` : "") +
+    questionHtml;
+  _kfBindChatScopeQuestions();
 }
 
 function buildChatContext() {

@@ -404,6 +404,9 @@
   .chat-scope-sub { margin-top:3px; color:#64748b; }
   .chat-scope-pill { display:inline-flex; align-items:center; border:1px solid #cbd5e1; border-radius:999px; background:#fff; color:#475569; padding:1px 6px; margin:3px 4px 0 0; font-size:9.5px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase; }
   .chat-scope-pill.warn { background:#fff7ed; border-color:#fed7aa; color:#b45309; }
+  .chat-scope-actions { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .chat-scope-question { border:1px solid #b9c8dd; border-radius:999px; background:#fff; color:#1f3a78; padding:4px 8px; font:inherit; font-size:10.5px; font-weight:700; cursor:pointer; }
+  .chat-scope-question:hover { background:#e8f0ff; border-color:#7290c8; }
   #sideTabs { display:flex; gap:0; border-bottom:1px solid #e0e6ee; background:#f4f6fa; flex-shrink:0; }
   #sideTabs button { flex:1; padding:8px 10px; border:0; border-right:1px solid #e0e6ee; background:transparent; color:#566480; font:inherit; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; }
   #sideTabs button:last-child { border-right:0; }
