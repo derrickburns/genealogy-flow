@@ -242,6 +242,11 @@
   #selectedPerson .sp-tl-body { font-size:11.5px; color:#1c2433; }
   #selectedPerson .sp-tl-label { font-weight:700; margin-right:4px; }
   #selectedPerson .sp-tl-place { color:#566480; }
+  #selectedPerson .sp-loc-compare { display:block; margin-top:3px; padding:5px 7px; background:#fff; border:1px solid #d6dde7; border-radius:5px; line-height:1.35; }
+  #selectedPerson .sp-loc-row { display:grid; grid-template-columns:58px 1fr; gap:6px; }
+  #selectedPerson .sp-loc-key { color:#9aa6bc; font-size:9px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; }
+  #selectedPerson .sp-loc-val { color:#1c2433; overflow-wrap:anywhere; }
+  #selectedPerson .sp-loc-val.same { color:#566480; }
   #selectedPerson .sp-tl-age { color:#9aa6bc; font-size:10px; margin-left:6px; }
   #selectedPerson .sp-tabs { display:flex; gap:0; border-bottom:1px solid #d6dde7; margin:6px 0 4px; }
   #selectedPerson .sp-tab { padding:5px 12px; font-size:10px; font-weight:700; color:#566480; background:transparent; border:none; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; letter-spacing:0.06em; text-transform:uppercase; }
@@ -270,6 +275,9 @@
   #selectedPerson .sp-rel-life { color:#566480; font-size:10.5px; margin-left:4px; }
   #selectedPerson .sp-rel .sp-events { margin-bottom:4px; }
   #selectedPerson .sp-actions { display:flex; gap:6px; margin-top:4px; }
+  #selectedPerson .sp-loc-toggle { background:#fff; border:1px solid #c0ccd8; border-radius:5px; padding:4px 8px; font:inherit; font-size:11px; color:#2a3a58; cursor:pointer; }
+  #selectedPerson .sp-loc-toggle.on { background:#eef3ff; border-color:#2a4a8c; color:#1e40af; }
+  #selectedPerson .sp-loc-toggle:hover { background:#f0f4f8; }
   #selectedPerson .sp-ask { background:#2a4a8c; color:#fff; border:none; border-radius:5px; padding:4px 10px; font:inherit; font-size:11px; cursor:pointer; }
   #selectedPerson .sp-ask:hover { background:#1c3669; }
   #selectedPerson .sp-dismiss { background:none; border:1px solid #c0ccd8; border-radius:5px; padding:4px 8px; font:inherit; font-size:11px; color:#566480; cursor:pointer; }
@@ -4099,7 +4107,25 @@ function buildGeocoder(gz) {
     }
     return null;
   }
+  function isAddressOnlyPlace(place) {
+    return /^\d+\s+\S+/.test(String(place || "").trim()) && !String(place || "").includes(",");
+  }
+  function canonicalCountry(cc) {
+    if (cc === "US") return "USA";
+    const c = countryByCC.get(cc);
+    return c ? c.name : cc;
+  }
+  function canonicalAdmin(cc, st) {
+    if (!st) return null;
+    if (cc === "US" && US_STATE_ABBR[st]) return US_STATE_ABBR[st];
+    if (cc === "CA" && CA_PROV[st]) return CA_PROV[st];
+    return adminByCC.get(cc)?.get(st)?.name || st;
+  }
+  function displayCountyName(countySlug) {
+    return String(countySlug || "").replace(/\b\w/g, c => c.toUpperCase());
+  }
   function geocode(place) {
+    if (isAddressOnlyPlace(place)) return null;
     const parts = place.split(",").map(s => s.trim()).filter(Boolean);
     if (!parts.length) return null;
     const cc = detectCountry(parts) || "US";
@@ -4113,9 +4139,9 @@ function buildGeocoder(gz) {
         if (map) for (let i = 0; i < upper; i++) {
           if (COUNTY_SUFFIX_RE.test(parts[i])) continue;
           const hit = map.get(slug(parts[i]));
-          if (hit) return { lat: hit.lat, lon: hit.lon, level: "city" };
+          if (hit) return { lat: hit.lat, lon: hit.lon, level: "city", cc, st, county: cty.name };
         }
-        return { lat: cty.lat, lon: cty.lon, level: "county" };
+        return { lat: cty.lat, lon: cty.lon, level: "county", cc, st, county: cty.name };
       }
     }
     if (st) {
@@ -4124,10 +4150,10 @@ function buildGeocoder(gz) {
       if (map) for (let i = 0; i < upper; i++) {
         if (COUNTY_SUFFIX_RE.test(parts[i])) continue;
         const hit = map.get(slug(parts[i]));
-        if (hit) return { lat: hit.lat, lon: hit.lon, level: "city" };
+        if (hit) return { lat: hit.lat, lon: hit.lon, level: "city", cc, st, county: null };
       }
-      if (cc === "US") { const cty = findCounty(parts, st); if (cty) return { lat: cty.lat, lon: cty.lon, level: "county" }; }
-      const ad = adminByCC.get(cc)?.get(st); if (ad) return { lat: ad.lat, lon: ad.lon, level: "admin1" };
+      if (cc === "US") { const cty = findCounty(parts, st); if (cty) return { lat: cty.lat, lon: cty.lon, level: "county", cc, st, county: cty.name }; }
+      const ad = adminByCC.get(cc)?.get(st); if (ad) return { lat: ad.lat, lon: ad.lon, level: "admin1", cc, st };
     }
     if (cc === "US" && hasCountyTok && !st) {
       // No explicit state but a county was named. Infer the state from the county
@@ -4154,22 +4180,42 @@ function buildGeocoder(gz) {
           for (const tok of parts) {
             if (COUNTY_SUFFIX_RE.test(tok)) continue;
             const hit = map.get(slug(tok));
-            if (hit) return { lat: hit.lat, lon: hit.lon, level: "city" };
+            if (hit) return { lat: hit.lat, lon: hit.lon, level: "city", cc: "US", st: stCode, county: null };
           }
         }
         for (const stCode of matchingStates) {
           const cty = findCounty(parts, stCode);
-          if (cty) return { lat: cty.lat, lon: cty.lon, level: "county" };
+          if (cty) return { lat: cty.lat, lon: cty.lon, level: "county", cc: "US", st: stCode, county: cty.name };
         }
       }
     }
     if (cc) {
       const map = cityByCountrySlug.get(cc);
-      if (map) for (const tok of parts) { const hit = map.get(slug(tok)); if (hit) return { lat: hit.lat, lon: hit.lon, level: "city" }; }
-      const c = countryByCC.get(cc); if (c) return { lat: c.lat, lon: c.lon, level: "country" };
+      if (map) for (const tok of parts) { const hit = map.get(slug(tok)); if (hit) return { lat: hit.lat, lon: hit.lon, level: "city", cc, st: null, county: null }; }
+      const c = countryByCC.get(cc); if (c) return { lat: c.lat, lon: c.lon, level: "country", cc, st: null };
     }
     return null;
   }
+  geocode.normalizePlace = function normalizePlace(place) {
+    const rawPlace = String(place || "").trim();
+    if (!rawPlace || isAddressOnlyPlace(rawPlace)) return rawPlace;
+    const g = geocode(rawPlace);
+    if (!g) return rawPlace;
+    const parts = rawPlace.split(",").map(s => s.trim()).filter(Boolean);
+    const head = parts[0] || rawPlace;
+    const country = canonicalCountry(g.cc);
+    const admin = canonicalAdmin(g.cc, g.st);
+    if (g.level === "country") return country;
+    if (g.level === "admin1") return admin ? `${admin}, ${country}` : rawPlace;
+    if (g.level === "county") return g.county && admin ? `${displayCountyName(g.county)}, ${admin}, ${country}` : rawPlace;
+    if (g.level === "city" && g.cc === "US" && admin) {
+      const explicitCounty = parts.length >= 4 ? parts[1] : null;
+      const county = g.county ? displayCountyName(g.county) : explicitCounty;
+      return county ? `${head}, ${county}, ${admin}, ${country}` : `${head}, ${admin}, ${country}`;
+    }
+    if (g.level === "city" && admin) return `${head}, ${admin}, ${country}`;
+    return rawPlace;
+  };
   return geocode;
 }
 
@@ -6166,10 +6212,34 @@ const chatHistory = []; // [{ role, content }]
 const CHAT_KEY_LS = "kf-anthropic-key";
 
 const _spEl = $("selectedPerson");
+let _kfShowNormalizedLocations = false;
 
 const EVENT_LABEL = { BIRT:"Born", DEAT:"Died", MARR:"Married", RESI:"Lived", EMIG:"Emigrated", IMMI:"Immigrated", CENS:"Census", BURI:"Buried", CHR:"Christened", BAPM:"Baptized" };
 
-function _kfPersonTimelineHtml(ind, clickedType, clickedYear) {
+function _kfNormalizedPlaceForDisplay(place) {
+  const rawPlace = String(place || "").trim();
+  if (!rawPlace) return "";
+  if (geocoder && typeof geocoder.normalizePlace === "function") {
+    return geocoder.normalizePlace(rawPlace) || rawPlace;
+  }
+  return rawPlace;
+}
+
+function _kfPersonTimelinePlaceHtml(rawPlace, showCompare) {
+  if (!rawPlace) return "";
+  if (!showCompare) {
+    const shortPlace = rawPlace.split(",").slice(0, 2).join(", ").trim();
+    return shortPlace ? `<span class="sp-tl-place">${escHtml(shortPlace)}</span>` : "";
+  }
+  const normalized = _kfNormalizedPlaceForDisplay(rawPlace);
+  const same = normalized === rawPlace;
+  return `<span class="sp-loc-compare">` +
+    `<span class="sp-loc-row"><span class="sp-loc-key">Raw</span><span class="sp-loc-val">${escHtml(rawPlace)}</span></span>` +
+    `<span class="sp-loc-row"><span class="sp-loc-key">Norm</span><span class="sp-loc-val${same ? " same" : ""}">${escHtml(normalized || rawPlace)}</span></span>` +
+  `</span>`;
+}
+
+function _kfPersonTimelineHtml(ind, clickedType, clickedYear, showNormalizedLocations = false) {
   if (!ind) return "";
   const events = (ind.events || []).filter(ev => ev && Number.isFinite(parseInt(ev.year, 10)));
   if (!events.length) return "";
@@ -6178,7 +6248,7 @@ function _kfPersonTimelineHtml(ind, clickedType, clickedYear) {
   const items = events.map(ev => {
     const yr = parseInt(ev.year, 10);
     const label = EVENT_LABEL[ev.type] || ev.type;
-    const place = ev.place ? ev.place.split(",").slice(0, 2).join(", ").trim() : "";
+    const placeHtml = _kfPersonTimelinePlaceHtml(ev.place || "", showNormalizedLocations);
     const isActive = clickedType !== undefined
       && ev.type === clickedType && String(ev.year) === String(clickedYear);
     const age = Number.isFinite(birthYear) ? yr - birthYear : null;
@@ -6188,7 +6258,7 @@ function _kfPersonTimelineHtml(ind, clickedType, clickedYear) {
       `<span class="sp-tl-dot"></span>` +
       `<span class="sp-tl-body">` +
         `<span class="sp-tl-label">${escHtml(label)}</span>` +
-        (place ? `<span class="sp-tl-place">${escHtml(place)}</span>` : "") +
+        placeHtml +
         ageHtml +
       `</span>` +
     `</li>`;
@@ -6261,7 +6331,7 @@ function _kfShowPersonCard(di) {
 
   const clickedType = dwellType[di];
   const clickedYear = dwellY[di];
-  const evHtml = _kfPersonTimelineHtml(ind, clickedType, clickedYear);
+  const evHtml = _kfPersonTimelineHtml(ind, clickedType, clickedYear, _kfShowNormalizedLocations);
   const lineageHtml = _kfPersonLineageHtml(ind);
   const hasLineage = !!lineageHtml;
   const tabsHtml = (evHtml || hasLineage)
@@ -6314,6 +6384,7 @@ function _kfShowPersonCard(di) {
     parentsHtml +
     childrenHtml +
     `<div class="sp-actions">` +
+    `<button class="sp-loc-toggle${_kfShowNormalizedLocations ? " on" : ""}" data-loc-toggle>${_kfShowNormalizedLocations ? "Hide location comparison" : "Compare locations"}</button>` +
     `<button class="sp-ask" data-ask="${escHtml(askText)}">Ask Claude about them</button>` +
     `<button class="sp-dismiss">Dismiss</button>` +
     `</div>`;
@@ -6325,6 +6396,11 @@ function _kfShowPersonCard(di) {
       _spEl.querySelectorAll(".sp-tab").forEach(b => b.classList.toggle("on", b.dataset.pane === which));
       _spEl.querySelectorAll(".sp-pane").forEach(p => p.classList.toggle("on", p.dataset.pane === which));
     });
+  });
+
+  _spEl.querySelector("[data-loc-toggle]")?.addEventListener("click", () => {
+    _kfShowNormalizedLocations = !_kfShowNormalizedLocations;
+    _kfShowPersonCard(di);
   });
 
   _spEl.querySelector(".sp-ask").addEventListener("click", async () => {
