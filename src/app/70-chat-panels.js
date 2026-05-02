@@ -3,6 +3,7 @@ const chatHistoryEl = $("chatHistory");
 const chatInputEl = $("chatInput");
 const chatFormEl = $("chatForm");
 const chatSendBtn = $("chatSend");
+const chatScopeEl = $("chatScope");
 const chatHistory = []; // [{ role, content }]
 const CHAT_KEY_LS = "kf-anthropic-key";
 
@@ -910,6 +911,31 @@ function _kfReportChipResult(chip, r) {
 function appendError(text) {
   chatHistoryEl.insertAdjacentHTML("beforeend", `<div class="msg bot err"><span class="who">error</span><div class="body">${escChat(text)}</div></div>`);
   chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+}
+
+function _kfRefreshChatScope() {
+  if (!chatScopeEl) return;
+  if (!timelineLoaded || !lastIndividuals) {
+    chatScopeEl.innerHTML = `<div class="chat-scope-main">No tree loaded</div><div class="chat-scope-sub">Load GEDCOM data to enable scoped genealogy answers.</div>`;
+    return;
+  }
+  const sources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
+  const sourceNames = sources.map(s => String(s.name || "").replace(/\.ged$/i, "")).filter(Boolean);
+  const sourceLabel = sourceNames.length
+    ? sourceNames.slice(0, 2).join(", ") + (sourceNames.length > 2 ? ` +${sourceNames.length - 2}` : "")
+    : "selected trees";
+  const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
+  const root = lastRootId && lastIndiById ? lastIndiById.get(lastRootId) : null;
+  const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
+  const mode = typeof _kfViewModeLabel === "function" ? _kfViewModeLabel() : curFilter;
+  const pills = [];
+  if (root) pills.push(`<span class="chat-scope-pill">home ${escChat(_kfNameShort(root.name))}</span>`);
+  if (selected) pills.push(`<span class="chat-scope-pill">selected ${escChat(_kfNameShort(selected.name))}</span>`);
+  if (visible?.weak) pills.push(`<span class="chat-scope-pill warn">${visible.weak.toLocaleString()} weak places</span>`);
+  chatScopeEl.innerHTML =
+    `<div class="chat-scope-main">Using ${escChat(sourceLabel)} | ${Math.floor(curYear)} | ${escChat(mode)} | ${(visible?.count || 0).toLocaleString()} visible people</div>` +
+    `<div class="chat-scope-sub">Claude answers are grounded in the checked trees and current map filters.</div>` +
+    (pills.length ? `<div>${pills.join("")}</div>` : "");
 }
 
 function buildChatContext() {

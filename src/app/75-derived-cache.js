@@ -493,6 +493,7 @@ function _kfRefreshViewChrome(force = false) {
     digestEl.hidden = !timelineLoaded || !lastIndividuals;
     if (!digestEl.hidden) digestEl.innerHTML = _kfYearDigestHtml();
   }
+  if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
 }
 
 function _kfSetActiveClusterLabel(label) {

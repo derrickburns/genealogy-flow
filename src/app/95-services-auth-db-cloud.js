@@ -211,8 +211,10 @@ function applyChatAccess(tier) {
   const lockEl = document.getElementById("chatLock");
   const histEl = document.getElementById("chatHistory");
   const formEl = document.getElementById("chatForm");
+  const scopeEl = document.getElementById("chatScope");
   const hasAccess = tier === "vip" || (tier === "regular" && !!localStorage.getItem(CHAT_KEY_LS));
   if (lockEl) lockEl.classList.toggle("hidden", hasAccess);
+  if (scopeEl) scopeEl.style.display = hasAccess ? "" : "none";
   if (histEl) histEl.style.display = hasAccess ? "" : "none";
   if (formEl) formEl.style.display = hasAccess ? "" : "none";
 }
