@@ -186,35 +186,8 @@ function _kfDwellEvidenceBadgesHtml(di) {
   return _kfBadgesHtml(_kfDwellEvidenceBadges(di));
 }
 
-function _kfPersonStoryHtml(ind, di) {
-  const facts = _kfFactsForInd(ind);
-  if (!facts) return "";
-  const bits = [];
-  if (facts.birthEv) bits.push(`Born ${facts.birthEv.year}${facts.birthEv.place ? " in " + facts.birthEv.place : ""}.`);
-  const moves = facts.events
-    .filter(ev => ev.place && ev.type !== "BIRT" && ev.type !== "DEAT" && ev.type !== "BURI")
-    .filter((ev, i, arr) => i === 0 || ev.place !== arr[i - 1].place)
-    .slice(0, 4);
-  if (moves.length) {
-    bits.push(`Records place them at ${moves.map(ev => `${ev.place} (${ev.year})`).join(" -> ")}.`);
-  }
-  if (facts.deathEv) bits.push(`Died ${facts.deathEv.year}${facts.deathEv.place ? " in " + facts.deathEv.place : ""}.`);
-  if (!bits.length && facts.last) bits.push(`Last known record: ${facts.last.year}${facts.last.place ? " in " + facts.last.place : ""}.`);
-  const current = di >= 0 ? _kfDwellPlace(di) : "";
-  if (current) bits.push(`The current marker uses ${current}.`);
-  return bits.length
-    ? `<div class="ux-section"><h4>Story mode</h4><div class="ux-muted">${escHtml(bits.join(" "))}</div></div>`
-    : "";
-}
-
 function _kfPersonIssuesHtml(ind, di = -1) {
-  const facts = _kfFactsForInd(ind);
-  if (!facts) return "";
-  const issues = facts.issues.slice();
-  const place = di >= 0 ? _kfDwellPlace(di) : "";
-  if (place && _kfPlaceEvidence(place, !!dwellExact?.[di]).rank >= 3) issues.push(`weak current-place evidence: ${place}`);
-  if (!issues.length) return "";
-  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.slice(0, 5).map(i => `<li>${escHtml(_kfPlainEnglishEventText(i))}</li>`).join("")}</ul></div>`;
+  return "";
 }
 
 function _kfQuestionChipsHtml(questions) {
@@ -648,27 +621,8 @@ function _kfClusterDigestHtml(c, rows) {
   return html;
 }
 
-function _kfClusterStoryHtml(c, rows) {
-  const places = rows.map(r => r.place).filter(Boolean);
-  const place = c.abbr || (places[0] ? places[0].split(",").slice(0, 2).join(", ") : "");
-  const focus = rows.focus?.focus?.name ? ` relative to ${rows.focus.focus.name}` : "";
-  const text = place
-    ? `This view is a ${_kfClusterModeLabel().toLowerCase()} grouping${focus} around ${place} in ${Math.floor(curYear)}. Use it to compare who is nearby, how strong the location evidence is, and which records explain the marker.`
-    : `This view is a ${_kfClusterModeLabel().toLowerCase()} grouping${focus} in ${Math.floor(curYear)}.`;
-  return `<div class="ux-section"><h4>Story mode</h4><div class="ux-muted">${escHtml(text)}</div></div>`;
-}
-
 function _kfClusterIssuesHtml(c, rows) {
-  const issues = [];
-  for (const r of rows) {
-    const ind = lastIndividuals?.[dwellIndi?.[r.di]];
-    const facts = _kfFactsForInd(ind);
-    if (facts?.issues.length) issues.push(`${r.name}: ${facts.issues[0]}`);
-    else if (r.locationEvidenceRank >= 3 && r.place) issues.push(`${r.name}: weak place evidence (${r.place})`);
-    if (issues.length >= 5) break;
-  }
-  if (!issues.length) return "";
-  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.map(i => `<li>${escHtml(_kfPlainEnglishEventText(i))}</li>`).join("")}</ul></div>`;
+  return "";
 }
 
 function _kfClusterQuestionHtml(rows) {

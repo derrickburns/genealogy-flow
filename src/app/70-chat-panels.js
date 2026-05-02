@@ -550,7 +550,6 @@ function _kfShowPersonCard(di) {
   const clickedType = dwellType[di];
   const clickedYear = dwellY[di];
   const evidenceHtml = _kfDwellEvidenceBadgesHtml(di);
-  const storyHtml = _kfPersonStoryHtml(ind, di);
   const issuesHtml = _kfPersonIssuesHtml(ind, di);
   const questionsHtml = _kfPersonQuestionHtml(ind);
   const evHtml = _kfPersonTimelineHtml(ind, clickedType, clickedYear);
@@ -602,7 +601,6 @@ function _kfShowPersonCard(di) {
     `<div class="sp-name">${escHtml(ind.name)}</div>` +
     (sub ? `<div class="sp-sub">${escHtml(sub)}</div>` : "") +
     evidenceHtml +
-    storyHtml +
     issuesHtml +
     questionsHtml +
     tabsHtml +
