@@ -13,13 +13,30 @@ export interface Env {
   CLERK_PUBLISHABLE_KEY: string;
   ANTHROPIC_API_KEY: string;
   KEY_ENCRYPTION_SECRET: string;
-  VIP_EMAILS: string;
+  VIP_EMAILS?: string;
   GITHUB_TOKEN?: string;
   GITHUB_REPO?: string;
 }
 
+const DEFAULT_VIP_EMAILS = [
+  "ginagregoryburns@gmail.com",
+  "mayasylvia.burns@gmail.com",
+  "jamil.burns@gmail.com",
+  "derrickrburns@gmail.com",
+  "paigeunterberg@gmail.com",
+  "james.raby@gmail.com",
+];
+
 function getVipEmails(env: Env): Set<string> {
-  return new Set(env.VIP_EMAILS.split(",").map((e) => e.trim().toLowerCase()));
+  const raw = typeof env.VIP_EMAILS === "string" && env.VIP_EMAILS.trim()
+    ? env.VIP_EMAILS
+    : DEFAULT_VIP_EMAILS.join(",");
+  return new Set(
+    raw
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean)
+  );
 }
 
 function sessionCookieName() {
@@ -51,6 +68,24 @@ async function ensureSession(
     .run();
 }
 
+async function upsertAuthenticatedUser(
+  userId: string,
+  email: string,
+  env: Env
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    `INSERT INTO users (user_id, email, last_login, gedcom_expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       email = excluded.email,
+       last_login = excluded.last_login,
+       gedcom_expires_at = excluded.gedcom_expires_at`
+  )
+    .bind(userId, email, now, now + 7 * 86400, now)
+    .run();
+}
+
 export const onRequest: PagesFunction<Env> = async (ctx) => {
   const { request, env, next } = ctx;
   const authHeader = request.headers.get("Authorization");
@@ -76,20 +111,12 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       const vips = getVipEmails(env);
       const type = vips.has(email.toLowerCase()) ? "vip" : "regular";
 
-      // Upsert user record
-      const now = Math.floor(Date.now() / 1000);
-      await env.DB.prepare(
-        `INSERT INTO users (user_id, email, last_login, gedcom_expires_at, created_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(user_id) DO UPDATE SET
-           email = excluded.email,
-           last_login = excluded.last_login,
-           gedcom_expires_at = excluded.gedcom_expires_at`
-      )
-        .bind(userId, email, now, now + 7 * 86400, now)
-        .run();
-
       ctx.data.user = { type, id: userId, email };
+      ctx.waitUntil(
+        upsertAuthenticatedUser(userId, email, env).catch((e) => {
+          console.error("[auth] user upsert failed:", e instanceof Error ? e.message : String(e));
+        })
+      );
       return next();
     } catch (e) {
       console.error("[auth] token verification failed:", e instanceof Error ? e.message : String(e));
