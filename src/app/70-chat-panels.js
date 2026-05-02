@@ -22,7 +22,7 @@ function _kfUpdateMobileSheetTitle(tab) {
     tab === "cluster" ? "Cluster" :
     tab === "options" ? "Options" :
     tab === "tour" ? "Tour" :
-    "Kindred Genealogist";
+    "Explore";
 }
 
 function _kfSyncMobileControlHeight() {
@@ -65,6 +65,7 @@ function _kfBumpMobileSheetForTab(tab) {
 
 function _kfSetSideTab(tab) {
   const next = tab === "person" || tab === "cluster" || tab === "options" || tab === "tour" ? tab : "chat";
+  if (next === "tour" && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
   document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
     btn.classList.toggle("on", btn.dataset.sideTab === next);
   });

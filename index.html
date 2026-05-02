@@ -94,6 +94,8 @@
   </button>
   <div id="ui">
     <div class="uirow primary">
+      <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
+      <button id="play" disabled>Play</button>
       <div class="rangeWrap" style="position:relative;">
         <canvas id="yearHist"></canvas>
         <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
@@ -115,7 +117,7 @@
       <button type="button" data-side-tab="cluster">Cluster</button>
       <button type="button" data-side-tab="options">Options</button>
       <button type="button" data-side-tab="tour">Tour</button>
-      <button type="button" class="on" data-side-tab="chat">Kindred Genealogist</button>
+      <button type="button" class="on" data-side-tab="chat">Explore</button>
     </div>
     <div id="personPane" class="sidePane">
       <div id="personEmpty">Click a marker on the map to inspect that person.</div>
@@ -169,8 +171,6 @@
           </span>
         </div>
         <div id="timelineControls" class="options-control-group">
-          <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
-          <button id="play" disabled>Play</button>
           <label class="speedControl">speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
           <label class="speedControl">migration <select id="migrationView"><option value="continuous" selected>continuous</option><option value="observations">observation pulses</option></select></label>
           <span class="loopControl" id="loopControl" title="Limit Play to a marked timeline loop. Begin or end alone uses the data boundary for the other side.">
@@ -184,7 +184,7 @@
       </div>
     </div>
     <div id="tourPane" class="sidePane">
-      <div id="tourPaneContent" class="tour-empty">Press tour year to explain the current year in this view.</div>
+      <div id="tourPaneContent"></div>
     </div>
     <div id="chatPane" class="sidePane on">
       <div id="chatLock">

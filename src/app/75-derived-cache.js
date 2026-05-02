@@ -535,10 +535,6 @@ function _kfHideYearDigest() {
   _kfRenderActiveYearDigest();
 }
 
-function _kfTourEmptyHtml() {
-  return `<div class="tour-empty">Press tour year to explain the current year in this view.</div>`;
-}
-
 function _kfBindYearDigestControls(digestEl) {
   digestEl.querySelector("[data-year-digest-close]")?.addEventListener("click", _kfHideYearDigest);
 }
@@ -546,18 +542,14 @@ function _kfBindYearDigestControls(digestEl) {
 function _kfRenderActiveYearDigest() {
   const digestEl = $("tourPaneContent");
   if (!digestEl) return;
-  if (_kfDerivedCache.activeDigestMode === "tour") {
-    digestEl.innerHTML = _kfYearTourHtml();
-    _kfBindYearDigestControls(digestEl);
-  } else {
-    digestEl.innerHTML = _kfTourEmptyHtml();
-  }
+  digestEl.innerHTML = _kfYearTourHtml();
+  _kfBindYearDigestControls(digestEl);
 }
 
-function _kfShowYearTour() {
+function _kfShowYearTour(selectTab = true) {
   _kfDerivedCache.activeDigestMode = "tour";
   _kfRenderActiveYearDigest();
-  if (typeof _kfSetSideTab === "function") _kfSetSideTab("tour");
+  if (selectTab && typeof _kfSetSideTab === "function") _kfSetSideTab("tour");
 }
 
 function _kfOutlierReportMarkdown(limit = 8) {
@@ -669,7 +661,6 @@ function _kfRefreshViewChrome(force = false) {
     breadEl.textContent = bits.join(" > ");
   }
   if (whyEl) whyEl.hidden = !timelineLoaded || !lastIndividuals;
-  if (!timelineLoaded || !lastIndividuals) _kfDerivedCache.activeDigestMode = "";
   if (digestEl) _kfRenderActiveYearDigest();
   if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
 }

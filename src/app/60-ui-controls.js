@@ -1036,17 +1036,33 @@ function _kfRefreshLoopControls() {
   const loop = _kfPlaybackLoopBounds();
   if (label) label.textContent = loop.active ? `${Math.floor(loop.begin)}-${Math.floor(loop.end)}` : "full";
   if (beginMark) {
-    if (loaded && loop.beginSet) {
+    if (loaded) {
+      beginMark.classList.toggle("active", loop.beginSet);
       beginMark.style.display = "";
-      beginMark.style.left = `${_kfLoopMarkerPct(_kfLoopBegin)}%`;
+      beginMark.style.left = `${_kfLoopMarkerPct(loop.begin)}%`;
+      beginMark.title = `Drag loop start (${Math.floor(loop.begin)})`;
+      beginMark.setAttribute("role", "slider");
+      beginMark.setAttribute("tabindex", "0");
+      beginMark.setAttribute("aria-label", "Loop start");
+      beginMark.setAttribute("aria-valuemin", String(minYear));
+      beginMark.setAttribute("aria-valuemax", String(Math.max(minYear, loop.end - 1)));
+      beginMark.setAttribute("aria-valuenow", String(Math.floor(loop.begin)));
     } else {
       beginMark.style.display = "none";
     }
   }
   if (endMark) {
-    if (loaded && loop.endSet) {
+    if (loaded) {
+      endMark.classList.toggle("active", loop.endSet);
       endMark.style.display = "";
-      endMark.style.left = `${_kfLoopMarkerPct(_kfLoopEnd)}%`;
+      endMark.style.left = `${_kfLoopMarkerPct(loop.end)}%`;
+      endMark.title = `Drag loop end (${Math.floor(loop.end)})`;
+      endMark.setAttribute("role", "slider");
+      endMark.setAttribute("tabindex", "0");
+      endMark.setAttribute("aria-label", "Loop end");
+      endMark.setAttribute("aria-valuemin", String(Math.min(maxYear, loop.begin + 1)));
+      endMark.setAttribute("aria-valuemax", String(maxYear));
+      endMark.setAttribute("aria-valuenow", String(Math.floor(loop.end)));
     } else {
       endMark.style.display = "none";
     }
@@ -1098,6 +1114,35 @@ function _kfSetLoopRange(beginYear, endYear) {
   return { ok: true, loop: _kfPlaybackLoopBounds() };
 }
 
+function _kfTimelineYearFromClientX(clientX) {
+  if (!range) return null;
+  const rect = range.getBoundingClientRect();
+  if (!rect.width) return null;
+  const yMin = parseFloat(range.min) || minYear;
+  const yMax = parseFloat(range.max) || maxYear;
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  return yMin + pct * (yMax - yMin);
+}
+
+function _kfSetLoopAnchor(which, year) {
+  let y = _kfNormalizeLoopYear(year);
+  if (y == null) return { error: "loop year is not valid" };
+  if (which === "begin") {
+    const end = Number.isFinite(_kfLoopEnd) ? _kfLoopEnd : maxYear;
+    y = Math.max(minYear, Math.min(y, end - 1));
+    _kfLoopBegin = y <= minYear ? null : y;
+  } else if (which === "end") {
+    const begin = Number.isFinite(_kfLoopBegin) ? _kfLoopBegin : minYear;
+    y = Math.min(maxYear, Math.max(y, begin + 1));
+    _kfLoopEnd = y >= maxYear ? null : y;
+  } else {
+    return { error: "unknown loop anchor" };
+  }
+  _kfPlayStopAt = null;
+  _kfRefreshLoopControls();
+  return { ok: true, loop: _kfPlaybackLoopBounds() };
+}
+
 function _kfClearLoopRange() {
   const hadLoop = Number.isFinite(_kfLoopBegin) || Number.isFinite(_kfLoopEnd);
   _kfLoopBegin = null;
@@ -1119,6 +1164,61 @@ $("loopClearBtn")?.addEventListener("click", () => {
   pushHistory();
   _kfClearLoopRange();
 });
+
+function _kfInstallLoopAnchorDrag(which, el) {
+  if (!el) return;
+  let dragging = false;
+  const updateFromEvent = e => {
+    const y = _kfTimelineYearFromClientX(e.clientX);
+    if (y == null) return;
+    _kfSetLoopAnchor(which, y);
+  };
+  el.addEventListener("pointerdown", e => {
+    if (!timelineLoaded) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pushHistory();
+    dragging = true;
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add("dragging");
+    updateFromEvent(e);
+  });
+  el.addEventListener("pointermove", e => {
+    if (!dragging) return;
+    e.preventDefault();
+    updateFromEvent(e);
+  });
+  el.addEventListener("pointerup", e => {
+    if (!dragging) return;
+    e.preventDefault();
+    dragging = false;
+    el.classList.remove("dragging");
+    el.releasePointerCapture?.(e.pointerId);
+    updateFromEvent(e);
+  });
+  el.addEventListener("pointercancel", e => {
+    dragging = false;
+    el.classList.remove("dragging");
+    el.releasePointerCapture?.(e.pointerId);
+  });
+  el.addEventListener("keydown", e => {
+    if (!timelineLoaded) return;
+    const step = e.shiftKey ? 10 : 1;
+    const loop = _kfPlaybackLoopBounds();
+    const current = which === "begin" ? loop.begin : loop.end;
+    let next = current;
+    if (e.key === "ArrowLeft") next -= step;
+    else if (e.key === "ArrowRight") next += step;
+    else if (e.key === "Home") next = minYear;
+    else if (e.key === "End") next = maxYear;
+    else return;
+    e.preventDefault();
+    pushHistory();
+    _kfSetLoopAnchor(which, next);
+  });
+}
+_kfInstallLoopAnchorDrag("begin", $("markLoopBegin"));
+_kfInstallLoopAnchorDrag("end", $("markLoopEnd"));
 _kfRefreshLoopControls();
 if (DEMO_GED_URL) {
   const _pick = $("pick"); if (_pick) _pick.style.display = "none";

@@ -103,8 +103,17 @@
   .rangeMark::before { content:""; position:absolute; left:50%; bottom:100%; width:1px; height:8px; background:#566480; transform:translateX(-50%); margin-bottom:1px; }
   .rangeMark.ancestor::before { background:#2a4a8c; }
   .rangeMark.ancestor { color:#2a4a8c; font-weight:600; }
-  .rangeMark.loop { bottom:16px; font-size:9px; font-weight:800; letter-spacing:0.02em; text-transform:uppercase; }
-  .rangeMark.loop::before { height:13px; width:2px; margin-bottom:0; }
+  .rangeMark.loop {
+    bottom:18px; min-width:34px; padding-top:23px; pointer-events:auto; cursor:ew-resize; touch-action:none;
+    text-align:center; font-size:9px; font-weight:800; letter-spacing:0.02em; text-transform:uppercase; user-select:none;
+  }
+  .rangeMark.loop::before {
+    height:22px; width:12px; margin-bottom:0; border-radius:999px; border:2px solid #fff;
+    box-shadow:0 1px 5px rgba(15,23,42,0.28);
+  }
+  .rangeMark.loop.active::before, .rangeMark.loop.dragging::before { box-shadow:0 0 0 3px rgba(42,74,140,0.22), 0 2px 8px rgba(15,23,42,0.35); }
+  .rangeMark.loop:focus-visible { outline:none; color:#1e40af; }
+  .rangeMark.loop:focus-visible::before { box-shadow:0 0 0 4px rgba(30,64,175,0.28), 0 2px 8px rgba(15,23,42,0.35); }
   .rangeMark.loop.begin { color:#875a1e; }
   .rangeMark.loop.begin::before { background:#c98228; }
   .rangeMark.loop.end { color:#8a1f19; }
@@ -458,7 +467,6 @@
   #focusBreadcrumb { margin-left:auto; max-width:44%; color:#566480; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #tourPane { overflow-y:auto; background:linear-gradient(180deg,#f8fbff 0%,#fff 100%); }
   #tourPaneContent { padding:12px; color:#1c2433; }
-  .tour-empty { color:#718096; font-size:12px; line-height:1.45; padding:14px 12px; }
   .year-digest-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:7px; }
   .year-digest-title { font-size:11px; font-weight:900; color:#102033; letter-spacing:0.03em; text-transform:uppercase; }
   .year-digest-sub { font-size:10px; color:#718096; white-space:nowrap; }
