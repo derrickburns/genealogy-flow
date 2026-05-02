@@ -3529,6 +3529,26 @@ function dedupeSingletonEvents(events) {
   return others;
 }
 
+function parseYearBounds(s) {
+  if (!s) return [null, null];
+  const matches = String(s).match(/\b\d{3,4}\b/g);
+  if (!matches || !matches.length) return [null, null];
+  const years = matches
+    .map(v => parseInt(v, 10))
+    .filter(y => Number.isFinite(y) && y >= 1000 && y <= 2100);
+  if (!years.length) return [null, null];
+  return [years[0], years[years.length - 1]];
+}
+
+function expandRangedEvent(e) {
+  const y0 = e.year;
+  const y1 = e.year_end ?? e.year ?? null;
+  if (!Number.isFinite(y0)) return [];
+  const base = { ...e, year: y0 };
+  if (!Number.isFinite(y1) || y1 === y0) return [base];
+  return [base, { ...e, year: y1 }];
+}
+
 function parseGedcomFromJson(json) {
   const individuals = (json.individuals || []).map(ind => ({
     id: ind.id,
@@ -3538,7 +3558,15 @@ function parseGedcomFromJson(json) {
     raw: "",
     birth_year: ind.birth_year ?? null,
     death_year: ind.death_year ?? null,
-    events: (ind.events || []).map(e => ({ type: e.tag, year: e.year, place: e.place || "" })).filter(e => e.year != null),
+    events: (ind.events || [])
+      .flatMap(e => expandRangedEvent({
+        type: e.tag,
+        date: e.date || "",
+        year: e.year,
+        year_end: e.year_end ?? e.year ?? null,
+        place: e.place || "",
+      }))
+      .filter(e => e.year != null),
   }));
   const families = new Map();
   for (const fam of (json.families || [])) {
@@ -3559,10 +3587,18 @@ function parseGedcom(text) {
 
   function flushEvent() {
     if (cur && mode === "INDI" && curEvent) {
-      const y = parseYear(curDate);
-      if (y !== null && curPlace) cur.events.push({ type: curEvent, year: y, place: curPlace.trim() });
-      if (curEvent === "BIRT" && y !== null && curBirth === null) curBirth = y;
-      if (curEvent === "DEAT" && y !== null && curDeath === null) curDeath = y;
+      const [y0, y1] = parseYearBounds(curDate);
+      if (y0 !== null && curPlace) {
+        cur.events.push(...expandRangedEvent({
+          type: curEvent,
+          date: curDate || "",
+          year: y0,
+          year_end: y1 ?? y0,
+          place: curPlace.trim(),
+        }));
+      }
+      if (curEvent === "BIRT" && y0 !== null && curBirth === null) curBirth = y0;
+      if (curEvent === "DEAT" && y0 !== null && curDeath === null) curDeath = y0;
     }
     curEvent = null; curDate = null; curPlace = null;
   }
