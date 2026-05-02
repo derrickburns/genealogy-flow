@@ -212,7 +212,7 @@ function applyChatAccess(tier) {
   const histEl = document.getElementById("chatHistory");
   const formEl = document.getElementById("chatForm");
   const scopeEl = document.getElementById("chatScope");
-  const hasAccess = tier === "vip" || (tier === "regular" && !!localStorage.getItem(CHAT_KEY_LS));
+  const hasAccess = tier === "vip" || !!localStorage.getItem(CHAT_KEY_LS);
   if (lockEl) lockEl.classList.toggle("hidden", hasAccess);
   if (scopeEl) scopeEl.style.display = hasAccess ? "" : "none";
   if (histEl) histEl.style.display = hasAccess ? "" : "none";
@@ -235,7 +235,7 @@ async function updateAuthUI(user) {
     statusEl.className = "authTier anon";
     emailEl.style.display = "none";
     btnEl.textContent = "Sign in";
-    apiKeyRowEl.style.display = "none";
+    apiKeyRowEl.style.display = "flex";
     if (uploadCloudBtn) uploadCloudBtn.style.display = "none";
     if (versionEl) versionEl.style.display = "none";
     applyChatAccess("anon");
@@ -258,7 +258,7 @@ async function updateAuthUI(user) {
     emailEl.textContent = email;
     emailEl.style.display = "inline";
     btnEl.textContent = "Sign out";
-    apiKeyRowEl.style.display = _clerkUserTier === "regular" ? "flex" : "none";
+    apiKeyRowEl.style.display = _clerkUserTier === "vip" ? "none" : "flex";
     if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
     if (versionEl) versionEl.style.display = "inline";
     applyChatAccess(_clerkUserTier);
@@ -286,7 +286,7 @@ async function updateAuthUI(user) {
   emailEl.textContent = email;
   emailEl.style.display = "inline";
   btnEl.textContent = "Sign out";
-  apiKeyRowEl.style.display = _clerkUserTier === "regular" ? "flex" : "none";
+  apiKeyRowEl.style.display = _clerkUserTier === "vip" ? "none" : "flex";
   if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
   if (versionEl) versionEl.style.display = "inline";
   applyChatAccess(_clerkUserTier);
@@ -553,6 +553,13 @@ document.getElementById("apiKeySave").addEventListener("click", () => {
   if (!key) return;
   localStorage.setItem(CHAT_KEY_LS, key);
   document.getElementById("apiKeyInput").value = "";
+  const status = document.getElementById("apiKeyStatus");
+  if (status) {
+    status.textContent = "saved";
+    setTimeout(() => {
+      if (status.textContent === "saved") status.textContent = "";
+    }, 2500);
+  }
   applyChatAccess(_clerkUserTier);
 });
 

@@ -20,6 +20,7 @@
     <label for="apiKeyInput">Anthropic key:</label>
     <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
     <button id="apiKeySave">Save</button>
+    <span id="apiKeyStatus" class="apiKeyStatus"></span>
   </span>
   <span class="authSpacer"></span>
   <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">__COMMIT_SHA__</span>
@@ -110,9 +111,10 @@
           <li>Use the <b>filter</b> chips to focus on blood relatives, ancestors, men, or women</li>
           <li>Click any dot to select that person and see their events in the right panel</li>
           <li>Type a name in the <b>home person</b> box to re-center the tree on someone else</li>
-          <li>Sign in to unlock AI chat &mdash; ask questions about the tree in plain English</li>
+          <li>Save your Anthropic key or sign in as VIP to unlock AI chat</li>
         </ul>
-        <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Sign in for AI chat</button>
+        <button type="button" onclick="document.getElementById('apiKeyInput').focus()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Add API key</button>
+        <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #c0ccd8; border-radius:5px; background:#fff; color:#2a4a8c; font:inherit; cursor:pointer;">Sign in</button>
       </div>
       <div id="chatScope">Load GEDCOM data to enable scoped genealogy answers.</div>
       <div id="chatHistory"></div>

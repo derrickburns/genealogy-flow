@@ -397,6 +397,7 @@
   #authBar .authEmail { color:#334155; font-weight:500; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #apiKeyRow { display:none; align-items:center; gap:6px; font-size:11px; }
   #apiKeyRow input { width:240px; padding:2px 6px; border:1px solid #c0ccd8; border-radius:4px; font:inherit; font-size:11px; }
+  #apiKeyRow .apiKeyStatus { color:#2f7d32; font-size:10.5px; min-width:34px; }
   #chatLock { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:32px 16px; color:#7a8aa0; font-size:13px; text-align:center; flex:1; }
   #chatLock.hidden { display:none; }
   #chatScope { flex:0 0 auto; border-bottom:1px solid #e0e6ee; background:#fff; color:#334155; padding:6px 10px; font-size:11px; line-height:1.35; }
