@@ -11,7 +11,11 @@
  *
  * Usage:
  *   node scripts/seed-demo.mjs [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug]
+ *   node scripts/seed-demo.mjs [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug] --online-geocode
  *   CLOUDFLARE_API_TOKEN=... node scripts/seed-demo.mjs
+ *
+ * Online geocoding is intentionally limited to this offline VIP catalog seed
+ * path. The browser and non-VIP upload/load paths do not call online geocoders.
  */
 
 import { execSync } from "node:child_process";
@@ -26,9 +30,15 @@ function extractYear(dateStr) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-const gedPath = process.argv[2] ?? "Golden-Rosenberg.ged";
-const gazPath = process.argv[3] ?? "gazetteer.json";
-const catalogSlug = (process.argv[4] ?? "golden-rosenberg").toLowerCase();
+const rawArgs = process.argv.slice(2);
+const onlineGeocode = rawArgs.includes("--online-geocode") || process.env.ONLINE_GEOCODING === "1";
+const onlineCacheArg = rawArgs.find(a => a.startsWith("--geocode-cache="));
+const onlineCachePath = onlineCacheArg?.slice("--geocode-cache=".length) || process.env.GEOCODE_CACHE || "geocode-cache.nominatim.json";
+const positional = rawArgs.filter(a => !a.startsWith("--"));
+
+const gedPath = positional[0] ?? "Golden-Rosenberg.ged";
+const gazPath = positional[1] ?? "gazetteer.json";
+const catalogSlug = (positional[2] ?? "golden-rosenberg").toLowerCase();
 
 if (!existsSync(gedPath)) {
   console.error(`GEDCOM file not found: ${gedPath}`);
@@ -50,12 +60,118 @@ if (existsSync(gazPath)) {
   console.log("No gazetteer.json found - skipping geocoding (lat/lon will be null)");
 }
 
-function geocode(place) {
-  if (!gazetteer || !place) return { lat: null, lon: null };
+let onlineCache = {};
+let onlineCacheDirty = false;
+let lastOnlineAt = 0;
+if (onlineGeocode) {
+  if (existsSync(onlineCachePath)) {
+    onlineCache = JSON.parse(readFileSync(onlineCachePath, "utf8"));
+    console.log(`Loaded online geocode cache from ${onlineCachePath} (${Object.keys(onlineCache).length} entries)`);
+  } else {
+    console.log(`Online geocode cache will be created at ${onlineCachePath}`);
+  }
+}
+
+function cacheKey(place) {
+  return String(place || "").trim().toLowerCase();
+}
+
+function saveOnlineCache() {
+  if (!onlineGeocode || !onlineCacheDirty) return;
+  writeFileSync(onlineCachePath, JSON.stringify(onlineCache, null, 2));
+  onlineCacheDirty = false;
+}
+
+function geocodeLocal(place) {
+  if (!gazetteer || !place) return null;
   const norm = place.toLowerCase().trim();
   const entry = gazetteer[norm];
-  if (entry) return { lat: entry.lat, lon: entry.lon };
-  return { lat: null, lon: null };
+  if (!entry) return null;
+  return {
+    lat: entry.lat,
+    lon: entry.lon,
+    geo_level: entry.level || null,
+    geo_cc: entry.cc || null,
+    geo_st: entry.st || null,
+    normalized_place: entry.normalized_place || null,
+    geocode_source: "local",
+  };
+}
+
+function normalizedNominatimPlace(row) {
+  const a = row.address || {};
+  const locality = a.city || a.town || a.village || a.hamlet || a.municipality || a.suburb || a.neighbourhood || "";
+  const county = a.county || "";
+  const state = a.state || a.region || "";
+  const country = (a.country_code || "").toUpperCase() === "US" ? "USA" : (a.country || "");
+  const parts = [];
+  for (const p of [locality, county, state, country]) {
+    if (p && !parts.includes(p)) parts.push(p);
+  }
+  return parts.join(", ") || row.display_name || "";
+}
+
+function nominatimGeoLevel(row) {
+  const a = row.address || {};
+  if (a.city || a.town || a.village || a.hamlet || a.municipality || a.suburb || a.neighbourhood) return "city";
+  if (a.county) return "county";
+  if (a.state || a.region) return "admin1";
+  if (a.country) return "country";
+  return row.type || "unknown";
+}
+
+function nominatimStateCode(row) {
+  const iso = row.address?.["ISO3166-2-lvl4"] || row.address?.["ISO3166-2-lvl6"] || "";
+  const m = /-([A-Z0-9]+)$/.exec(iso);
+  return m ? m[1] : null;
+}
+
+async function geocodeOnline(place) {
+  if (!onlineGeocode || !place) return null;
+  const key = cacheKey(place);
+  if (Object.prototype.hasOwnProperty.call(onlineCache, key)) return onlineCache[key] || null;
+  const wait = Math.max(0, 1100 - (Date.now() - lastOnlineAt));
+  if (wait) await new Promise(r => setTimeout(r, wait));
+  lastOnlineAt = Date.now();
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("q", place);
+  const resp = await fetch(url, {
+    headers: {
+      "User-Agent": "genealogy-flow/0.1 (https://github.com/derrickburns/genealogy-flow)",
+      "Referer": "https://github.com/derrickburns/genealogy-flow",
+    },
+  });
+  if (!resp.ok) throw new Error(`Nominatim ${resp.status}: ${await resp.text()}`);
+  const rows = await resp.json();
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) {
+    onlineCache[key] = null;
+    onlineCacheDirty = true;
+    return null;
+  }
+  const hit = {
+    lat: Number(row.lat),
+    lon: Number(row.lon),
+    geo_level: nominatimGeoLevel(row),
+    geo_cc: (row.address?.country_code || "").toUpperCase() || null,
+    geo_st: nominatimStateCode(row),
+    normalized_place: normalizedNominatimPlace(row),
+    geocode_source: "nominatim",
+    fetched_at: new Date().toISOString(),
+  };
+  onlineCache[key] = hit;
+  onlineCacheDirty = true;
+  return hit;
+}
+
+async function geocode(place) {
+  const local = geocodeLocal(place);
+  if (local) return local;
+  const online = await geocodeOnline(place);
+  return online || { lat: null, lon: null };
 }
 
 // Build the processed JSON blob (same format as parse-gedcom output)
@@ -67,16 +183,18 @@ const demoJson = {
 };
 
 for (const [id, ind] of gedcom.individuals) {
-  const events = ind.events
-    .filter(e => EVENT_TAGS.has(e.tag))
-    .map(e => ({
+  const events = [];
+  for (const e of ind.events.filter(e => EVENT_TAGS.has(e.tag))) {
+    const geo = await geocode(e.place);
+    events.push({
       tag: e.tag,
       date: e.date || null,
       year: e.year,
       place: e.place || null,
-      ...geocode(e.place),
+      ...geo,
       sources: e.sources.map(s => ({ src_id: s.src_id, page: s.page, url: s.url })),
-    }));
+    });
+  }
   demoJson.individuals.push({
     id,
     name: ind.name || null,
@@ -90,6 +208,8 @@ for (const [id, ind] of gedcom.individuals) {
     sources: ind.sources.map(s => ({ src_id: s.src_id, page: s.page, url: s.url })),
   });
 }
+
+saveOnlineCache();
 
 for (const [id, fam] of gedcom.families) {
   demoJson.families.push({ id, husb: fam.husb, wife: fam.wife, chil: fam.chil,

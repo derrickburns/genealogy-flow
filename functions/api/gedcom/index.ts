@@ -34,8 +34,15 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       id: string; name: string | null; sex: string | null; birth_year: number | null; death_year: number | null; famc: string | null;
     }>();
     const eventRows = await ctx.env.DB.prepare(
-      `SELECT individual_id, type, year, place FROM ged_events WHERE source_id = ? ORDER BY individual_id, year, id`
-    ).bind(src.id).all<{ individual_id: string; type: string; year: number | null; place: string | null }>();
+      `SELECT individual_id, type, year, place, lat, lon FROM ged_events WHERE source_id = ? ORDER BY individual_id, year, id`
+    ).bind(src.id).all<{
+      individual_id: string;
+      type: string;
+      year: number | null;
+      place: string | null;
+      lat: number | null;
+      lon: number | null;
+    }>();
     const familyRows = await ctx.env.DB.prepare(
       `SELECT id, husb_id, wife_id FROM ged_families WHERE source_id = ? ORDER BY id`
     ).bind(src.id).all<{ id: string; husb_id: string | null; wife_id: string | null }>();
@@ -43,11 +50,11 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       `SELECT family_id, child_id FROM ged_family_children WHERE source_id = ? ORDER BY family_id, child_id`
     ).bind(src.id).all<{ family_id: string; child_id: string }>();
 
-    const eventsByIndi = new Map<string, { tag: string; year: number | null; place: string | null }[]>();
+    const eventsByIndi = new Map<string, { tag: string; year: number | null; place: string | null; lat: number | null; lon: number | null }[]>();
     for (const e of eventRows.results ?? []) {
       let arr = eventsByIndi.get(e.individual_id);
       if (!arr) { arr = []; eventsByIndi.set(e.individual_id, arr); }
-      arr.push({ tag: e.type, year: e.year, place: e.place });
+      arr.push({ tag: e.type, year: e.year, place: e.place, lat: e.lat, lon: e.lon });
     }
     const childrenByFam = new Map<string, string[]>();
     for (const c of childRows.results ?? []) {
