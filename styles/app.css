@@ -399,12 +399,8 @@
   #apiKeyRow input { width:240px; padding:2px 6px; border:1px solid #c0ccd8; border-radius:4px; font:inherit; font-size:11px; }
   #chatLock { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:32px 16px; color:#7a8aa0; font-size:13px; text-align:center; flex:1; }
   #chatLock.hidden { display:none; }
-  #chatScope { flex:0 0 auto; border-bottom:1px solid #e0e6ee; background:linear-gradient(135deg,#f8fbff 0%,#eef5ff 100%); color:#334155; padding:8px 10px; font-size:11px; line-height:1.35; }
-  .chat-scope-main { font-weight:800; color:#102033; }
-  .chat-scope-sub { margin-top:3px; color:#64748b; }
-  .chat-scope-pill { display:inline-flex; align-items:center; border:1px solid #cbd5e1; border-radius:999px; background:#fff; color:#475569; padding:1px 6px; margin:3px 4px 0 0; font-size:9.5px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase; }
-  .chat-scope-pill.warn { background:#fff7ed; border-color:#fed7aa; color:#b45309; }
-  .chat-scope-actions { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  #chatScope { flex:0 0 auto; border-bottom:1px solid #e0e6ee; background:#fff; color:#334155; padding:6px 10px; font-size:11px; line-height:1.35; }
+  .chat-scope-actions { display:flex; flex-wrap:wrap; gap:5px; }
   .chat-scope-question { border:1px solid #b9c8dd; border-radius:999px; background:#fff; color:#1f3a78; padding:4px 8px; font:inherit; font-size:10.5px; font-weight:700; cursor:pointer; }
   .chat-scope-question:hover { background:#e8f0ff; border-color:#7290c8; }
   #sideTabs { display:flex; gap:0; border-bottom:1px solid #e0e6ee; background:#f4f6fa; flex-shrink:0; }

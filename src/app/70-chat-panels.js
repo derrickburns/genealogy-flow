@@ -944,31 +944,18 @@ function _kfBindChatScopeQuestions() {
 function _kfRefreshChatScope() {
   if (!chatScopeEl) return;
   if (!timelineLoaded || !lastIndividuals) {
-    chatScopeEl.innerHTML = `<div class="chat-scope-main">No tree loaded</div><div class="chat-scope-sub">Load GEDCOM data to enable scoped genealogy answers.</div>`;
+    chatScopeEl.hidden = true;
+    chatScopeEl.innerHTML = "";
     return;
   }
-  const sources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
-  const sourceNames = sources.map(s => String(s.name || "").replace(/\.ged$/i, "")).filter(Boolean);
-  const sourceLabel = sourceNames.length
-    ? sourceNames.slice(0, 2).join(", ") + (sourceNames.length > 2 ? ` +${sourceNames.length - 2}` : "")
-    : "selected trees";
+  chatScopeEl.hidden = false;
   const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
   const root = lastRootId && lastIndiById ? lastIndiById.get(lastRootId) : null;
   const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
-  const mode = typeof _kfViewModeLabel === "function" ? _kfViewModeLabel() : curFilter;
-  const pills = [];
-  if (root) pills.push(`<span class="chat-scope-pill">home ${escChat(_kfNameShort(root.name))}</span>`);
-  if (selected) pills.push(`<span class="chat-scope-pill">selected ${escChat(_kfNameShort(selected.name))}</span>`);
-  if (visible?.weak) pills.push(`<span class="chat-scope-pill warn">${visible.weak.toLocaleString()} weak places</span>`);
   const questions = _kfChatScopeQuestions(root, selected, visible);
-  const questionHtml = questions.length
-    ? `<div class="chat-scope-actions">${questions.map(q => `<button type="button" class="chat-scope-question" data-chat-scope-question="${escChat(q)}">${escChat(q)}</button>`).join("")}</div>`
+  chatScopeEl.innerHTML = questions.length
+    ? `<div class="chat-scope-actions" aria-label="Suggested questions">${questions.map(q => `<button type="button" class="chat-scope-question" data-chat-scope-question="${escChat(q)}">${escChat(q)}</button>`).join("")}</div>`
     : "";
-  chatScopeEl.innerHTML =
-    `<div class="chat-scope-main">Using ${escChat(sourceLabel)} | ${Math.floor(curYear)} | ${escChat(mode)} | ${(visible?.count || 0).toLocaleString()} visible people</div>` +
-    `<div class="chat-scope-sub">Claude answers are grounded in the checked trees and current map filters.</div>` +
-    (pills.length ? `<div>${pills.join("")}</div>` : "") +
-    questionHtml;
   _kfBindChatScopeQuestions();
 }
 
