@@ -815,6 +815,7 @@ let _kfActiveTreeName = null;
 const _kfTreeCache = new Map(); // sourceName -> raw GEDCOM/JSON text
 const _kfLoadedSources = new Map(); // sourceName -> parsed source snapshot for browser SQL
 const _kfSourceIdByName = new Map(); // sourceName -> stable browser source_id
+const _kfPreferredRootBySourceName = new Map(); // sourceName -> raw source individual id
 let _kfNextBrowserSourceId = 1;
 let _kfSelectedSourceIds = new Set();
 let _kfCatalogTrees = [];
@@ -822,6 +823,14 @@ let _kfPlayStopAt = null;    // when playing, year at which to auto-pause
 let _kfSkipNextProxyLoad = false; // setActiveTree → processFile path skips the upload
 let _kfHighlightSet = null;       // Set<string> indi ids; rings drawn over their latest dwell
 let _kfHighlightColor = [80, 200, 255];
+// The map/animation layer renders the selected source set, not just the last
+// file that was parsed. Individuals and families are cloned with source-
+// prefixed IDs so overlapping GEDCOM xrefs never collide.
+let _kfVizSources = [];
+let _kfVizSourceNameByIndi = [];
+let _kfVizSourceIdByIndi = [];
+let _kfVizRawIdByIndi = [];
+let _kfVizIsComposite = false;
 
 function _kfHaversineMiles(la1, lo1, la2, lo2) {
   const r = Math.PI / 180;
@@ -1034,16 +1043,19 @@ async function _kfFetchLensData() {
   const sql = lens.sql.replace(/__YEAR__/g, String(yint));
   const cacheKey = `${lens.name}|${sql}`;
   if (cacheKey === _kfLensCacheKey) return;
-  const proxy = await detectChatProxy();
-  if (!proxy) return;
   _kfLensFetching = true;
   try {
-    const r = await fetch(proxy + "/sql", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: sql, limit: 1000 }),
-    });
-    const j = await r.json();
+    let j = _kfBrowserDb ? queryBrowserDb(sql, 1000) : null;
+    if (!j && (location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+      const proxy = await detectChatProxy();
+      if (!proxy) return;
+      const r = await fetch(proxy + "/sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: sql, limit: 1000 }),
+      });
+      j = await r.json();
+    }
     if (j && j.ok) {
       _kfLensData = j.rows || [];
       _kfLensCacheKey = cacheKey;
@@ -2643,7 +2655,8 @@ function colorForFinal(side, _parStat, indiIdx) {
     return sex === "M" ? COLOR_GENDER_M : sex === "F" ? COLOR_GENDER_F : COLOR_GENDER_U;
   }
   if (colorMode === "tree") {
-    return TREE_PALETTE[_kfTreeColorIdx % TREE_PALETTE.length];
+    const name = _kfSourceNameForIndiIdx(indiIdx);
+    return TREE_PALETTE[_kfTreeColorFromName(name)];
   }
   return colorFor(side);
 }
@@ -2662,6 +2675,10 @@ function updateMapLegend() {
   const sideTot = [0, 0, 0], sideView = [0, 0, 0];
   // {M, F, U}
   const sexTot = {M:0, F:0, U:0}, sexView = {M:0, F:0, U:0};
+  const treeTot = new Map(), treeView = new Map();
+  function incTree(map, name) {
+    map.set(name, (map.get(name) || 0) + 1);
+  }
 
   const bounds = _kfMap && _kfMap.getBounds ? _kfMap.getBounds() : null;
   if (bounds && total && _kfDwellPositions && _kfPersonDwell && _kfPersonIndi) {
@@ -2682,6 +2699,9 @@ function updateMapLegend() {
         const sx = ind ? (ind.sex === "M" ? "M" : ind.sex === "F" ? "F" : "U") : "U";
         sexTot[sx]++;
         if (v) sexView[sx]++;
+        const treeName = _kfSourceNameForIndiIdx(_kfPersonIndi[m]);
+        incTree(treeTot, treeName);
+        if (v) incTree(treeView, treeName);
       }
     }
   } else if (isIndividualMode && total && _kfPersonDwell && _kfPersonIndi) {
@@ -2692,6 +2712,8 @@ function updateMapLegend() {
       const ind = lastIndividuals ? lastIndividuals[_kfPersonIndi[m]] : null;
       const sx = ind ? (ind.sex === "M" ? "M" : ind.sex === "F" ? "F" : "U") : "U";
       sexTot[sx]++; sexView[sx]++;
+      incTree(treeTot, _kfSourceNameForIndiIdx(_kfPersonIndi[m]));
+      incTree(treeView, _kfSourceNameForIndiIdx(_kfPersonIndi[m]));
     }
   }
 
@@ -2745,8 +2767,9 @@ function updateMapLegend() {
     html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count</div>`;
   } else if (clusterMode === "tree") {
     html += hdr("Tree clusters");
-    const name = _kfActiveTreeName || "Current tree";
-    html += dot(TREE_PALETTE[_kfTreeColorFromName(name)], name.replace(/\.ged$/i, ""));
+    for (const src of _kfSelectedVizSourceList()) {
+      html += dot(TREE_PALETTE[_kfTreeColorFromName(src.name)], src.name.replace(/\.ged$/i, ""));
+    }
     html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count</div>`;
   } else if (clusterMode === "aggregate" || clusterMode === "dispersion") {
     html += hdr("Density");
@@ -2764,8 +2787,15 @@ function updateMapLegend() {
       html += dot(COLOR_GENDER_U, "Unknown", sexTot.U, sexView.U);
     } else if (colorMode === "tree") {
       html += hdr("Tree");
-      const name = _kfActiveTreeName || "Current tree";
-      html += dot(TREE_PALETTE[_kfTreeColorFromName(name)], name.replace(/\.ged$/i, ""));
+      const sources = _kfSelectedVizSourceList();
+      for (const src of sources) {
+        html += dot(
+          TREE_PALETTE[_kfTreeColorFromName(src.name)],
+          src.name.replace(/\.ged$/i, ""),
+          treeTot.get(src.name) || 0,
+          treeView.get(src.name) || 0,
+        );
+      }
     } else {
       html += hdr("Lineage");
       html += dot(COLOR_PATERNAL, "Paternal line", sideTot[0], sideView[0]);
@@ -3333,32 +3363,23 @@ function drawClusters(visible, radius, mode, year, dw) {
     return;
   }
   if (mode === "tree") {
-    // N-slice pie keyed by GEDCOM source. A person linked across files via
-    // person_clusters counts in EVERY tree they appear in (per the user's
-    // ask: "count those people on both, independent of the linkage").
-    // Fallback when the cross-tree source map hasn't loaded yet: assume
-    // every visible person is in the active tree (single slice).
-    let psMap = _kfPersonSources;
-    let fallbackName = _kfActiveTreeName || "current tree";
-    if (!psMap) {
-      psMap = new Map();
-      const activeMap = new Map([[1, fallbackName]]);
-      for (let m = 0; m < _kfDwellCount; m++) psMap.set(_kfPersonIndi[m], activeMap);
-    }
+    // N-slice pie keyed by GEDCOM source. The visualization graph is already
+    // the selected source set, with every individual carrying its source id,
+    // so cluster slices now reflect the same tree chips selected for SQL/AI.
     for (const cl of clusters) {
       const sourceCounts = new Map();
       const sourceNames = new Map();
       const seenIndi = new Set();
       for (const i of cl.members) {
         const indi = dwellIndi[i];
-        if (seenIndi.has(indi)) continue;
-        seenIndi.add(indi);
-        const sources = psMap.get(indi);
-        if (!sources) continue;
-        for (const [sid, sname] of sources) {
-          sourceCounts.set(sid, (sourceCounts.get(sid) || 0) + 1);
-          sourceNames.set(sid, sname);
-        }
+        const sid = _kfSourceIdForIndiIdx(indi);
+        const rawId = _kfVizRawIdByIndi?.[indi] || indi;
+        const seenKey = `${sid}:${rawId}`;
+        if (seenIndi.has(seenKey)) continue;
+        seenIndi.add(seenKey);
+        const sname = _kfSourceNameForIndiIdx(indi);
+        sourceCounts.set(sid, (sourceCounts.get(sid) || 0) + 1);
+        sourceNames.set(sid, sname);
       }
       if (!sourceCounts.size) continue;
       let total = 0;
@@ -4501,7 +4522,10 @@ function buildTimeline(individuals, geocode, parentsOf) {
   return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, dwellType, dwellPlace, places: placesList, eventCities: eventCitiesArr, min_year: mn, max_year: mx, geocoded, missed };
 }
 
-function loadTimelineArrays(t, sideForIdx) {
+function loadTimelineArrays(t, sideForIdx, opts = {}) {
+  const requestedYear = Number.isFinite(Number(opts.year))
+    ? Number(opts.year)
+    : (opts.preserveYear && Number.isFinite(curYear) ? curYear : null);
   const N = t.dwells.length, F = t.flows.length;
   dwellY = new Int16Array(N); dwellLat = new Float32Array(N); dwellLon = new Float32Array(N);
   dwellSide = new Uint8Array(N); dwellSrc = new Uint8Array(N); dwellIndi = new Int32Array(N);
@@ -4538,9 +4562,12 @@ function loadTimelineArrays(t, sideForIdx) {
   indiDwells = new Map();
   for (let i = 0; i < N; i++) { const idx = dwellIndi[i]; let arr = indiDwells.get(idx); if (!arr) { arr = []; indiDwells.set(idx, arr); } arr.push(i); }
   flowFromOrder = new Int32Array(F); for (let i = 0; i < F; i++) flowFromOrder[i] = i; flowFromOrder.sort((a, b) => flowFromY[a] - flowFromY[b]);
+  _kfDwellState = null;
   minYear = t.min_year; maxYear = t.max_year;
   range.min = minYear; range.max = maxYear; range.step = 0.1;
-  range.value = Math.max(minYear, 1700);
+  range.value = requestedYear == null
+    ? Math.max(minYear, 1700)
+    : Math.max(minYear, Math.min(maxYear, requestedYear));
   const _syl = document.getElementById("startYearLabel");
   if (_syl) _syl.textContent = String(minYear);
   curYear = parseFloat(range.value);
@@ -4944,8 +4971,13 @@ async function deleteSource(id) {
   _kfLoadedSources.delete(src.name);
   _kfTreeCache.delete(src.name);
   _kfSelectedSourceIds.delete(id);
+  if (_kfActiveTreeName === src.name) {
+    const remaining = [..._kfLoadedSources.values()];
+    _kfActiveTreeName = remaining[0]?.name || null;
+  }
   _kfEnsureSelectedSources();
   buildBrowserDb();
+  _kfRebuildSelectedVisualization({ preserveYear: true });
   return true;
 }
 
@@ -4967,8 +4999,8 @@ function renderSources(list) {
     const n = (s.n_individuals || 0).toLocaleString();
     parts.push(
       `<span class="src${s.active ? " on" : ""}" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
-      `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in SQL queries and AI visualizations">` +
-      `<span class="name" data-activate="${escChat(s.name)}" title="Make this the active map tree">${escChat(s.name)}</span>` +
+      `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in queries, maps, clusters, and animations">` +
+      `<span class="name" data-activate="${escChat(s.name)}" title="Use this tree as the home/detail tree">${escChat(s.name)}</span>` +
       `<span class="meta">${n}</span>` +
       `<span class="x" data-del="${s.id}" data-name="${escChat(s.name)}" title="Remove this tree">x</span>` +
       `</span>`,
@@ -4996,6 +5028,7 @@ function renderSources(list) {
       else _kfSelectedSourceIds.delete(id);
       _kfEnsureSelectedSources();
       _kfRefreshBrowserViews();
+      _kfRebuildSelectedVisualization({ preserveYear: true });
       renderSources(_kfGetLoadedSourcesList());
     });
   });
@@ -5036,6 +5069,7 @@ function renderSources(list) {
     el.addEventListener("click", () => {
       _kfSelectedSourceIds = new Set(filtered.map(s => s.id));
       _kfRefreshBrowserViews();
+      _kfRebuildSelectedVisualization({ preserveYear: true });
       renderSources(_kfGetLoadedSourcesList());
     });
   });
@@ -5290,7 +5324,7 @@ async function processFile(file) {
     _kfSourceIdByName.set(lastFileName, browserSourceId);
   }
   const eventCount = individuals.reduce((sum, ind) => sum + ((ind.events && ind.events.length) || 0), 0);
-  _kfLoadedSources.set(lastFileName, {
+  const loadedSourceSnapshot = {
     source_id: browserSourceId,
     name: lastFileName,
     loaded_at: new Date().toISOString(),
@@ -5299,13 +5333,15 @@ async function processFile(file) {
     n_families: families.size,
     individuals,
     families,
-  });
+  };
+  _kfLoadedSources.set(lastFileName, loadedSourceSnapshot);
   _kfSelectedSourceIds.add(browserSourceId);
   _kfTreeColorIdx = _kfTreeColorFromName(lastFileName);
 
   const candidates = rankRootCandidates(individuals, isParent, parentsOf, indiById);
   populateRootSelect(candidates);
   const rootId = candidates[0]?.ind.id ?? individuals[0]?.id ?? null;
+  if (rootId) _kfPreferredRootBySourceName.set(lastFileName, rootId);
   // Highest-PCI person is the *initial* home person and remains discoverable
   // as the "top PCI" suggestion. Picking someone else from search reassigns
   // _kfHomePersonId to that pick; _kfTopPciId never changes for this load.
@@ -5350,11 +5386,19 @@ async function processFile(file) {
     curYear = START_YEAR;
     range.value = START_YEAR;
   }
+  _kfRebuildSelectedVisualization({
+    preserveYear: true,
+    preferredSourceName: lastFileName,
+    preferredRawRootId: rootId,
+    preferActiveRoot: true,
+    selectRoot: true,
+    centerRoot: true,
+  });
   requestAnimationFrame(() => { if (!playing) playBtn.click(); });
   buildBrowserDb(); // build in-memory SQLite for kfApi.sql() — all users
   refreshSources();
   if (_clerkToken && _clerkUserTier === "vip" && !_kfSkipNextSeed && _kfSkipNextSeedCount <= 0) {
-    seedCloudDb(); // VIP autosaves this tree into the server-side set
+    seedCloudDb(loadedSourceSnapshot); // VIP autosaves this tree into the server-side set
   }
   _kfSkipNextSeed = false;
   if (_kfSkipNextSeedCount > 0) _kfSkipNextSeedCount--;
@@ -5369,12 +5413,13 @@ function populateRootSelect(candidates) {
     opt.value = ind.id;
     const yrs = (ind.birth_year ?? "?") + "-" + (ind.death_year ?? "?");
     const tag = label ? `${label}  ` : "";
-    opt.textContent = `${tag}${ind.name}  (${yrs})  - ${count} ancestors`;
+    const tree = ind.source_name ? `  [${ind.source_name}]` : "";
+    opt.textContent = `${tag}${ind.name}${tree}  (${yrs})  - ${count} ancestors`;
     sel.appendChild(opt);
   }
 }
 
-function applyRoot(rootId) {
+function applyRoot(rootId, opts = {}) {
   if (!rootId) return;
   lastRootId = rootId;
   lastSideById = classifySides(rootId, lastParentsOf, lastChildrenOf, lastIndividuals);
@@ -5386,7 +5431,7 @@ function applyRoot(rootId) {
   } else {
     const sideForIdx = new Int8Array(lastIndividuals.length);
     for (let i = 0; i < lastIndividuals.length; i++) sideForIdx[i] = lastSideById.get(lastIndividuals[i].id) ?? 2;
-    loadTimelineArrays(lastTimeline, sideForIdx);
+    loadTimelineArrays(lastTimeline, sideForIdx, opts);
     rebuildSideArrays();
     precomputeDwellCities();
   }
@@ -5397,7 +5442,9 @@ function applyRoot(rootId) {
   const rootInd = lastIndiById.get(rootId);
   const sel = $("rootSel");
   for (const opt of sel.options) opt.selected = (opt.value === rootId);
-  stats.textContent = `${lastIndividuals.length.toLocaleString()} people  |  ${dwellY.length.toLocaleString()} events  |  ${flowFromY.length.toLocaleString()} migrations  |  ${minYear}-${maxYear}`;
+  const treeCount = _kfSelectedVizSourceList().length || 1;
+  const treeLabel = treeCount > 1 ? `${treeCount} trees  |  ` : "";
+  stats.textContent = `${treeLabel}${lastIndividuals.length.toLocaleString()} people  |  ${dwellY.length.toLocaleString()} events  |  ${flowFromY.length.toLocaleString()} migrations  |  ${minYear}-${maxYear}`;
   updateSliderMarkers();
   _kfRefreshHomeBtn();
 }
@@ -5469,6 +5516,10 @@ function _kfChooseAsHome(id) {
   if (!ind) return;
   if (id !== lastRootId) pushHistory();
   _kfHomePersonId = id;
+  if (ind.source_name && ind.raw_id) {
+    _kfActiveTreeName = ind.source_name;
+    _kfPreferredRootBySourceName.set(ind.source_name, ind.raw_id);
+  }
   // Recompute PCI for the new home (used for the inline PCI tag).
   if (id === _kfTopPciId) {
     _kfHomePCI = _kfTopPCI;
@@ -5525,6 +5576,7 @@ function _kfBuildSuggestRows(rows) {
     return `<div class="rootSuggestItem" data-id="${escHtml(ind.id)}" style="padding:5px 10px;cursor:pointer;border-bottom:1px solid #eef1f6;font-size:12px;">
       <span style="font-weight:600;">${escHtml(ind.name || "")}</span>
       <span style="color:#7a8aa0;font-size:11px;margin-left:6px;">${yrs}</span>${tags.join("")}
+      ${ind.source_name ? `<span style="color:#9aa6bc;font-size:10px;margin-left:6px;">${escHtml(ind.source_name)}</span>` : ""}
     </div>`;
   }).join("");
 }
@@ -5602,6 +5654,11 @@ $("rootSearch").addEventListener("blur", () => {
 $("rootSel").addEventListener("change", e => {
   if (e.target.value && e.target.value !== lastRootId) {
     pushHistory();
+    const ind = lastIndiById?.get(e.target.value);
+    if (ind?.source_name && ind.raw_id) {
+      _kfActiveTreeName = ind.source_name;
+      _kfPreferredRootBySourceName.set(ind.source_name, ind.raw_id);
+    }
     applyRoot(e.target.value);
   }
 });
@@ -6586,9 +6643,7 @@ function _kfClusterMemberColor(di, c) {
     return ind?.sex === "M" ? COLOR_GENDER_M : ind?.sex === "F" ? COLOR_GENDER_F : COLOR_GENDER_U;
   }
   if (clusterMode === "tree") {
-    const sources = _kfPersonSources?.get(dwellIndi[di]);
-    const firstName = sources && sources.size ? Array.from(sources.values())[0] : (_kfActiveTreeName || lastFileName);
-    return TREE_PALETTE[_kfTreeColorFromName(firstName)];
+    return TREE_PALETTE[_kfTreeColorFromName(_kfSourceNameForIndiIdx(dwellIndi[di]))];
   }
   if (clusterMode === "state" && c?.abbr) {
     return TREE_PALETTE[_kfTreeColorFromName(c.abbr)];
@@ -7288,6 +7343,211 @@ function _kfSelectedSourceSnapshots() {
   return [..._kfLoadedSources.values()].filter(src => !selected || selected.has(src.source_id));
 }
 
+function _kfVizIndiId(src, rawId) {
+  return `s${src.source_id}:I:${String(rawId || "")}`;
+}
+
+function _kfVizFamId(src, rawId) {
+  return `s${src.source_id}:F:${String(rawId || "")}`;
+}
+
+function _kfCloneEventForViz(ev) {
+  return {
+    type: ev.type,
+    date: ev.date || "",
+    year: ev.year ?? null,
+    year_end: ev.year_end ?? ev.year ?? null,
+    place: ev.place || "",
+  };
+}
+
+function _kfSelectedVizSourceList() {
+  return (_kfVizSources && _kfVizSources.length ? _kfVizSources : _kfSelectedSourceSnapshots())
+    .filter(src => src && (src.n_individuals || src.individuals?.length || 0) > 0);
+}
+
+function _kfSourceNameForIndiIdx(idx) {
+  return _kfVizSourceNameByIndi?.[idx] || _kfActiveTreeName || lastFileName || "current tree";
+}
+
+function _kfSourceIdForIndiIdx(idx) {
+  const id = _kfVizSourceIdByIndi?.[idx];
+  if (Number.isFinite(id)) return id;
+  const name = _kfSourceNameForIndiIdx(idx);
+  return _kfSourceIdByName.get(name) || 1;
+}
+
+function _kfBuildSelectedVizDataset(sources) {
+  const individuals = [];
+  const families = new Map();
+  const sourceNameByIndi = [];
+  const sourceIdByIndi = [];
+  const rawIdByIndi = [];
+  for (const src of sources) {
+    for (const ind of (src.individuals || [])) {
+      const clone = {
+        ...ind,
+        id: _kfVizIndiId(src, ind.id),
+        raw_id: ind.id,
+        source_id: src.source_id,
+        source_name: src.name,
+        famc: ind.famc ? _kfVizFamId(src, ind.famc) : null,
+        events: (ind.events || []).map(_kfCloneEventForViz),
+      };
+      individuals.push(clone);
+      sourceNameByIndi.push(src.name);
+      sourceIdByIndi.push(src.source_id);
+      rawIdByIndi.push(ind.id);
+    }
+    for (const [, fam] of (src.families || new Map())) {
+      families.set(_kfVizFamId(src, fam.id), {
+        id: _kfVizFamId(src, fam.id),
+        husb: fam.husb ? _kfVizIndiId(src, fam.husb) : null,
+        wife: fam.wife ? _kfVizIndiId(src, fam.wife) : null,
+        chil: (fam.chil || []).map(id => _kfVizIndiId(src, id)),
+      });
+    }
+  }
+  return { individuals, families, sourceNameByIndi, sourceIdByIndi, rawIdByIndi };
+}
+
+function _kfRootForSourceInViz(sourceName, sources, indiById, rawRootId = null) {
+  const src = sources.find(s => s.name === sourceName) || null;
+  if (!src) return null;
+  const raw = rawRootId || _kfPreferredRootBySourceName.get(src.name);
+  if (raw) {
+    const id = _kfVizIndiId(src, raw);
+    if (indiById.has(id)) return id;
+  }
+  for (const ind of (src.individuals || [])) {
+    const id = _kfVizIndiId(src, ind.id);
+    if (indiById.has(id)) return id;
+  }
+  return null;
+}
+
+function _kfChooseVizRoot(sources, indiById, candidates, opts = {}) {
+  const preferredSourceName = opts.preferredSourceName || _kfActiveTreeName || sources[0]?.name || "";
+  if (opts.preferActiveRoot) {
+    const preferred = _kfRootForSourceInViz(preferredSourceName, sources, indiById, opts.preferredRawRootId);
+    if (preferred) return preferred;
+  }
+  if (_kfHomePersonId && indiById.has(_kfHomePersonId)) return _kfHomePersonId;
+  if (lastRootId && indiById.has(lastRootId)) return lastRootId;
+  const preferred = _kfRootForSourceInViz(preferredSourceName, sources, indiById, opts.preferredRawRootId);
+  if (preferred) return preferred;
+  return candidates[0]?.ind.id || sources[0]?.individuals?.[0] && _kfVizIndiId(sources[0], sources[0].individuals[0].id) || null;
+}
+
+function _kfRefreshHomePci(rootId) {
+  if (!rootId || !lastParentsOf || !lastIndiById) { _kfHomePCI = null; return; }
+  if (rootId === _kfTopPciId) { _kfHomePCI = _kfTopPCI; return; }
+  let expected = 0;
+  for (let d = 1; d <= ROOT_MAX_DEPTH; d++) expected += 1 << d;
+  const { found } = ancestorScore(rootId, lastParentsOf, lastIndiById, ROOT_MAX_DEPTH);
+  _kfHomePCI = expected > 0 ? found / expected : null;
+}
+
+function _kfLatestVisibleDwellForId(indId) {
+  const idx = lastIndiIdxById?.get(indId);
+  if (idx == null) return -1;
+  return _kfLatestValidDwellForIndi(idx, Math.floor(curYear));
+}
+
+function _kfRebuildSelectedVisualization(opts = {}) {
+  if (!geocoder) return false;
+  if (!_kfLoadedSources.size) {
+    lastIndividuals = lastFamilies = lastIndiById = lastIndiIdxById = null;
+    lastParentsOf = lastIsParent = lastChildrenOf = null;
+    timelineLoaded = false;
+    _kfDwellCount = 0;
+    _kfVizSources = [];
+    _kfVizSourceNameByIndi = [];
+    _kfVizSourceIdByIndi = [];
+    _kfVizRawIdByIndi = [];
+    fxCtx.clearRect(0, 0, W, H);
+    if (_kfDeckOverlay) updateDeckDwellLayer();
+    return false;
+  }
+  _kfEnsureSelectedSources();
+  const sources = _kfSelectedSourceSnapshots().filter(src => src && (src.individuals || []).length);
+  if (!sources.length) {
+    lastIndividuals = lastFamilies = lastIndiById = lastIndiIdxById = null;
+    lastParentsOf = lastIsParent = lastChildrenOf = null;
+    timelineLoaded = false;
+    _kfDwellCount = 0;
+    _kfVizSources = [];
+    _kfVizSourceNameByIndi = [];
+    _kfVizSourceIdByIndi = [];
+    _kfVizRawIdByIndi = [];
+    fxCtx.clearRect(0, 0, W, H);
+    if (_kfDeckOverlay) updateDeckDwellLayer();
+    return false;
+  }
+  if (!_kfActiveTreeName || !sources.some(src => src.name === _kfActiveTreeName)) {
+    _kfActiveTreeName = sources[0].name;
+  }
+  const previousYear = Number.isFinite(curYear) ? curYear : null;
+  const previousHighlightId = highlightedDwell >= 0 && lastIndividuals && dwellIndi
+    ? lastIndividuals[dwellIndi[highlightedDwell]]?.id
+    : null;
+  const data = _kfBuildSelectedVizDataset(sources);
+  if (!data.individuals.length) return false;
+  const { indiById, indiIdxById, parentsOf, isParent, childrenOf } = computeRelations(data.individuals, data.families);
+
+  lastIndividuals = data.individuals;
+  lastFamilies = data.families;
+  lastIndiById = indiById;
+  lastIndiIdxById = indiIdxById;
+  lastParentsOf = parentsOf;
+  lastIsParent = isParent;
+  lastChildrenOf = childrenOf;
+  _kfVizSources = sources.slice();
+  _kfVizSourceNameByIndi = data.sourceNameByIndi;
+  _kfVizSourceIdByIndi = data.sourceIdByIndi;
+  _kfVizRawIdByIndi = data.rawIdByIndi;
+  _kfVizIsComposite = sources.length > 1;
+  _kfPersonSources = null;
+  lastFileName = sources.length === 1 ? sources[0].name : `${sources.length} selected trees`;
+  _kfTreeColorIdx = _kfTreeColorFromName(_kfActiveTreeName || sources[0].name);
+  prewarmKinCache();
+
+  const candidates = rankRootCandidates(data.individuals, isParent, parentsOf, indiById);
+  populateRootSelect(candidates);
+  const rootId = _kfChooseVizRoot(sources, indiById, candidates, opts);
+  if (!rootId) return false;
+  _kfTopPciId = candidates[0]?.ind.id ?? rootId;
+  _kfTopPCI = candidates[0]?.pci ?? null;
+  _kfHomePersonId = rootId;
+  _kfRefreshHomePci(rootId);
+  _kfRefreshHomeBtn();
+
+  stats.textContent = `geocoding ${data.individuals.length.toLocaleString()} people from ${sources.length} tree${sources.length === 1 ? "" : "s"}...`;
+  lastTimeline = buildTimeline(data.individuals, geocoder, parentsOf);
+  eventCities = lastTimeline.eventCities || [];
+  timelineLoaded = false;
+  applyRoot(rootId, { preserveYear: true, year: previousYear });
+
+  const nextHighlightId = previousHighlightId && lastIndiById.has(previousHighlightId)
+    ? previousHighlightId
+    : (opts.selectRoot ? rootId : null);
+  highlightedDwell = nextHighlightId ? _kfLatestVisibleDwellForId(nextHighlightId) : -1;
+  highlightInferredYear = -1;
+  highlightInferredSrcYear = -1;
+  if (highlightedDwell >= 0 && opts.centerRoot) centerOnGeo(dwellLon[highlightedDwell], dwellLat[highlightedDwell]);
+  if (highlightedDwell >= 0 && opts.selectRoot) updatePanel(true);
+
+  _kfBuildSurnameTopN(12);
+  _kfRenderSurnameChips();
+  _kfRefreshQuickChips();
+  _kfRenderYearHistogram();
+  updateMapLegend();
+  _kfClusterCacheKey = "";
+  fxCtx.clearRect(0, 0, W, H);
+  if (_kfDeckOverlay) updateDeckDwellLayer();
+  return true;
+}
+
 function _kfSingularizeSurnameToken(token) {
   let s = String(token || "").toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, "");
   if (!s) return "";
@@ -7509,6 +7769,9 @@ function _kfFindIndi(query) {
   if (query?.startsWith("@") && query.endsWith("@") && lastIndiById?.has(query)) return lastIndiById.get(query);
   const q = String(query || "").toLowerCase().trim();
   if (!q) return null;
+  for (const ind of lastIndividuals) {
+    if (String(ind.raw_id || "").toLowerCase() === q) return ind;
+  }
   for (const ind of lastIndividuals) {
     if (ind.name && ind.name.toLowerCase() === q) return ind;
   }
@@ -7761,16 +8024,21 @@ window.kfApi = {
     if (!sql) return { error: "sql required" };
     if (!validShapes.includes(shape)) return { error: "shape must be one of " + validShapes.join(", ") };
     // Validate by running once.
-    const proxy = await detectChatProxy();
-    if (!proxy) return { error: "proxy not reachable; cannot validate sql" };
     const probeSql = sql.replace(/__YEAR__/g, String(Math.floor(curYear)));
     try {
-      const r = await fetch(proxy + "/sql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: probeSql, limit: 1000 }),
-      });
-      const j = await r.json();
+      let j = _kfBrowserDb ? queryBrowserDb(probeSql, 1000) : null;
+      if (!j && (location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+        const proxy = await detectChatProxy();
+        if (proxy) {
+          const r = await fetch(proxy + "/sql", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: probeSql, limit: 1000 }),
+          });
+          j = await r.json();
+        }
+      }
+      if (!j) return { error: "browser SQL database not ready; cannot validate sql" };
       if (!j || !j.ok) return { error: "sql rejected: " + (j && j.error || "unknown") };
       // Validate columns vs shape.
       const sample = (j.rows && j.rows[0]) || {};
@@ -7973,7 +8241,34 @@ window.kfApi = {
       for (const k of _kfTreeCache.keys()) if (k.toLowerCase().includes(lower)) { target = k; break; }
     }
     if (!target) return { error: `tree "${name}" not in browser memory; reload it from disk` };
-    if (target === _kfActiveTreeName) return { ok: true, active: target, unchanged: true };
+    if (target === _kfActiveTreeName) {
+      const src = _kfLoadedSources.get(target);
+      if (src?.source_id && !_kfSelectedSourceIds.has(src.source_id)) {
+        _kfSelectedSourceIds.add(src.source_id);
+        _kfEnsureSelectedSources();
+        _kfRefreshBrowserViews();
+        _kfRebuildSelectedVisualization({ preserveYear: true, preferredSourceName: target, preferActiveRoot: true });
+        renderSources(_kfGetLoadedSourcesList());
+        return { ok: true, active: target, selected: true };
+      }
+      return { ok: true, active: target, unchanged: true };
+    }
+    if (_kfLoadedSources.has(target)) {
+      _kfActiveTreeName = target;
+      const src = _kfLoadedSources.get(target);
+      if (src?.source_id) _kfSelectedSourceIds.add(src.source_id);
+      _kfEnsureSelectedSources();
+      _kfRefreshBrowserViews();
+      _kfRebuildSelectedVisualization({
+        preserveYear: true,
+        preferredSourceName: target,
+        preferActiveRoot: true,
+        selectRoot: true,
+        centerRoot: true,
+      });
+      renderSources(_kfGetLoadedSourcesList());
+      return { ok: true, active: target };
+    }
     const text = _kfTreeCache.get(target);
     const fake = new File([text], target + ".ged", { type: "text/plain" });
     _kfSkipNextProxyLoad = true;
@@ -9369,13 +9664,14 @@ async function buildBrowserDb() {
   }
 }
 
-function queryBrowserDb(query) {
+function queryBrowserDb(query, maxRows = 200) {
   try {
     const results = _kfBrowserDb.exec(query);
     if (!results.length) return { ok: true, rows: [], truncated: false, totalRows: 0 };
     const { columns, values } = results[0];
     const rows = values.map(row => Object.fromEntries(columns.map((c, i) => [c, row[i]])));
-    return { ok: true, rows: rows.slice(0, 200), truncated: rows.length > 200, totalRows: rows.length };
+    const limit = Math.max(1, Math.min(5000, parseInt(maxRows, 10) || 200));
+    return { ok: true, rows: rows.slice(0, limit), truncated: rows.length > limit, totalRows: rows.length };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
   }
@@ -9383,9 +9679,13 @@ function queryBrowserDb(query) {
 
 // --------------- Cloud persistence (signed-in users) ---------------
 
-async function seedCloudDb() {
-  if (!_clerkToken || !lastIndividuals || !lastFamilies) return;
-  const individuals = lastIndividuals.map(ind => ({
+async function seedCloudDb(source = null) {
+  const src = source || (_kfActiveTreeName ? _kfLoadedSources.get(_kfActiveTreeName) : null);
+  const sourceIndividuals = src?.individuals || lastIndividuals;
+  const sourceFamilies = src?.families || lastFamilies;
+  const sourceName = src?.name || lastFileName || "My Tree";
+  if (!_clerkToken || !sourceIndividuals || !sourceFamilies) return;
+  const individuals = sourceIndividuals.map(ind => ({
     id: ind.id,
     name: ind.name || null,
     sex: ind.sex || null,
@@ -9394,7 +9694,7 @@ async function seedCloudDb() {
     famc: ind.famc ?? null,
   }));
   const events = [];
-  for (const ind of lastIndividuals) {
+  for (const ind of sourceIndividuals) {
     for (const e of (ind.events || [])) {
       const g = geocoder ? geocoder(e.place) : null;
       events.push({
@@ -9407,7 +9707,7 @@ async function seedCloudDb() {
       });
     }
   }
-  const families = Array.from(lastFamilies.values()).map(f => ({
+  const families = Array.from(sourceFamilies.values()).map(f => ({
     id: f.id,
     husb: f.husb || null,
     wife: f.wife || null,
@@ -9417,7 +9717,7 @@ async function seedCloudDb() {
     const resp = await fetch("/api/gedcom/seed", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
-      body: JSON.stringify({ name: lastFileName || "My Tree", is_default: _kfActiveTreeName === lastFileName, individuals, events, families }),
+      body: JSON.stringify({ name: sourceName, is_default: _kfActiveTreeName === sourceName, individuals, events, families }),
     });
     if (resp.ok) {
       const data = await resp.json();
