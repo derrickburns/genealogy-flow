@@ -457,6 +457,128 @@ function _kfYearDigestHtml() {
     `<ul class="year-digest-list">${lines.slice(0, 4).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
 }
 
+function _kfMapTopLabels(map, limit = 3) {
+  return Array.from(map.entries())
+    .filter(([label]) => label)
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, limit)
+    .map(([label, count]) => `${String(label).replace(/\.ged$/i, "")} ${count.toLocaleString()}`);
+}
+
+function _kfYearTourHtml() {
+  if (!timelineLoaded || !lastIndividuals) {
+    return `<div class="year-digest-head"><span class="year-digest-title">Guided tour</span></div>` +
+      `<ul class="year-digest-list"><li>Load one or more GEDCOM trees to enable the year tour.</li></ul>`;
+  }
+  const y = Math.floor(curYear);
+  const d = _kfYearDigestData(y);
+  const sourceBits = _kfMapTopLabels(d.current.sourceCounts, 3);
+  const placeBits = _kfMapTopLabels(d.current.placeCounts, 3);
+  const lines = [];
+  lines.push(`${d.current.count.toLocaleString()} people are visible under the current tree/filter scope.`);
+  if (sourceBits.length) lines.push(`Largest loaded sources in this view: ${sourceBits.join(", ")}.`);
+  if (placeBits.length) lines.push(`Most common places: ${placeBits.join(", ")}.`);
+  if (d.moved.length) {
+    const m = d.moved[0];
+    lines.push(`Most recent location update: ${_kfNameShort(m.row.ind.name)} moved from ${m.prev.placeShort || _kfShortPlace(m.prev.place, 2) || "unknown"} to ${m.row.placeShort || _kfShortPlace(m.row.place, 2) || "unknown"}.`);
+  }
+  if (d.appeared.length) {
+    const r = d.appeared[0];
+    lines.push(`Newly visible example: ${_kfYearDigestPersonLabel(r)}.`);
+  }
+  if (d.weak.length) lines.push(`${d.weak.length.toLocaleString()} visible markers have weak place evidence; use "weak evidence" to review them.`);
+  if (!lines.length) lines.push("This year has no notable marker changes under the current filters.");
+  return `<div class="year-digest-head"><span class="year-digest-title">Guided tour for ${y}</span><span class="year-digest-sub">${_kfViewModeLabel()}</span></div>` +
+    `<div class="year-digest-metrics">` +
+      _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
+      _kfYearDigestMetricHtml(d.current.exact.toLocaleString(), "specific") +
+      _kfYearDigestMetricHtml(d.current.weak.toLocaleString(), "weak") +
+      _kfYearDigestMetricHtml(d.moved.length.toLocaleString(), "move") +
+    `</div>` +
+    `<ul class="year-digest-list">${lines.slice(0, 6).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
+}
+
+function _kfShowYearTour() {
+  const digestEl = $("yearDigest");
+  if (!digestEl) return;
+  digestEl.hidden = false;
+  digestEl.innerHTML = _kfYearTourHtml();
+}
+
+function _kfOutlierReportMarkdown(limit = 8) {
+  if (!timelineLoaded || !lastIndividuals) return "Load GEDCOM data before reviewing weak evidence.";
+  const y = Math.floor(curYear);
+  const rows = _kfVisibleRowsForYear(y).rows;
+  const items = [];
+  for (const row of rows) {
+    const facts = _kfFactsForInd(row.ind);
+    const issue = facts?.issues?.[0] || "";
+    const weakPlace = row.evidence.rank >= 3;
+    if (!issue && !weakPlace) continue;
+    const score = (issue ? 6 : 0) + row.evidence.rank;
+    const bits = [];
+    if (issue) bits.push(issue);
+    if (weakPlace) bits.push(`${row.evidence.label}: ${row.place || "no place"}`);
+    items.push({ score, row, issue: bits.join("; ") });
+  }
+  items.sort((a, b) => b.score - a.score || _kfNameShort(a.row.ind.name).localeCompare(_kfNameShort(b.row.ind.name)));
+  if (!items.length) {
+    return `**Weak evidence review for ${y}**\n\nNo visible records have obvious weak-place or chronology warnings under the current tree/filter scope.`;
+  }
+  const lines = items.slice(0, limit).map((item, i) => {
+    const row = item.row;
+    const src = row.source ? ` (${row.source.replace(/\.ged$/i, "")})` : "";
+    const place = row.place ? ` at ${row.place}` : "";
+    return `${i + 1}. **${_kfNameShort(row.ind.name)}**${src} - ${row.eventLabel} ${row.year || y}${place}: ${item.issue}`;
+  });
+  return `**Weak evidence review for ${y}**\n\nThese visible records deserve attention first because their place evidence is vague, their date range is wide, or the timeline has a chronology warning.\n\n${lines.join("\n")}`;
+}
+
+function _kfShowOutlierReport(limit = 8) {
+  _kfSetSideTab("chat");
+  chatHistory.push({
+    role: "bot",
+    content: _kfOutlierReportMarkdown(limit),
+    chips: [
+      {
+        label: "Ask Claude to investigate",
+        method: "chat",
+        args: `Find the weakest location evidence in the checked trees at ${Math.floor(curYear)} and explain what should be verified first.`,
+      },
+    ],
+  });
+  renderChat();
+}
+
+function _kfCurrentViewExplanationMarkdown() {
+  if (!timelineLoaded || !lastIndividuals) return "Load GEDCOM data to see a view explanation.";
+  const y = Math.floor(curYear);
+  const data = _kfVisibleMarkerData();
+  const sources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
+  const sourceNames = sources.map(s => (s.name || "").replace(/\.ged$/i, "")).filter(Boolean);
+  const mode = _kfViewModeLabel();
+  const clusterText = clusterMode === "none"
+    ? "Markers are individual people who are alive or may be alive at the selected year."
+    : `Markers are grouped with ${_kfClusterModeLabel(clusterMode).toLowerCase()} clustering; click a cluster for its ranked people list and evidence summary.`;
+  const migrationText = migrationViz === "observations"
+    ? "Migration is shown as observation pulses, so a long date range does not imply continuous travel."
+    : "Migration is shown continuously between recorded location observations; switch to observation pulses when long date ranges would be misleading.";
+  return `**Why this view looks this way**\n\n- Year: **${y}**\n- Scope: **${sourceNames.length ? sourceNames.join(", ") : "all loaded trees"}**\n- Filters: **${mode}**\n- Visible people: **${data.count.toLocaleString()}**\n- Evidence: **${data.exact.toLocaleString()} specific markers**, **${data.weak.toLocaleString()} weak markers**\n\n${clusterText}\n\n${migrationText}`;
+}
+
+function _kfExplainCurrentView() {
+  _kfSetSideTab("chat");
+  chatHistory.push({
+    role: "bot",
+    content: _kfCurrentViewExplanationMarkdown(),
+    chips: [
+      { label: "Tour this year", method: "showYearTour", args: null },
+      { label: "Review weak evidence", method: "showOutliers", args: 8 },
+    ],
+  });
+  renderChat();
+}
+
 function _kfViewModeLabel() {
   const cluster = clusterMode === "none" ? "not clustered" : `clustered by ${_kfClusterModeLabel(clusterMode).toLowerCase()}`;
   const filter = curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
@@ -467,8 +589,9 @@ function _kfViewModeLabel() {
 function _kfRefreshViewChrome(force = false) {
   const summaryEl = $("viewSummary");
   const breadEl = $("focusBreadcrumb");
+  const whyEl = $("viewWhy");
   const digestEl = $("yearDigest");
-  if (!summaryEl && !breadEl && !digestEl) return;
+  if (!summaryEl && !breadEl && !whyEl && !digestEl) return;
   const y = Math.floor(curYear);
   const data = _kfVisibleMarkerData();
   const sourceCount = (typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList().length : 0) || (_kfLoadedSources?.size || 0);
@@ -489,12 +612,15 @@ function _kfRefreshViewChrome(force = false) {
     if (_kfDerivedCache.activeClusterLabel && clusterMode !== "none") bits.push(`Cluster: ${_kfDerivedCache.activeClusterLabel}`);
     breadEl.textContent = bits.length ? bits.join(" > ") : "Home: none";
   }
+  if (whyEl) whyEl.hidden = !timelineLoaded || !lastIndividuals;
   if (digestEl) {
     digestEl.hidden = !timelineLoaded || !lastIndividuals;
     if (!digestEl.hidden) digestEl.innerHTML = _kfYearDigestHtml();
   }
   if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
 }
+
+$("viewWhy")?.addEventListener("click", () => _kfExplainCurrentView());
 
 function _kfSetActiveClusterLabel(label) {
   _kfDerivedCache.activeClusterLabel = label || "";
@@ -525,14 +651,16 @@ function _kfClusterDigestHtml(c, rows) {
     issueCount += _kfFactsForInd(ind)?.issues.length ? 1 : 0;
   }
   const topSource = Array.from(sourceCounts.entries()).sort((a, b) => b[1] - a[1])[0];
-  if (topSource) bullets.push(`Largest source: ${topSource[0].replace(/\.ged$/i, "")} (${topSource[1]}).`);
   const closest = rows.find(r => Number.isFinite(r.sortDist) && r.sortDist > 0) || rows[0];
   if (closest) bullets.push(`Closest listed person to the focus: ${closest.name}${closest.rel ? ` (${closest.rel})` : ""}.`);
   const topPlace = Array.from(placeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
   if (topPlace) bullets.push(`Most common place label: ${topPlace[0]} (${topPlace[1]}).`);
-  bullets.push(`Evidence: ${exact} city/specific markers, ${weak} weak place markers.`);
+  if (topSource) bullets.push(`Largest source: ${topSource[0].replace(/\.ged$/i, "")} (${topSource[1]}).`);
+  bullets.push(weak
+    ? `Evidence to review: ${weak} weak place markers; ${exact} city/specific markers.`
+    : `Evidence looks specific for this cluster: ${exact} city/specific markers.`);
   if (issueCount) bullets.push(`${issueCount} ${issueCount === 1 ? "person has" : "people have"} data issues worth checking.`);
-  const html = `<div class="ux-section cluster-digest"><h4>Cluster digest</h4><ul class="ux-list">${bullets.map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`;
+  const html = `<div class="ux-section cluster-digest"><h4>Most useful things to know</h4><ul class="ux-list">${bullets.map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`;
   if (_kfDerivedCache.cluster.size > 200) _kfDerivedCache.cluster.clear();
   _kfDerivedCache.cluster.set(key, { ...(cached || {}), digestHtml: html });
   return html;

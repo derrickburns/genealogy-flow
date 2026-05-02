@@ -678,6 +678,20 @@ window.kfApi = {
     $("clusterMode").dispatchEvent(new Event("change", { bubbles: true }));
     return { ok: true, clusterMode: mode };
   },
+  showYearTour() {
+    if (typeof _kfShowYearTour === "function") {
+      _kfShowYearTour();
+      return { ok: true, year: Math.floor(curYear) };
+    }
+    return { error: "year tour is not ready" };
+  },
+  showOutliers(limit = 8) {
+    if (typeof _kfShowOutlierReport === "function") {
+      _kfShowOutlierReport(parseInt(limit, 10) || 8);
+      return { ok: true, year: Math.floor(curYear) };
+    }
+    return { error: "outlier report is not ready" };
+  },
 
   // Lens API — Claude or the user can register custom SQL queries that
   // drive a map visualization. Three shapes (state | country | latlon).
@@ -1379,9 +1393,8 @@ window.kfApi = {
   },
   // Submit a message to the chat programmatically (used by KFCHIP suggestion buttons)
   chat(text) {
-    if (typeof runChatTurn === "function" && text) {
-      runChatTurn(String(text));
-      return { ok: true };
+    if (typeof _kfAskQuestion === "function" && text) {
+      return _kfAskQuestion(String(text)).then(() => ({ ok: true }));
     }
     return { ok: false, error: "chat not ready" };
   },

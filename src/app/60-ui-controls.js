@@ -414,12 +414,50 @@ async function _kfToggleMatchOverlay() {
   _kfRefreshQuickChips();
 }
 
+function _kfRunIntent(intent) {
+  if (!timelineLoaded && intent !== "weak") {
+    alert("Load GEDCOM data before using this view helper.");
+    return;
+  }
+  if (intent === "tour") {
+    _kfShowYearTour();
+    return;
+  }
+  if (intent === "migration") {
+    if (migrationViewSel) {
+      migrationViewSel.value = "observations";
+      migrationViewSel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    _kfShowYearTour();
+    return;
+  }
+  if (intent === "cluster") {
+    const selectedSources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
+    const mode = selectedSources.length > 1 ? "tree" : "state";
+    window.kfApi.setClusterMode(mode);
+    _kfSetSideTab("cluster");
+    return;
+  }
+  if (intent === "weak") {
+    _kfShowOutlierReport(8);
+    return;
+  }
+  if (intent === "relation") {
+    _kfSetKinLines(Math.max(5, kinLinesN || 0));
+    _kfRefreshViewChrome(true);
+  }
+}
+
 document.querySelectorAll("#quickChips .quickChip").forEach(el => {
   el.addEventListener("click", () => {
+    const intent = el.dataset.intent;
     const cluster = el.dataset.cluster;
     const filt = el.dataset.filter;
     const overlay = el.dataset.overlay;
-    if (cluster) {
+    if (intent) {
+      _kfRunIntent(intent);
+      return;
+    } else if (cluster) {
       window.kfApi.setClusterMode(cluster);
     } else if (filt) {
       const [kind, val] = filt.split(":");

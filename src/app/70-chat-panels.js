@@ -11,7 +11,6 @@ const _spEl = $("selectedPerson");
 const _personEmptyEl = $("personEmpty");
 const _clusterEl = $("selectedCluster");
 const _clusterEmptyEl = $("clusterEmpty");
-let _kfShowNormalizedLocations = false;
 
 function _kfSetSideTab(tab) {
   const next = tab === "person" || tab === "cluster" ? tab : "chat";
@@ -357,7 +356,7 @@ function _kfShowClusterCard(c, opts = {}) {
     _kfClusterQuestionHtml(rows) +
     `<div class="cluster-list-head"><span>People</span><span>${escHtml(orderText)}</span></div>` +
     `<div class="cluster-list">${rows.map(r => r.html).join("")}</div>` +
-    `<div class="cluster-actions"><button type="button" class="cluster-ask" data-ask="${escHtml(prompt)}">Ask Kindred Genealogist about this cluster</button></div>`;
+    `<div class="cluster-actions"><button type="button" class="cluster-ask" data-ask="${escHtml(prompt)}">Explain this cluster</button></div>`;
   _clusterEl.hidden = false;
   if (_clusterEmptyEl) _clusterEmptyEl.hidden = true;
   _kfSetSideTab("cluster");
@@ -393,21 +392,14 @@ function _kfNormalizedPlaceForDisplay(place) {
   return rawPlace;
 }
 
-function _kfPersonTimelinePlaceHtml(rawPlace, showCompare) {
+function _kfPersonTimelinePlaceHtml(rawPlace) {
   if (!rawPlace) return "";
-  if (!showCompare) {
-    const shortPlace = rawPlace.split(",").slice(0, 2).join(", ").trim();
-    return shortPlace ? `<span class="sp-tl-place">${escHtml(shortPlace)}</span>` : "";
-  }
   const normalized = _kfNormalizedPlaceForDisplay(rawPlace);
-  const same = normalized === rawPlace;
-  return `<span class="sp-loc-compare">` +
-    `<span class="sp-loc-row"><span class="sp-loc-key">Raw</span><span class="sp-loc-val">${escHtml(rawPlace)}</span></span>` +
-    `<span class="sp-loc-row"><span class="sp-loc-key">Norm</span><span class="sp-loc-val${same ? " same" : ""}">${escHtml(normalized || rawPlace)}</span></span>` +
-  `</span>`;
+  const shown = normalized || rawPlace;
+  return shown ? `<span class="sp-tl-place">${escHtml(shown)}</span>` : "";
 }
 
-function _kfPersonTimelineHtml(ind, clickedType, clickedYear, showNormalizedLocations = false) {
+function _kfPersonTimelineHtml(ind, clickedType, clickedYear) {
   if (!ind) return "";
   const events = (ind.events || []).filter(ev => ev && Number.isFinite(parseInt(ev.year, 10)));
   if (!events.length) return "";
@@ -416,7 +408,7 @@ function _kfPersonTimelineHtml(ind, clickedType, clickedYear, showNormalizedLoca
   const items = events.map(ev => {
     const yr = parseInt(ev.year, 10);
     const label = EVENT_LABEL[ev.type] || ev.type;
-    const placeHtml = _kfPersonTimelinePlaceHtml(ev.place || "", showNormalizedLocations);
+    const placeHtml = _kfPersonTimelinePlaceHtml(ev.place || "");
     const isActive = clickedType !== undefined
       && ev.type === clickedType && String(ev.year) === String(clickedYear);
     const age = Number.isFinite(birthYear) ? yr - birthYear : null;
@@ -515,7 +507,7 @@ function _kfShowPersonCard(di) {
   const storyHtml = _kfPersonStoryHtml(ind, di);
   const issuesHtml = _kfPersonIssuesHtml(ind, di);
   const questionsHtml = _kfPersonQuestionHtml(ind);
-  const evHtml = _kfPersonTimelineHtml(ind, clickedType, clickedYear, _kfShowNormalizedLocations);
+  const evHtml = _kfPersonTimelineHtml(ind, clickedType, clickedYear);
   const lineageHtml = _kfPersonLineageHtml(ind);
   const hasLineage = !!lineageHtml;
   const tabsHtml = (evHtml || hasLineage)
@@ -559,7 +551,7 @@ function _kfShowPersonCard(di) {
     }
   }
 
-  const askText = `Tell me about ${ind.name}`;
+  const askText = `Explain why ${ind.name} is shown here in ${Math.floor(curYear)}, including the event, location evidence, and relationship context.`;
   _spEl.innerHTML =
     `<div class="sp-name">${escHtml(ind.name)}</div>` +
     (sub ? `<div class="sp-sub">${escHtml(sub)}</div>` : "") +
@@ -573,8 +565,7 @@ function _kfShowPersonCard(di) {
     parentsHtml +
     childrenHtml +
     `<div class="sp-actions">` +
-    `<button class="sp-loc-toggle${_kfShowNormalizedLocations ? " on" : ""}" data-loc-toggle>${_kfShowNormalizedLocations ? "Hide location comparison" : "Compare locations"}</button>` +
-    `<button class="sp-ask" data-ask="${escHtml(askText)}">Ask Kindred Genealogist</button>` +
+    `<button class="sp-ask" data-ask="${escHtml(askText)}">Explain this marker</button>` +
     `<button class="sp-dismiss">Dismiss</button>` +
     `</div>`;
   _spEl.hidden = false;
@@ -587,11 +578,6 @@ function _kfShowPersonCard(di) {
       _spEl.querySelectorAll(".sp-tab").forEach(b => b.classList.toggle("on", b.dataset.pane === which));
       _spEl.querySelectorAll(".sp-pane").forEach(p => p.classList.toggle("on", p.dataset.pane === which));
     });
-  });
-
-  _spEl.querySelector("[data-loc-toggle]")?.addEventListener("click", () => {
-    _kfShowNormalizedLocations = !_kfShowNormalizedLocations;
-    _kfShowPersonCard(di);
   });
 
   _spEl.querySelector(".sp-ask").addEventListener("click", async () => {

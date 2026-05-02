@@ -588,17 +588,34 @@ function renderSources(list) {
     return;
   }
   wrap.classList.remove("hidden");
-  const parts = [`<span class="label">trees</span>`, `<button type="button" class="srcAction" data-select="all">all</button>`];
-  for (const s of filtered) {
+  const selected = filtered.filter(s => s.selected);
+  const excluded = filtered.filter(s => !s.selected);
+  const sourceChip = (s, isExcluded = false) => {
     const n = (s.n_individuals || 0).toLocaleString();
-    parts.push(
-      `<span class="src${s.active ? " on" : ""}" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
+    return (
+      `<span class="src${s.active ? " on" : ""}${isExcluded ? " excluded" : ""}" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
       `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in queries, maps, clusters, and animations">` +
       `<span class="name" data-activate="${escChat(s.name)}" title="Use this tree as the home/detail tree">${escChat(s.name)}</span>` +
       `<span class="meta">${n}</span>` +
       `<span class="x" data-del="${s.id}" data-name="${escChat(s.name)}" title="Remove this tree">x</span>` +
-      `</span>`,
+      `</span>`
     );
+  };
+  const parts = [];
+  if (filtered.length) {
+    parts.push(
+      `<div class="sourceScopeSummary">Using ${selected.length.toLocaleString()} of ${filtered.length.toLocaleString()} loaded tree${filtered.length === 1 ? "" : "s"} for maps, clusters, animations, and chat queries.</div>`,
+      `<div class="scopeSection"><span class="scopeTitle">Data in use</span><button type="button" class="srcAction" data-select="all">select all</button>`,
+    );
+    for (const s of selected) parts.push(sourceChip(s));
+    parts.push(`</div>`);
+    if (excluded.length) {
+      parts.push(`<div class="scopeSection"><span class="scopeTitle">Loaded but excluded</span>`);
+      for (const s of excluded) parts.push(sourceChip(s, true));
+      parts.push(`</div>`);
+    }
+  } else {
+    parts.push(`<div class="sourceScopeSummary">No trees loaded yet. Load a VIP library tree or drop a GEDCOM file.</div>`);
   }
   const catalogActions = [];
   for (const t of _kfCatalogTrees) {
@@ -608,10 +625,11 @@ function renderSources(list) {
     catalogActions.push(t);
   }
   if (catalogActions.length) {
-    parts.push(`<span class="label" style="margin-left:8px">vip library</span>`);
+    parts.push(`<div class="scopeSection"><span class="scopeTitle">VIP library</span>`);
     for (const t of catalogActions) {
       parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}" title="Load this server tree">${escChat(t.name)}</button>`);
     }
+    parts.push(`</div>`);
   }
   inner.innerHTML = parts.join("");
   inner.querySelectorAll(".sel[data-sel]").forEach(el => {

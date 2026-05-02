@@ -70,6 +70,7 @@
 <div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div>
 <div id="viewChrome">
   <div id="viewSummary">Load GEDCOM data to begin.</div>
+  <button id="viewWhy" type="button" hidden>why this view?</button>
   <div id="focusBreadcrumb">Home: none</div>
 </div>
 <div id="yearDigest" hidden></div>
@@ -177,6 +178,14 @@
 </div>
 <div id="ui">
   <div id="quickChips" class="hidden">
+    <span class="chipGroup" data-grp="intent">
+      <span class="chipLabel">understand:</span>
+      <button class="quickChip intent" data-intent="tour" title="Explain the current year in plain language.">tour year</button>
+      <button class="quickChip intent" data-intent="migration" title="Switch migration animation to observation pulses so long date ranges are not shown as continuous travel.">migration</button>
+      <button class="quickChip intent" data-intent="cluster" title="Turn on the most useful clustering for the currently selected trees.">clusters</button>
+      <button class="quickChip intent" data-intent="weak" title="List the visible records most likely to need review.">weak evidence</button>
+      <button class="quickChip intent" data-intent="relation" title="Show nearby kinship lines for the visible people.">relationships</button>
+    </span>
     <span class="chipGroup" data-grp="cluster">
       <span class="chipLabel">cluster:</span>
       <button class="quickChip" data-cluster="none" title="No clustering. Show every person as an individual dot.">none</button>
