@@ -950,6 +950,7 @@ window.kfApi = {
     return {
       ok: true,
       year: Math.floor(curYear),
+      loop: _kfPlaybackLoopBounds(),
       window: dwellWindow,
       root: lastRootId ? { id: lastRootId, name: lastIndiById?.get(lastRootId)?.name } : null,
       selected: highlightedDwell >= 0 && lastIndividuals
@@ -1096,6 +1097,26 @@ window.kfApi = {
       speedSel.value = String(best);
     }
     return { ok: true, secPerYear: parseFloat(speedSel.value) };
+  },
+
+  setLoopBegin(year) {
+    pushHistory();
+    return _kfSetLoopBegin(year == null ? curYear : year);
+  },
+
+  setLoopEnd(year) {
+    pushHistory();
+    return _kfSetLoopEnd(year == null ? curYear : year);
+  },
+
+  setLoopRange(beginYear, endYear) {
+    pushHistory();
+    return _kfSetLoopRange(beginYear, endYear);
+  },
+
+  clearLoopRange() {
+    pushHistory();
+    return _kfClearLoopRange();
   },
 
   playRange(fromYear, toYear, secPerYear) {

@@ -63,6 +63,10 @@
     <div id="lensCaption" style="display:none;"></div>
     <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select>
   </span>
+  <details id="sourcesPanel" class="hidden">
+    <summary><span class="scopeKicker">data</span><span id="sourcesSummaryText">No trees loaded</span></summary>
+    <div id="sourcesList"></div>
+  </details>
 </div>
 <div id="middle">
 <div id="vizArea">
@@ -88,7 +92,6 @@
   <ul id="panelList"></ul>
   </div>
   <div id="chatPanel">
-    <div id="sourcesPanel" class="hidden"><div id="sourcesList"></div></div>
     <div id="sideTabs">
       <button type="button" data-side-tab="person">Person</button>
       <button type="button" data-side-tab="cluster">Cluster</button>
@@ -223,12 +226,21 @@
     <button id="play" disabled>Play</button>
     <label class="speedControl">speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
     <label class="speedControl">migration <select id="migrationView"><option value="continuous" selected>continuous</option><option value="observations">observation pulses</option></select></label>
+    <span class="loopControl" id="loopControl" title="Limit Play to a marked timeline loop. Begin or end alone uses the data boundary for the other side.">
+      <span class="loopLabel">loop</span>
+      <button id="loopBeginBtn" type="button" disabled>begin</button>
+      <button id="loopEndBtn" type="button" disabled>end</button>
+      <button id="loopClearBtn" type="button" disabled>clear</button>
+      <span id="loopRangeLabel">full</span>
+    </span>
     <div class="rangeWrap" style="position:relative;">
       <canvas id="yearHist"></canvas>
       <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
       <div id="yearThumbLabel" style="position:absolute; top:-18px; left:0; font-size:11px; font-weight:700; color:#2a4a8c; pointer-events:none; white-space:nowrap; transform:translateX(-50%);"></div>
       <div class="rangeMark" id="markBlood" style="display:none;"></div>
       <div class="rangeMark ancestor" id="markAncestor" style="display:none;"></div>
+      <div class="rangeMark loop begin" id="markLoopBegin" style="display:none;">begin</div>
+      <div class="rangeMark loop end" id="markLoopEnd" style="display:none;">end</div>
     </div>
   </div>
   <div id="migBar" class="empty"></div>

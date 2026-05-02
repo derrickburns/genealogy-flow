@@ -165,6 +165,8 @@ function snapshotView() {
   return {
     highlightedDwell, highlightInferredYear, highlightInferredSrcYear,
     curYear,
+    loopBegin: _kfLoopBegin,
+    loopEnd: _kfLoopEnd,
     zoom: { ...zoomTransform },
     mapView: mv,
     rootId: lastRootId,
@@ -183,6 +185,8 @@ function restoreView(s) {
     highlightInferredYear = s.highlightInferredYear;
     highlightInferredSrcYear = s.highlightInferredSrcYear;
     curYear = s.curYear;
+    _kfLoopBegin = Number.isFinite(s.loopBegin) ? s.loopBegin : null;
+    _kfLoopEnd = Number.isFinite(s.loopEnd) ? s.loopEnd : null;
     range.value = curYear;
     // Restore the MapLibre map view if we captured one. zoomTransform is
     // legacy state; the map's own center/zoom is what actually positions
@@ -191,6 +195,7 @@ function restoreView(s) {
       _kfMap.jumpTo({ center: s.mapView.center, zoom: s.mapView.zoom, bearing: s.mapView.bearing || 0 });
     }
     if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
+    _kfRefreshLoopControls();
   } finally {
     _restoringView = false;
   }
@@ -1209,19 +1214,22 @@ function tick(now) {
     } else if (playing) {
       const sp = parseFloat(speedSel.value);
       curYear += sp * dt;
-      if (curYear > maxYear) {
-        curYear = minYear;
-      }
-      range.value = curYear;
       // Auto-stop for kfApi.playRange — once we've crossed the requested end
       // year, pause exactly there.
       if (_kfPlayStopAt != null && curYear >= _kfPlayStopAt) {
         curYear = _kfPlayStopAt;
-        range.value = curYear;
         playing = false;
         playBtn.textContent = "Play";
         _kfPlayStopAt = null;
+      } else if (_kfPlayStopAt == null) {
+        const loop = _kfPlaybackLoopBounds();
+        if (loop.active) {
+          if (curYear > loop.end || curYear < loop.begin) curYear = loop.begin;
+        } else if (curYear > maxYear) {
+          curYear = minYear;
+        }
       }
+      range.value = curYear;
     } else {
       curYear = parseFloat(range.value);
     }
@@ -1235,6 +1243,7 @@ function tick(now) {
     }
     updateStatusLabels(yint);
     updateMapLegend();
+    _kfRefreshLoopControls();
   }
   // MapLibre owns the basemap and projection state — no more lerp/transform
   // dance. We just re-project dwells whenever the map moves (_baseDirty is
@@ -1262,7 +1271,14 @@ function tick(now) {
 playBtn.addEventListener("click", () => {
   playing = !playing;
   playBtn.textContent = playing ? "Pause" : "Play";
-  if (playing) clearHighlight();
+  if (playing) {
+    const loop = _kfPlaybackLoopBounds();
+    if (_kfPlayStopAt == null && loop.active && (curYear < loop.begin || curYear > loop.end)) {
+      curYear = loop.begin;
+      range.value = curYear;
+    }
+    clearHighlight();
+  }
 });
 
 

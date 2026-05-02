@@ -106,6 +106,12 @@
   .rangeMark::before { content:""; position:absolute; left:50%; bottom:100%; width:1px; height:8px; background:#566480; transform:translateX(-50%); margin-bottom:1px; }
   .rangeMark.ancestor::before { background:#2a4a8c; }
   .rangeMark.ancestor { color:#2a4a8c; font-weight:600; }
+  .rangeMark.loop { bottom:16px; font-size:9px; font-weight:800; letter-spacing:0.02em; text-transform:uppercase; }
+  .rangeMark.loop::before { height:13px; width:2px; margin-bottom:0; }
+  .rangeMark.loop.begin { color:#875a1e; }
+  .rangeMark.loop.begin::before { background:#c98228; }
+  .rangeMark.loop.end { color:#8a1f19; }
+  .rangeMark.loop.end::before { background:#c73a31; }
   .bcard .yrlink { color:inherit; cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-decoration-color:rgba(70,70,90,0.45); }
   .bcard .yrlink:hover { color:#2a4a8c; text-decoration-color:#2a4a8c; }
   #migBar { position:relative; height:36px; background:#f5f7fa; border:1px solid #e0e6ee; border-radius:6px; padding:18px 0 4px; box-sizing:border-box; }
@@ -118,6 +124,10 @@
   #ui button { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
   #ui button:hover { background:#1c3669; }
   #ui button[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
+  .loopControl { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; color:#566480; font-size:11px; }
+  .loopControl .loopLabel { color:#7c8aa3; font-size:10px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; }
+  #ui .loopControl button { padding:3px 7px; border-radius:5px; font-size:10.5px; line-height:1.2; }
+  .loopControl #loopRangeLabel { min-width:58px; color:#2a3a58; font-variant-numeric:tabular-nums; font-weight:700; }
   #range { -webkit-appearance:none; appearance:none; height:6px; background:#c0ccd8; border-radius:3px; outline:none; }
   #range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
   #range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
@@ -195,10 +205,17 @@
   #reviewMeta input { flex:1; }
   #reviewFilter { font-size:11px; color:#566480; }
   #reviewFilter select { padding:3px 6px; border:1px solid #c0ccd8; border-radius:4px; font:inherit; font-size:12px; margin-left:4px; }
-  #sourcesPanel { border-bottom:1px solid #e0e6ee; padding:6px 10px; background:#f4f6fa; font-size:11px; color:#566480; }
+  #sourcesPanel { flex-basis:100%; min-width:0; border-top:1px solid rgba(192,204,216,0.55); padding-top:6px; font-size:11px; color:#566480; }
   #sourcesPanel.hidden { display:none; }
-  #sourcesPanel .sourceScopeSummary { margin-bottom:4px; font-weight:800; color:#1c2433; }
-  #sourcesPanel .scopeSection { display:flex; flex-wrap:wrap; align-items:center; gap:0; margin-top:3px; }
+  #sourcesPanel summary { display:inline-flex; align-items:center; gap:6px; list-style:none; cursor:pointer; user-select:none; border:1px solid #c0ccd8; border-radius:999px; background:#fff; padding:3px 9px; color:#23324a; font-weight:800; }
+  #sourcesPanel summary::-webkit-details-marker { display:none; }
+  #sourcesPanel summary::after { content:""; width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid #7c8aa3; transition:transform 0.12s ease; }
+  #sourcesPanel[open] summary::after { transform:rotate(180deg); }
+  #sourcesPanel .scopeKicker { color:#7c8aa3; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; }
+  #sourcesList { display:none; margin-top:6px; max-height:92px; overflow-y:auto; padding-right:4px; }
+  #sourcesPanel[open] #sourcesList { display:block; }
+  #sourcesPanel .sourceScopeSummary { margin-bottom:4px; color:#566480; }
+  #sourcesPanel .scopeSection { display:flex; flex-wrap:wrap; align-items:center; gap:0; margin-top:4px; }
   #sourcesPanel .scopeTitle { flex:0 0 auto; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#566480; margin-right:4px; font-size:10px; }
   #sourcesPanel .label { font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#566480; margin-right:4px; font-size:10px; }
   #sourcesPanel .src { display:inline-flex; align-items:center; gap:3px; padding:2px 6px; margin:2px 4px 2px 0; border:1px solid #c0ccd8; border-radius:10px; background:#fff; }

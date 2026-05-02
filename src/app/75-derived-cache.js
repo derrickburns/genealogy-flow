@@ -596,8 +596,8 @@ function _kfRefreshViewChrome(force = false) {
   }
   if (whyEl) whyEl.hidden = !timelineLoaded || !lastIndividuals;
   if (digestEl) {
-    digestEl.hidden = !timelineLoaded || !lastIndividuals;
-    if (!digestEl.hidden) digestEl.innerHTML = _kfYearDigestHtml();
+    digestEl.hidden = true;
+    digestEl.innerHTML = "";
   }
   if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
 }

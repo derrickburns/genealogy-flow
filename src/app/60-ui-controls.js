@@ -992,6 +992,134 @@ function updateNowMarker() {
   const x = sliderLeft + (curYear - yMin) / (yMax - yMin) * sliderW;
   now.style.left = x + "px";
 }
+
+function _kfNormalizeLoopYear(year) {
+  const y = Math.floor(Number(year));
+  if (!Number.isFinite(y)) return null;
+  return Math.max(minYear, Math.min(maxYear, y));
+}
+
+function _kfPlaybackLoopBounds() {
+  const beginSet = Number.isFinite(_kfLoopBegin);
+  const endSet = Number.isFinite(_kfLoopEnd);
+  const begin = beginSet ? Math.max(minYear, Math.min(maxYear, _kfLoopBegin)) : minYear;
+  const end = endSet ? Math.max(minYear, Math.min(maxYear, _kfLoopEnd)) : maxYear;
+  return {
+    active: (beginSet || endSet) && end > begin,
+    begin,
+    end,
+    beginSet,
+    endSet,
+  };
+}
+
+function _kfLoopMarkerPct(year) {
+  const yMin = parseFloat(range.min) || minYear;
+  const yMax = parseFloat(range.max) || maxYear;
+  if (yMax <= yMin) return 0;
+  const y = Math.max(yMin, Math.min(yMax, Number(year)));
+  return (y - yMin) / (yMax - yMin) * 100;
+}
+
+function _kfRefreshLoopControls() {
+  const beginBtn = $("loopBeginBtn");
+  const endBtn = $("loopEndBtn");
+  const clearBtn = $("loopClearBtn");
+  const label = $("loopRangeLabel");
+  const beginMark = $("markLoopBegin");
+  const endMark = $("markLoopEnd");
+  const loaded = !!timelineLoaded;
+  const hasAnyLoopMark = Number.isFinite(_kfLoopBegin) || Number.isFinite(_kfLoopEnd);
+  if (beginBtn) beginBtn.disabled = !loaded;
+  if (endBtn) endBtn.disabled = !loaded;
+  if (clearBtn) clearBtn.disabled = !loaded || !hasAnyLoopMark;
+  const loop = _kfPlaybackLoopBounds();
+  if (label) label.textContent = loop.active ? `${Math.floor(loop.begin)}-${Math.floor(loop.end)}` : "full";
+  if (beginMark) {
+    if (loaded && loop.beginSet) {
+      beginMark.style.display = "";
+      beginMark.style.left = `${_kfLoopMarkerPct(_kfLoopBegin)}%`;
+    } else {
+      beginMark.style.display = "none";
+    }
+  }
+  if (endMark) {
+    if (loaded && loop.endSet) {
+      endMark.style.display = "";
+      endMark.style.left = `${_kfLoopMarkerPct(_kfLoopEnd)}%`;
+    } else {
+      endMark.style.display = "none";
+    }
+  }
+}
+
+function _kfClampLoopMarkersToTimeline() {
+  if (Number.isFinite(_kfLoopBegin)) _kfLoopBegin = _kfNormalizeLoopYear(_kfLoopBegin);
+  if (Number.isFinite(_kfLoopEnd)) _kfLoopEnd = _kfNormalizeLoopYear(_kfLoopEnd);
+  if (Number.isFinite(_kfLoopBegin) && _kfLoopBegin >= maxYear) _kfLoopBegin = null;
+  if (Number.isFinite(_kfLoopEnd) && _kfLoopEnd <= minYear) _kfLoopEnd = null;
+  if (Number.isFinite(_kfLoopBegin) && Number.isFinite(_kfLoopEnd) && _kfLoopEnd <= _kfLoopBegin) {
+    _kfLoopBegin = null;
+    _kfLoopEnd = null;
+  }
+  _kfRefreshLoopControls();
+}
+
+function _kfSetLoopBegin(year = curYear) {
+  const y = _kfNormalizeLoopYear(year);
+  if (y == null) return { error: "loop begin year is not valid" };
+  if (y >= maxYear) return { error: "loop begin must be before the last timeline year" };
+  _kfLoopBegin = y;
+  if (Number.isFinite(_kfLoopEnd) && _kfLoopEnd <= _kfLoopBegin) _kfLoopEnd = null;
+  _kfPlayStopAt = null;
+  _kfRefreshLoopControls();
+  return { ok: true, loop: _kfPlaybackLoopBounds() };
+}
+
+function _kfSetLoopEnd(year = curYear) {
+  const y = _kfNormalizeLoopYear(year);
+  if (y == null) return { error: "loop end year is not valid" };
+  if (y <= minYear) return { error: "loop end must be after the first timeline year" };
+  _kfLoopEnd = y;
+  if (Number.isFinite(_kfLoopBegin) && _kfLoopBegin >= _kfLoopEnd) _kfLoopBegin = null;
+  _kfPlayStopAt = null;
+  _kfRefreshLoopControls();
+  return { ok: true, loop: _kfPlaybackLoopBounds() };
+}
+
+function _kfSetLoopRange(beginYear, endYear) {
+  const begin = _kfNormalizeLoopYear(beginYear);
+  const end = _kfNormalizeLoopYear(endYear);
+  if (begin == null || end == null || end <= begin) return { error: "invalid loop; need end year > begin year within data range" };
+  _kfLoopBegin = begin;
+  _kfLoopEnd = end;
+  _kfPlayStopAt = null;
+  _kfRefreshLoopControls();
+  return { ok: true, loop: _kfPlaybackLoopBounds() };
+}
+
+function _kfClearLoopRange() {
+  const hadLoop = Number.isFinite(_kfLoopBegin) || Number.isFinite(_kfLoopEnd);
+  _kfLoopBegin = null;
+  _kfLoopEnd = null;
+  _kfPlayStopAt = null;
+  _kfRefreshLoopControls();
+  return { ok: true, cleared: hadLoop };
+}
+
+$("loopBeginBtn")?.addEventListener("click", () => {
+  pushHistory();
+  _kfSetLoopBegin(curYear);
+});
+$("loopEndBtn")?.addEventListener("click", () => {
+  pushHistory();
+  _kfSetLoopEnd(curYear);
+});
+$("loopClearBtn")?.addEventListener("click", () => {
+  pushHistory();
+  _kfClearLoopRange();
+});
+_kfRefreshLoopControls();
 if (DEMO_GED_URL) {
   const _pick = $("pick"); if (_pick) _pick.style.display = "none";
   const _pick2 = $("pick2"); if (_pick2) _pick2.style.display = "none";
@@ -1004,7 +1132,7 @@ if (DEMO_GED_URL) {
       const resp = await fetch(DEMO_GED_URL);
       if (!resp.ok) throw new Error(resp.status + " " + resp.statusText);
       const text = await resp.text();
-      const demoFile = new File([text], "Golden-Rosenberg.ged", { type: "text/plain" });
+      const demoFile = new File([text], "DEMO.json", { type: "application/json" });
       await processFile(demoFile);
     } catch (e) {
       stats.textContent = "demo load failed: " + (e.message || e);

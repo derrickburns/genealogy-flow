@@ -146,6 +146,7 @@ function loadTimelineArrays(t, sideForIdx, opts = {}) {
   curYear = parseFloat(range.value);
   timelineLoaded = true; projectAll();
   fxCtx.clearRect(0, 0, W, H); playBtn.disabled = false;
+  _kfClampLoopMarkersToTimeline();
   renderMigBar();
 }
 
@@ -578,18 +579,26 @@ async function deleteSource(id) {
 function renderSources(list) {
   const wrap = document.getElementById("sourcesPanel");
   const inner = document.getElementById("sourcesList");
+  const summaryEl = document.getElementById("sourcesSummaryText");
   if (!wrap || !inner) return;
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
   _kfLoadedTreeCount = filtered.length;
   if (filtered.length === 0 && _kfCatalogTrees.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
+    if (summaryEl) summaryEl.textContent = "No trees loaded";
     if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
     return;
   }
   wrap.classList.remove("hidden");
   const selected = filtered.filter(s => s.selected);
   const excluded = filtered.filter(s => !s.selected);
+  const selectedLabel = filtered.length
+    ? (excluded.length
+      ? `${selected.length.toLocaleString()}/${filtered.length.toLocaleString()} trees in use`
+      : `${filtered.length.toLocaleString()} tree${filtered.length === 1 ? "" : "s"} in use`)
+    : "VIP library available";
+  if (summaryEl) summaryEl.textContent = selectedLabel;
   const sourceChip = (s, isExcluded = false) => {
     const n = (s.n_individuals || 0).toLocaleString();
     return (
@@ -603,11 +612,7 @@ function renderSources(list) {
   };
   const parts = [];
   if (filtered.length) {
-    const summary = excluded.length
-      ? `Using ${selected.length.toLocaleString()} of ${filtered.length.toLocaleString()} loaded tree${filtered.length === 1 ? "" : "s"} for maps, clusters, animations, and chat queries.`
-      : "All loaded trees are in use for maps, clusters, animations, and chat queries.";
     parts.push(
-      `<div class="sourceScopeSummary">${escChat(summary)}</div>`,
       `<div class="scopeSection"><span class="scopeTitle">Data in use</span><button type="button" class="srcAction" data-select="all">select all</button>`,
     );
     for (const s of selected) parts.push(sourceChip(s));

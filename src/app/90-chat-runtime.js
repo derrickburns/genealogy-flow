@@ -106,6 +106,8 @@ Available tools. jsonArgs is a single JSON value:
 - clearPins()                      Remove all pins.
 - setSpeed(secPerYear)             Playback speed in years/sec. Allowed values: 0.5, 1, 2, 5, 10, 25 (others snap to nearest).
 - playRange(fromYear, toYear, secPerYear?) Play a specific year window then auto-pause at toYear. Best for narrating a migration: setActiveTree → setShowFilter → playRange.
+- setLoopBegin(year?) / setLoopEnd(year?) Mark the playback loop boundary. Omit year to use the current playback year.
+- setLoopRange(beginYear, endYear) / clearLoopRange() Narrow or clear the normal Play loop. Unlike playRange, this persists until cleared.
 - showAncestors(personOrName, maxGen?) Restrict the map to ancestors of this person, up to maxGen generations (default 6). Reuses the blood-filter pipeline.
 - showDescendants(personOrName, maxGen?) Same, but for descendants.
 - clearSubtreeFilter()             Restore the original filter set after showAncestors / showDescendants.
@@ -122,7 +124,7 @@ Available tools. jsonArgs is a single JSON value:
 - findPeople({surname?, name?, living?, place?, year?, limit?})  Search loaded/selected trees for groups of people. Use this before answering surname/group questions like "living Caseys" or "were they all in Alaska?" Returns birth/death/status, latest known place, placed events, and matching place intervals.
 - setHighlight([names...], {color?: [r,g,b]})  Draw a colored ring over the latest dwell of each named person. Use to visually answer "where were ALL the immigrants from Italy in 1900?" — pair with sql() to enumerate.
 - clearHighlight()                 Remove highlight rings.
-- sql(query)                       Run a read-only SELECT against the browser SQLite database spanning the currently loaded trees. Returns {ok, rows, truncated, totalRows}. Results capped at 200 rows. The visible tables are automatically scoped to the tree subset the user has checked in the trees panel, so the same query language works whether one tree or several are selected.
+- sql(query)                       Run a read-only SELECT against the browser SQLite database spanning the currently loaded trees. Returns {ok, rows, truncated, totalRows}. Results capped at 200 rows. The visible tables are automatically scoped to the tree subset the user has checked in the data shelf, so the same query language works whether one tree or several are selected.
 
 SQLite schema (browser mode: multi-source, automatically scoped to the selected tree subset):
 

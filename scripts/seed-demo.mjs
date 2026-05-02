@@ -3,6 +3,7 @@
  * Seeds a catalog GEDCOM into:
  *   - D1 tables: demo_individuals, demo_events, demo_families, demo_sources (optional legacy demo path)
  *   - R2: demo/<slug>.json  (pre-processed JSON for VIP catalog loading)
+ *   - R2: demo/demo.json    (sanitized public demo when slug is golden-rosenberg)
  *
  * Prereqs:
  *   - wrangler.toml with correct database_id and bucket name
@@ -29,6 +30,10 @@ function extractYear(dateStr) {
 const gedPath = process.argv[2] ?? "Golden-Rosenberg.ged";
 const gazPath = process.argv[3] ?? "gazetteer.json";
 const catalogSlug = (process.argv[4] ?? "golden-rosenberg").toLowerCase();
+if (catalogSlug === "demo") {
+  console.error("Catalog slug 'demo' is reserved for the sanitized public DEMO dataset.");
+  process.exit(1);
+}
 
 if (!existsSync(gedPath)) {
   console.error(`GEDCOM file not found: ${gedPath}`);
@@ -56,6 +61,62 @@ function geocode(place) {
   const entry = gazetteer[norm];
   if (entry) return { lat: entry.lat, lon: entry.lon };
   return { lat: null, lon: null };
+}
+
+const LIVING_MAX_AGE = 115;
+function isPresumedLiving(ind, currentYear = new Date().getUTCFullYear()) {
+  if (ind.death_year != null) return false;
+  if (ind.birth_year == null) return true;
+  return currentYear - ind.birth_year < LIVING_MAX_AGE;
+}
+
+function sanitizePublicDemo(input) {
+  const currentYear = new Date().getUTCFullYear();
+  const livingIds = new Set();
+  const livingLabels = new Map();
+  let livingCount = 0;
+  const individuals = input.individuals.map(ind => {
+    const living = isPresumedLiving(ind, currentYear);
+    if (living) {
+      livingCount++;
+      livingIds.add(ind.id);
+      livingLabels.set(ind.id, `Living person ${livingCount}`);
+    }
+    return {
+      id: ind.id,
+      name: living ? livingLabels.get(ind.id) : ind.name,
+      sex: living ? "U" : ind.sex,
+      birth_year: living ? null : ind.birth_year,
+      death_year: living ? null : ind.death_year,
+      famc: ind.famc,
+      fams: ind.fams,
+      events: living ? [] : ind.events.map(e => ({ ...e, sources: [] })),
+      notes: [],
+      sources: [],
+    };
+  });
+  const families = input.families.map(fam => {
+    const members = [fam.husb, fam.wife, ...(fam.chil || [])].filter(Boolean);
+    const hasLivingMember = members.some(id => livingIds.has(id));
+    return {
+      id: fam.id,
+      husb: fam.husb,
+      wife: fam.wife,
+      chil: fam.chil,
+      marr: hasLivingMember ? null : fam.marr,
+      div: hasLivingMember ? null : fam.div,
+    };
+  });
+  return {
+    individuals,
+    families,
+    sources: [],
+    privacy: {
+      tier: "public-demo",
+      living_people: "anonymized",
+      living_details: "removed",
+    },
+  };
 }
 
 // Build the processed JSON blob (same format as parse-gedcom output)
@@ -106,6 +167,11 @@ const jsonPath = join(tmpdir(), `${catalogSlug}.json`);
 writeFileSync(jsonPath, JSON.stringify(demoJson));
 console.log(`\nWritten demo JSON (${(Buffer.byteLength(readFileSync(jsonPath)) / 1024).toFixed(1)} KB)`);
 
+const publicDemoJson = sanitizePublicDemo(demoJson);
+const publicJsonPath = join(tmpdir(), "demo-public.json");
+writeFileSync(publicJsonPath, JSON.stringify(publicDemoJson));
+console.log(`Written sanitized public DEMO JSON (${(Buffer.byteLength(readFileSync(publicJsonPath)) / 1024).toFixed(1)} KB)`);
+
 // SQLite single-quoted string literal helper
 function sqlStr(v) {
   if (v == null) return "NULL";
@@ -146,6 +212,12 @@ async function d1Query(sql) {
 console.log(`\nUploading catalog JSON to R2 as demo/${catalogSlug}.json...`);
 await r2Put(`demo/${catalogSlug}.json`, jsonPath, "application/json");
 console.log("  done");
+
+if (catalogSlug === "golden-rosenberg") {
+  console.log("Uploading sanitized public DEMO JSON to R2 as demo/demo.json...");
+  await r2Put("demo/demo.json", publicJsonPath, "application/json");
+  console.log("  done");
+}
 
 if (existsSync(gazPath)) {
   console.log("Uploading gazetteer.json to R2...");
