@@ -48,12 +48,15 @@ function _kfPickClusterAt(x, y) {
   if (_kfIsClusterSelectionMode()) {
     const cluster = _kfPickClusterAt(x, y);
     if (cluster && cluster.members && cluster.members.length) {
+      const selectedFocusId = highlightedDwell >= 0 && lastIndividuals && dwellIndi
+        ? lastIndividuals[dwellIndi[highlightedDwell]]?.id || null
+        : null;
       pushHistory();
       highlightedDwell = -1;
       highlightInferredYear = -1;
       highlightInferredSrcYear = -1;
       if (playing) { playing = false; playBtn.textContent = "Play"; }
-      _kfShowClusterCard(cluster);
+      _kfShowClusterCard(cluster, { selectedId: selectedFocusId, focusId: selectedFocusId || lastRootId });
       fxCtx.clearRect(0, 0, W, H);
       applyExpansion();
     }

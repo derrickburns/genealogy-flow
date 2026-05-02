@@ -147,7 +147,118 @@ function _kfClusterMemberMarkerHtml(di, c) {
   return `<span class="cluster-marker ${shape}" style="background:${_kfRgb(_kfClusterMemberColor(di, c))};"></span>`;
 }
 
-function _kfClusterMemberRows(c) {
+let _kfClusterRelationCache = null;
+function _kfSpouseIdsFor(id) {
+  const out = new Set();
+  if (!id || !lastFamilies) return out;
+  for (const fam of lastFamilies.values()) {
+    if (fam?.husb === id && fam.wife) out.add(fam.wife);
+    else if (fam?.wife === id && fam.husb) out.add(fam.husb);
+  }
+  return out;
+}
+
+function _kfRelationDirectnessRank(m, n) {
+  if (m === 0 && n === 0) return 0; // focus/self
+  if (n === 0) return 1;            // ancestor
+  if (m === 0) return 2;            // descendant
+  if (m === 1 && n === 1) return 3; // sibling
+  return 5;                         // cousin/collateral blood relation
+}
+
+function _kfRelationMapsForFocus(focusId) {
+  if (!focusId || !lastIndividuals || !lastParentsOf || !lastChildrenOf) {
+    return { relation: relationCache || new Map(), distance: relDistCache || new Map(), directness: new Map() };
+  }
+  if (_kfClusterRelationCache &&
+      _kfClusterRelationCache.focusId === focusId &&
+      _kfClusterRelationCache.parentsOf === lastParentsOf &&
+      _kfClusterRelationCache.childrenOf === lastChildrenOf &&
+      _kfClusterRelationCache.families === lastFamilies) {
+    return _kfClusterRelationCache.maps;
+  }
+
+  const mn = new Map();
+  mn.set(focusId, [0, 0]);
+  const queue = [[focusId, 0, 0]];
+  let head = 0;
+  while (head < queue.length) {
+    const [cur, m, n] = queue[head++];
+    if (n === 0) {
+      const par = lastParentsOf.get(cur);
+      if (par) {
+        for (const p of par) {
+          if (!p || mn.has(p)) continue;
+          mn.set(p, [m + 1, 0]);
+          queue.push([p, m + 1, 0]);
+        }
+      }
+    }
+    const kids = lastChildrenOf.get(cur);
+    if (kids) {
+      for (const ch of kids) {
+        if (mn.has(ch)) continue;
+        mn.set(ch, [m, n + 1]);
+        queue.push([ch, m, n + 1]);
+      }
+    }
+  }
+
+  const spouses = _kfSpouseIdsFor(focusId);
+  const relation = new Map();
+  const distance = new Map();
+  const directness = new Map();
+  for (const ind of lastIndividuals) {
+    const pair = mn.get(ind.id);
+    if (pair) {
+      const [m, n] = pair;
+      relation.set(ind.id, formatRelation(m, n, focusId, ind.id, lastParentsOf));
+      distance.set(ind.id, m + n);
+      directness.set(ind.id, _kfRelationDirectnessRank(m, n));
+    } else if (spouses.has(ind.id)) {
+      relation.set(ind.id, "Sp");
+      distance.set(ind.id, 2.5);
+      directness.set(ind.id, 4);
+    } else {
+      relation.set(ind.id, "");
+      distance.set(ind.id, Infinity);
+      directness.set(ind.id, 9);
+    }
+  }
+
+  const maps = { relation, distance, directness };
+  _kfClusterRelationCache = { focusId, parentsOf: lastParentsOf, childrenOf: lastChildrenOf, families: lastFamilies, maps };
+  return maps;
+}
+
+function _kfClusterLocationEvidenceRank(di) {
+  const place = (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
+  const y = Number.isFinite(dwellY?.[di]) ? dwellY[di] : null;
+  const yearDelta = y == null ? Infinity : Math.abs(y - Math.floor(curYear));
+  if (!place) return 5;
+  if (dwellExact?.[di] && yearDelta <= 1) return 0;
+  if (dwellExact?.[di]) return 1;
+  const parts = place.split(",").map(s => s.trim()).filter(Boolean).length;
+  if (parts >= 3) return 2;
+  if (parts === 2) return 3;
+  return 4;
+}
+
+function _kfClusterFocus(c, opts = {}) {
+  const selectedId = opts.selectedId ||
+    (highlightedDwell >= 0 && lastIndividuals && dwellIndi
+      ? lastIndividuals[dwellIndi[highlightedDwell]]?.id || null
+      : null);
+  const focusId = opts.focusId || selectedId || lastRootId || null;
+  const focus = focusId && lastIndiById ? lastIndiById.get(focusId) : null;
+  return { selectedId, focusId, focus };
+}
+
+function _kfClusterMemberRows(c, opts = {}) {
+  const focus = _kfClusterFocus(c, opts);
+  const relMaps = _kfRelationMapsForFocus(focus.focusId);
+  const selectedSources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
+  const showSource = selectedSources.length > 1 || clusterMode === "tree";
   const rows = [];
   const seen = new Set();
   for (const di of c.members || []) {
@@ -159,18 +270,33 @@ function _kfClusterMemberRows(c) {
       ind.birth_year ? `b. ${ind.birth_year}` : "",
       ind.death_year ? `d. ${ind.death_year}` : "",
     ].filter(Boolean).join(" ");
-    const rel = relationCache.get(ind.id) || "";
+    const rel = relMaps.relation.get(ind.id) || "";
     const place = (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
     const year = Number.isFinite(dwellY?.[di]) ? dwellY[di] : "";
-    const meta = [rel, life, place].filter(Boolean).join(" · ");
+    const sourceName = _kfSourceNameForIndiIdx(idx) || "";
+    const sourceLabel = sourceName ? sourceName.replace(/\.ged$/i, "") : "";
+    const eventLabel = EVENT_TYPE_LABEL[dwellType?.[di]] || "event";
+    const yearDelta = Number.isFinite(year) ? Math.abs(year - Math.floor(curYear)) : Infinity;
+    const meta = [
+      rel,
+      life,
+      showSource ? sourceLabel : "",
+      place ? `${eventLabel} ${place}` : "",
+    ].filter(Boolean).join(" · ");
     rows.push({
       di,
+      id: ind.id,
       name: ind.name || "?",
       rel,
       life,
       place,
       year,
-      sortDist: relDistCache.get(ind.id) ?? Infinity,
+      sourceName,
+      selectedRank: focus.selectedId && focus.selectedId === ind.id ? 0 : 1,
+      sortDist: relMaps.distance.get(ind.id) ?? Infinity,
+      directnessRank: relMaps.directness.get(ind.id) ?? 9,
+      locationEvidenceRank: _kfClusterLocationEvidenceRank(di),
+      yearDelta,
       birthYear: Number.isFinite(ind.birth_year) ? ind.birth_year : 9999,
       html: `<button type="button" class="cluster-person" data-di="${di}">` +
         _kfClusterMemberMarkerHtml(di, c) +
@@ -183,10 +309,24 @@ function _kfClusterMemberRows(c) {
     });
   }
   rows.sort((a, b) => {
+    if (a.selectedRank !== b.selectedRank) return a.selectedRank - b.selectedRank;
+    if (clusterMode === "tree") {
+      const treeCmp = a.sourceName.localeCompare(b.sourceName);
+      if (treeCmp) return treeCmp;
+    }
     const ad = Number.isFinite(a.sortDist) ? a.sortDist : 1e9;
     const bd = Number.isFinite(b.sortDist) ? b.sortDist : 1e9;
-    return ad - bd || a.birthYear - b.birthYear || a.name.localeCompare(b.name);
+    if (ad !== bd) return ad - bd;
+    if (a.directnessRank !== b.directnessRank) return a.directnessRank - b.directnessRank;
+    if (a.locationEvidenceRank !== b.locationEvidenceRank) return a.locationEvidenceRank - b.locationEvidenceRank;
+    if (a.yearDelta !== b.yearDelta) return a.yearDelta - b.yearDelta;
+    if (clusterMode !== "tree") {
+      const treeCmp = a.sourceName.localeCompare(b.sourceName);
+      if (treeCmp) return treeCmp;
+    }
+    return a.birthYear - b.birthYear || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
   });
+  rows.focus = focus;
   return rows;
 }
 
@@ -199,11 +339,15 @@ function _kfClusterPrompt(c, rows) {
   return `Analyze this ${_kfClusterModeLabel().toLowerCase()} cluster in ${Math.floor(curYear)}. It contains ${rows.length} people. People: ${people}${more}.`;
 }
 
-function _kfShowClusterCard(c) {
+function _kfShowClusterCard(c, opts = {}) {
   if (!_clusterEl) return;
-  const rows = _kfClusterMemberRows(c);
+  const rows = _kfClusterMemberRows(c, opts);
   const title = c.abbr ? `${c.abbr} cluster` : `${_kfClusterModeLabel()} cluster`;
   const prompt = _kfClusterPrompt(c, rows);
+  const focusName = rows.focus?.focus?.name || "";
+  const orderText = focusName
+    ? `Ordered by relation to ${focusName}${clusterMode === "tree" ? ", grouped by tree" : ""}`
+    : "Ordered by relation, evidence quality, and event year";
   _clusterEl.innerHTML =
     `<div class="cluster-head">` +
       _kfClusterSwatchHtml(c) +
@@ -213,7 +357,7 @@ function _kfShowClusterCard(c) {
       `</div>` +
     `</div>` +
     _kfClusterBreakdownHtml(c) +
-    `<div class="cluster-list-head"><span>People</span><span>Click to select</span></div>` +
+    `<div class="cluster-list-head"><span>People</span><span>${escHtml(orderText)}</span></div>` +
     `<div class="cluster-list">${rows.map(r => r.html).join("")}</div>` +
     `<div class="cluster-actions"><button type="button" class="cluster-ask" data-ask="${escHtml(prompt)}">Ask Kindred Genealogist about this cluster</button></div>`;
   _clusterEl.hidden = false;
