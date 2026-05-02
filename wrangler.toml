@@ -14,7 +14,8 @@ bucket_name = "genealogy-flow"
 
 [vars]
 VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@gmail.com,derrickrburns@gmail.com,derrickburns@gmail.com,derrick.burns@gmail.com,derrick@kindredsearch.com,derrickburns@kindredsearch.com,paigeunterberg@gmail.com,james.raby@gmail.com"
-CLERK_PUBLISHABLE_KEY = "pk_live_Y2xlcmsua2luZHJlZHNlYXJjaC5jb20k"
+# CLERK_PUBLISHABLE_KEY is configured as a Pages secret; middleware has a
+# checked-in fallback because the key is public and must match index.html.
 
 # Cron (02:00 UTC daily) is configured in Cloudflare dashboard after first deploy.
 # Secrets (set via: npx wrangler pages secret put <NAME> --project-name genealogy-flow):
