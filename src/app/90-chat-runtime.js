@@ -174,12 +174,56 @@ async function detectChatProxy() {
   return false;
 }
 
-async function callClaudeStream(userMsg, onDelta) {
+function _kfPushClaudeMessage(messages, role, content) {
+  const text = String(content || "").trim();
+  if (!text) return;
+  const last = messages[messages.length - 1];
+  if (last && last.role === role) last.content += "\n\n" + text;
+  else messages.push({ role, content: text });
+}
+
+function _kfBuildClaudeMessages(userMsg, pendingMsg = null) {
   const ctx = buildChatContext();
   const dataCtx = buildQuestionDataContext(userMsg);
   const fullCtx = [ctx, dataCtx].filter(Boolean).join("\n\n");
-  const messages = chatHistory.map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }));
-  messages.push({ role: "user", content: fullCtx ? `Context for current view:\n${fullCtx}\n\nQuestion: ${userMsg}` : userMsg });
+  const requestText = fullCtx ? `Context for current view:\n${fullCtx}\n\nQuestion: ${userMsg}` : userMsg;
+  const messages = [];
+  let currentUserIdx = -1;
+  for (let i = chatHistory.length - 1; i >= 0; i--) {
+    const m = chatHistory[i];
+    if (m === pendingMsg) continue;
+    if (m.role === "user") {
+      if (String(m.content || "").trim() === String(userMsg || "").trim()) currentUserIdx = i;
+      break;
+    }
+  }
+  for (let i = 0; i < chatHistory.length; i++) {
+    const m = chatHistory[i];
+    if (m === pendingMsg || i === currentUserIdx) continue;
+    _kfPushClaudeMessage(messages, m.role === "user" ? "user" : "assistant", m.content);
+  }
+  _kfPushClaudeMessage(messages, "user", requestText);
+  return messages;
+}
+
+function _kfTextFromSsePayload(payload) {
+  if (!payload || payload === "[DONE]") return "";
+  const obj = JSON.parse(payload);
+  if (obj.error) {
+    const message = typeof obj.error === "string"
+      ? obj.error
+      : obj.error.message || JSON.stringify(obj.error);
+    throw new Error(message);
+  }
+  if (typeof obj.text === "string") return obj.text;
+  if (typeof obj.delta === "string") return obj.delta;
+  if (obj.type === "content_block_delta" && obj.delta?.type === "text_delta") return obj.delta.text || "";
+  if (typeof obj.delta?.text === "string") return obj.delta.text;
+  return "";
+}
+
+async function callClaudeStream(userMsg, onDelta, pendingMsg = null) {
+  const messages = _kfBuildClaudeMessages(userMsg, pendingMsg);
   const requestBody = JSON.stringify({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
@@ -236,12 +280,12 @@ async function callClaudeStream(userMsg, onDelta) {
         const dataLine = evt.split("\n").find(l => l.startsWith("data:"));
         if (!dataLine) continue;
         try {
-          const obj = JSON.parse(dataLine.slice(5).trim());
-          const chunk = obj.text ?? obj.delta ?? null; // VIP server sends {text}, proxy sends {delta}
+          const chunk = _kfTextFromSsePayload(dataLine.slice(5).trim());
           if (chunk) { full += chunk; onDelta(chunk); }
-          else if (obj.error) throw new Error(obj.error);
-          // obj.done — ignore here, end of stream signals completion
-        } catch (e) { /* unparsed event */ }
+        } catch (e) {
+          if (e instanceof SyntaxError) continue;
+          throw e;
+        }
       }
     }
   } else {
@@ -250,7 +294,9 @@ async function callClaudeStream(userMsg, onDelta) {
     full = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     if (full) onDelta(full);
   }
-  return full.trim();
+  const trimmed = full.trim();
+  if (!trimmed) throw new Error("Claude returned an empty response.");
+  return trimmed;
 }
 
 
@@ -403,7 +449,7 @@ async function runChatTurn(userText) {
       reply = await callClaudeStream(nextInput, delta => {
         pending.content += delta;
         renderChat();
-      });
+      }, pending);
     } catch (e) {
       pending.content = `*[error]* ${e.message || e}`;
       renderChat();
