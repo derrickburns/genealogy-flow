@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "GEDCOM particle-flow animation viewer plus offline tooling for parsing, geocoding, biography, and migration analysis.",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "license": "MIT",
   "homepage": "https://github.com/derrickburns/genealogy-flow",
   "repository": {
@@ -44,8 +45,8 @@
     "prepublishOnly": "pnpm run build",
     "seed-demo": "node scripts/seed-demo.mjs",
     "predeploy": "node scripts/prepare-public.mjs",
-    "deploy": "npx wrangler pages deploy public",
-    "dev": "npx wrangler pages dev public --d1 DB --r2 STORAGE"
+    "deploy": "pnpm run predeploy && pnpm exec wrangler pages deploy public",
+    "dev": "pnpm run predeploy && pnpm exec wrangler pages dev public --d1 DB --r2 STORAGE"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

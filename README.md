@@ -5,16 +5,24 @@ tooling for parsing, geocoding, biography generation, and migration analysis.
 
 ## Viewer
 
-`index.html` is a single-file browser app. No build step. Three ways to use it:
+The browser app is served from `public/`. The root `index.html` is a source
+shell; `pnpm run predeploy` injects the generated runtime bundle into
+`public/index.html`.
 
-1. **Hosted**: open https://derrickburns.github.io/genealogy-flow/. Drop your
-   GEDCOM. The file never leaves your browser.
-2. **Local**: clone the repo and open `index.html` directly.
-3. **Self-host**: copy `index.html` to any static host.
+Local development:
 
-GitHub Pages is wired up via `.github/workflows/pages.yml` and redeploys
-automatically on every push to `main` that touches `index.html`. Enable it
-once under repo Settings -> Pages -> Source: GitHub Actions.
+```sh
+pnpm install
+pnpm run dev
+```
+
+Static build:
+
+```sh
+pnpm run predeploy
+```
+
+Then serve or deploy the `public/` directory.
 
 ## Tools
 

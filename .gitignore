@@ -35,3 +35,9 @@ __pycache__/
 node_modules/
 *.tsbuildinfo
 dist/
+.wrangler/
+
+# Generated browser assets. Rebuilt by `pnpm run predeploy`.
+/public/index.html
+/public/app.js
+/public/styles/app.css
