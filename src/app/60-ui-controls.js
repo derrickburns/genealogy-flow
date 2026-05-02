@@ -977,12 +977,48 @@ if (DEMO_GED_URL) {
   const pick2 = $("pick2"); if (pick2) pick2.addEventListener("click", () => fileInp.click());
   fileInp.addEventListener("change", () => handleFiles(fileInp.files));
   window._kfLoadFiles = handleFiles;
-  window.addEventListener("dragover", e => { e.preventDefault(); dropEl.classList.add("on"); });
-  window.addEventListener("dragleave", e => { if (!e.relatedTarget) dropEl.classList.remove("on"); });
-  window.addEventListener("drop", e => {
-    e.preventDefault(); dropEl.classList.remove("on");
-    if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+  let dropDragDepth = 0;
+  let dropStaleTimer = 0;
+  function isFileDrag(e) {
+    return Array.from(e.dataTransfer?.types || []).includes("Files");
+  }
+  function hideDropOverlay() {
+    dropDragDepth = 0;
+    clearTimeout(dropStaleTimer);
+    dropStaleTimer = 0;
+    dropEl.classList.remove("on");
+  }
+  function showDropOverlay() {
+    dropEl.classList.add("on");
+    clearTimeout(dropStaleTimer);
+    dropStaleTimer = setTimeout(hideDropOverlay, 1500);
+  }
+  window.addEventListener("dragenter", e => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dropDragDepth++;
+    showDropOverlay();
   });
+  window.addEventListener("dragover", e => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    showDropOverlay();
+  });
+  window.addEventListener("dragleave", e => {
+    if (!isFileDrag(e)) return;
+    dropDragDepth = Math.max(0, dropDragDepth - 1);
+    if (dropDragDepth === 0 || !e.relatedTarget) hideDropOverlay();
+  });
+  window.addEventListener("drop", e => {
+    const files = e.dataTransfer?.files;
+    if (isFileDrag(e)) e.preventDefault();
+    hideDropOverlay();
+    if (files?.length) handleFiles(files);
+  });
+  window.addEventListener("dragend", hideDropOverlay);
+  window.addEventListener("blur", hideDropOverlay);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) hideDropOverlay(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") hideDropOverlay(); });
 }
 
 async function bootBasemap() {
