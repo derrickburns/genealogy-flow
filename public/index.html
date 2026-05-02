@@ -8846,10 +8846,113 @@ function _kfVizSqlRows(sql, limit = 5000) {
   return values.slice(0, limit).map(row => Object.fromEntries(columns.map((c, i) => [c, row[i]])));
 }
 
+const OFFLINE_VIZ_EXPLANATIONS = {
+  "Geographic Migration Flow Map": {
+    what: "Shows parent birthplace to child birthplace links as migration arcs. It is a generational movement view, not a full life-path map.",
+    read: "Long arcs suggest major family relocations between generations. Dense bundles show repeated origin-destination patterns in the selected trees.",
+    caveat: "It depends on geocoded birthplaces. Missing, broad, or normalized-only locations can hide moves or make an arc look more precise than the source record supports.",
+  },
+  "Animated Geographic Migration Pulse": {
+    what: "Animates the same parent-child birthplace links as moving pulses so directional migration patterns are easier to see.",
+    read: "Follow the moving dots from parent birthplaces toward child birthplaces. Repeated pulses along the same corridor indicate recurring migration paths.",
+    caveat: "The animation shows relationship direction, not the exact year or route of travel.",
+  },
+  "Birth Year Histogram": {
+    what: "Counts people by 50-year birth windows to show where the tree has dense evidence and where it becomes sparse or reconstructed.",
+    read: "Tall bars mark periods with many recorded births. Sudden drops usually mean missing records, branch boundaries, or a transition into less reliable older data.",
+    caveat: "This reflects the loaded/selected trees, not population history. A research-heavy branch can dominate the shape.",
+  },
+  "Surname Lineage Sankey": {
+    what: "Shows parent-to-child surname transitions observed in recorded families.",
+    read: "Thicker links mean that surname pair appears more often across parent-child relationships. Repeated same-surname links usually represent surname continuity.",
+    caveat: "This uses the last token of the recorded display name as the surname. Patronymics, compound surnames, married names, and inconsistent spellings can distort transitions.",
+  },
+  "Data Completeness Heatmap": {
+    what: "Scores each tree and century by how complete basic evidence is: birth year, death year, parents, and spouse links.",
+    read: "Greener cells are better documented. Redder cells need more research or contain people with only partial vital/family data.",
+    caveat: "A low score is not automatically an error. Recent living people may lack death dates, and medieval lines may legitimately have sparse spouse or parent records.",
+  },
+  "Lifespan Box Plot": {
+    what: "Summarizes lifespan distribution by birth century for people with both birth and death years.",
+    read: "Each box shows the middle range of lifespans, with the center line marking the median. Wide spreads indicate more variation or mixed data quality.",
+    caveat: "People without both years are excluded. Older centuries can be biased toward notable adults because infant and ordinary-person records are less complete.",
+  },
+  "Pedigree Collapse Fan Chart": {
+    what: "Counts unique known ancestors per generation from the current home person and compares them to the theoretical maximum.",
+    read: "A unique/expected ratio below 1 means the same ancestor appears through multiple paths, or that some ancestors are unknown.",
+    caveat: "This cannot distinguish true endogamy from missing data by itself. Review repeated ancestor names before drawing genealogical conclusions.",
+  },
+  "Event Type Frequency Timeline": {
+    what: "Counts recorded event types by century across the selected trees.",
+    read: "A century with many births, deaths, marriages, residences, or burials shows where the tree has richer event coverage.",
+    caveat: "This is a source-recording pattern, not a direct historical event count. Imported GEDCOM conventions strongly affect the result.",
+  },
+  "Country Of Birth Treemap": {
+    what: "Groups birth records by normalized country and sizes each block by count.",
+    read: "Larger blocks identify the dominant country-level origins in the selected trees.",
+    caveat: "Country labels follow normalized modern geocoding. Historical borders and ambiguous places may be simplified.",
+  },
+  "Generation Depth by Branch": {
+    what: "Shows how far each known ancestor branch extends from the current home person.",
+    read: "Each row is a branch. Larger, darker circles mean more known ancestors at that generation; the right side shows the deepest generation reached.",
+    caveat: "Depth measures recorded parent links only. It does not measure source quality or biological certainty.",
+  },
+  "Animated Great River Flow": {
+    what: "Turns births over time into a widening river to show when the selected family data expands or contracts.",
+    read: "Wider sections mean more recorded births in that time period. Narrow sections indicate sparse records or fewer loaded branches.",
+    caveat: "This is a stylized volume chart. It should not be read as descendant count or population size.",
+  },
+  "Animated Timeline Heartbeat": {
+    what: "Animates birth counts by decade so periods of rapid family-record growth pulse into view.",
+    read: "The strongest pulses mark decades with the most recorded births in the selected trees.",
+    caveat: "The heartbeat is record-density over time, not a statement about historical fertility or survival.",
+  },
+  "Animated DNA Inheritance Cascade": {
+    what: "Shows theoretical autosomal contribution from one ancestor at each generation, halving each generation.",
+    read: "Bars shrink by generation. Labels include the number of known unique ancestors found at that generation.",
+    caveat: "Real DNA inheritance is stochastic. Past several generations, a documented ancestor may contribute no detectable DNA.",
+  },
+  "Animated Web Of Marriages": {
+    what: "Draws spouse pairs as a network, weighted by number of recorded children.",
+    read: "Thicker links are couples with more recorded children. Dense areas can indicate highly connected branches or repeated intermarriage.",
+    caveat: "The layout is schematic. Physical distance on the chart does not mean geographic or genetic distance.",
+  },
+  "Animated Ancestor Burn": {
+    what: "Lights up direct ancestor generations from the current home person outward.",
+    read: "Each illuminated ring represents another generation of recorded direct ancestors.",
+    caveat: "It emphasizes direct-line coverage, not collateral relatives, source quality, or relationship certainty.",
+  },
+  "Animated Population Wave": {
+    what: "Separates recorded births and deaths by decade to show growth and attrition patterns in the selected trees.",
+    read: "Compare the birth and death panels to see periods where the record set expands, contracts, or has better vital coverage.",
+    caveat: "Many GEDCOMs omit death dates for living or uncertain people, so recent death bars are often incomplete.",
+  },
+  "Population Wave": {
+    what: "Separates recorded births and deaths by decade to show growth and attrition patterns in the selected trees.",
+    read: "Compare the birth and death panels to see periods where the record set expands, contracts, or has better vital coverage.",
+    caveat: "Many GEDCOMs omit death dates for living or uncertain people, so recent death bars are often incomplete.",
+  },
+};
+
+function _kfVizExplanationHtml(title, explanation) {
+  const info = explanation || OFFLINE_VIZ_EXPLANATIONS[title];
+  if (!info) return "";
+  const items = [
+    ["What it shows", info.what],
+    ["How to read it", info.read],
+    ["Caveat", info.caveat],
+  ].filter(([, text]) => text);
+  if (!items.length) return "";
+  return `<div class="explain">` + items.map(([label, text]) =>
+    `<div class="explainItem"><div class="label">${escHtml(label)}</div><div>${escHtml(text)}</div></div>`
+  ).join("") + `</div>`;
+}
+
 function _kfVizPage(title, subtitle, body, queries = []) {
   const queryHtml = queries.length ? `<details class="q"><summary>Offline query/code</summary>` +
     queries.map(q => `<div class="qname">${escHtml(q.name || "query")}</div><pre>${escHtml((q.sql || q.code || "").trim())}</pre>`).join("") +
     `</details>` : "";
+  const explanationHtml = _kfVizExplanationHtml(title);
   return `<style>
     .localViz { --ink:#172033; --muted:#667085; --line:#d9e1ec; --panel:#f7f9fc; color:var(--ink); }
     .localViz h1 { margin:0 0 3px; font-size:20px; letter-spacing:-0.02em; }
@@ -8860,11 +8963,13 @@ function _kfVizPage(title, subtitle, body, queries = []) {
     .localViz .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
     .localViz .metric { font-size:22px; font-weight:800; }
     .localViz .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.07em; }
+    .localViz .explain { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:9px; margin:0 0 14px; }
+    .localViz .explainItem { background:#fff; border:1px solid var(--line); border-left:4px solid #2a4a8c; border-radius:8px; padding:9px 10px; color:#344054; }
     .localViz details.q { margin-top:14px; border-top:1px solid var(--line); padding-top:8px; color:var(--muted); }
     .localViz details.q summary { cursor:pointer; font-weight:700; color:#475467; }
     .localViz .qname { margin-top:8px; font-weight:700; color:#475467; }
     .localViz pre { white-space:pre-wrap; background:#fff; border:1px solid var(--line); border-radius:7px; padding:8px; color:#344054; overflow:auto; }
-  </style><div class="localViz"><h1>${escHtml(title)}</h1><div class="sub">${escHtml(subtitle)}</div>${body}${queryHtml}</div>`;
+  </style><div class="localViz"><h1>${escHtml(title)}</h1><div class="sub">${escHtml(subtitle)}</div>${explanationHtml}${body}${queryHtml}</div>`;
 }
 
 function _kfVizPalette(i) {
@@ -8888,6 +8993,8 @@ function _kfVizBarSvg(rows, opts = {}) {
   const innerW = width - ml - mr, innerH = height - mt - mb;
   const max = Math.max(1, ...rows.map(r => Number(r.value) || 0));
   const bw = innerW / Math.max(rows.length, 1);
+  const maxLabels = opts.maxLabels || 30;
+  const labelEvery = opts.labelEvery || Math.max(1, Math.ceil(rows.length / maxLabels));
   const bars = rows.map((r, i) => {
     const v = Number(r.value) || 0;
     const h = (v / max) * innerH;
@@ -8898,6 +9005,7 @@ function _kfVizBarSvg(rows, opts = {}) {
     return `<rect class="${opts.animate ? "viz-grow" : ""}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${r.color || _kfVizColor(i, 0.86)}"${delay}><title>${escHtml(r.label)}: ${v}</title></rect>`;
   }).join("");
   const labels = rows.map((r, i) => {
+    if (i !== 0 && i !== rows.length - 1 && i % labelEvery !== 0) return "";
     const x = ml + i * bw + bw / 2;
     return `<text x="${x.toFixed(1)}" y="${height - mb + 18}" transform="rotate(45 ${x.toFixed(1)} ${height - mb + 18})" font-size="10" fill="#667085">${escHtml(_kfVizShortLabel(r.label, opts.labelChars || 16))}</text>`;
   }).join("");
@@ -9002,6 +9110,39 @@ function _kfVizProject(lon, lat, width = 920, height = 430) {
   return [((Number(lon) + 180) / 360) * width, ((85 - Number(lat)) / 170) * height];
 }
 
+const _kfVizWorldPathCache = new Map();
+function _kfVizWorldMapLayer(width = 920, height = 430) {
+  const key = `${width}x${height}`;
+  if (_kfVizWorldPathCache.has(key)) return _kfVizWorldPathCache.get(key);
+  if (!world || !world.objects || !world.objects.countries) {
+    const grid = `<g stroke="#c8d5e4" stroke-width=".7" opacity=".55">` +
+      `${[-120,-60,0,60,120].map(lon => `<line x1="${_kfVizProject(lon,-80,width,height)[0]}" x2="${_kfVizProject(lon,80,width,height)[0]}" y1="0" y2="${height}"/>`).join("")}` +
+      `${[-40,0,40].map(lat => `<line x1="0" x2="${width}" y1="${_kfVizProject(0,lat,width,height)[1]}" y2="${_kfVizProject(0,lat,width,height)[1]}"/>`).join("")}` +
+    `</g>`;
+    _kfVizWorldPathCache.set(key, grid);
+    return grid;
+  }
+  const transform = d3.geoTransform({
+    point(lon, lat) {
+      const p = _kfVizProject(lon, lat, width, height);
+      this.stream.point(p[0], p[1]);
+    },
+  });
+  const path = d3.geoPath(transform);
+  const countries = topojson.feature(world, world.objects.countries);
+  const paths = (countries.features || []).map(f => {
+    const d = path(f);
+    return d ? `<path d="${d}"/>` : "";
+  }).join("");
+  const layer = `<g fill="#f8f2e6" stroke="#b8c3d2" stroke-width=".55">${paths}</g>` +
+    `<g stroke="#d8e2ee" stroke-width=".6" opacity=".65">` +
+      `${[-120,-60,0,60,120].map(lon => `<line x1="${_kfVizProject(lon,-80,width,height)[0]}" x2="${_kfVizProject(lon,80,width,height)[0]}" y1="0" y2="${height}"/>`).join("")}` +
+      `${[-40,0,40].map(lat => `<line x1="0" x2="${width}" y1="${_kfVizProject(0,lat,width,height)[1]}" y2="${_kfVizProject(0,lat,width,height)[1]}"/>`).join("")}` +
+    `</g>`;
+  _kfVizWorldPathCache.set(key, layer);
+  return layer;
+}
+
 function _kfVizFlowSvg(rows, animated = false) {
   const width = 920, height = 430;
   const data = rows.map(r => ({
@@ -9021,7 +9162,7 @@ function _kfVizFlowSvg(rows, animated = false) {
     const [x2, y2] = _kfVizProject(r.to_lon, r.to_lat, width, height);
     return `<circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="2.6" fill="${_kfVizColor(i, 0.72)}"/>`;
   }).join("");
-  return `<svg viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#eef6fb"/><g stroke="#c8d5e4" stroke-width=".7" opacity=".55">${[-120,-60,0,60,120].map(lon => `<line x1="${_kfVizProject(lon,-80,width,height)[0]}" x2="${_kfVizProject(lon,80,width,height)[0]}" y1="0" y2="${height}"/>`).join("")}${[-40,0,40].map(lat => `<line x1="0" x2="${width}" y1="${_kfVizProject(0,lat,width,height)[1]}" y2="${_kfVizProject(0,lat,width,height)[1]}"/>`).join("")}</g>${paths}${dots}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#eaf4fb"/>${_kfVizWorldMapLayer(width, height)}${paths}${dots}</svg>`;
 }
 
 function _kfRootIdForViz() {
@@ -9062,11 +9203,114 @@ function _kfAncestorRingSvg(stats, burn = false) {
   const rings = stats.map(s => {
     const r = 28 + s.generation * (220 / maxGen);
     const ratio = s.expected ? s.unique / s.expected : 0;
-    return `<circle class="${burn ? "burn" : ""}" cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${_kfVizColor(s.generation, Math.max(0.18, ratio))}" stroke-width="${Math.max(5, 18 / Math.sqrt(s.generation)).toFixed(1)}" style="animation-delay:${(s.generation * 0.14).toFixed(2)}s"><title>Generation ${s.generation}: ${s.unique} unique of ${s.expected}</title></circle>` +
-      `<text x="${cx + r + 8}" y="${cy - 4}" font-size="11" fill="#667085">g${s.generation}: ${s.unique}/${s.expected}</text>`;
+    return `<circle class="${burn ? "burn" : ""}" cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${_kfVizColor(s.generation, Math.max(0.18, ratio))}" stroke-width="${Math.max(5, 18 / Math.sqrt(s.generation)).toFixed(1)}" style="animation-delay:${(s.generation * 0.14).toFixed(2)}s"><title>Generation ${s.generation}: ${s.unique} unique of ${s.expected}</title></circle>`;
+  }).join("");
+  const legend = stats.map((s, i) => {
+    const y = 36 + i * 19;
+    return `<line x1="705" x2="731" y1="${y}" y2="${y}" stroke="${_kfVizColor(s.generation, 0.85)}" stroke-width="5" stroke-linecap="round"/>` +
+      `<text x="738" y="${y + 4}" font-size="11" fill="#667085">g${s.generation}: ${s.unique}/${s.expected}</text>`;
   }).join("");
   const style = burn ? `<style>@keyframes burn{from{opacity:.05;stroke-width:1}to{opacity:1}}.burn{animation:burn .75s ease-out both}</style>` : "";
-  return `<svg viewBox="0 0 ${width} ${height}">${style}<rect width="${width}" height="${height}" fill="#fff"/><circle cx="${cx}" cy="${cy}" r="11" fill="#172033"/><text x="${cx}" y="${cy - 18}" text-anchor="middle" font-size="12" fill="#344054">home</text>${rings}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}">${style}<rect width="${width}" height="${height}" fill="#fff"/><circle cx="${cx}" cy="${cy}" r="11" fill="#172033"/><text x="${cx}" y="${cy - 18}" text-anchor="middle" font-size="12" fill="#344054">home</text>${rings}${legend}</svg>`;
+}
+
+function _kfAncestorBranchRoots() {
+  const root = _kfRootIdForViz();
+  if (!root || !lastParentsOf || !lastIndiById) return [];
+  const parents = lastParentsOf.get(root) || [];
+  const parentSpecs = [
+    { id: parents[0], label: "Paternal", rel: "father" },
+    { id: parents[1], label: "Maternal", rel: "mother" },
+  ].filter(x => x.id && lastIndiById.has(x.id));
+  const branches = [];
+  for (const p of parentSpecs) {
+    const gps = lastParentsOf.get(p.id) || [];
+    const gpSpecs = [
+      { id: gps[0], label: `${p.label} grandfather`, startGen: 2 },
+      { id: gps[1], label: `${p.label} grandmother`, startGen: 2 },
+    ].filter(x => x.id && lastIndiById.has(x.id));
+    if (gpSpecs.length) branches.push(...gpSpecs);
+    else branches.push({ id: p.id, label: `${p.label} ${p.rel}`, startGen: 1 });
+  }
+  return branches;
+}
+
+function _kfAncestorBranchStats(maxGen = 12) {
+  const roots = _kfAncestorBranchRoots();
+  const out = [];
+  for (const branch of roots) {
+    const levels = new Map();
+    const seen = new Set();
+    const queue = [{ id: branch.id, gen: branch.startGen }];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (!cur || cur.gen > maxGen || seen.has(cur.id)) continue;
+      seen.add(cur.id);
+      let set = levels.get(cur.gen);
+      if (!set) { set = new Set(); levels.set(cur.gen, set); }
+      set.add(cur.id);
+      if (cur.gen >= maxGen) continue;
+      const parents = lastParentsOf.get(cur.id) || [];
+      if (parents[0]) queue.push({ id: parents[0], gen: cur.gen + 1 });
+      if (parents[1]) queue.push({ id: parents[1], gen: cur.gen + 1 });
+    }
+    const generations = [...levels.keys()].sort((a, b) => a - b);
+    const maxGeneration = generations.length ? Math.max(...generations) : branch.startGen;
+    let expectedToDepth = 0;
+    for (let g = branch.startGen; g <= maxGeneration; g++) expectedToDepth += 2 ** (g - branch.startGen);
+    const person = lastIndiById.get(branch.id);
+    out.push({
+      ...branch,
+      name: person?.name || branch.id,
+      maxGeneration,
+      unique: seen.size,
+      completeness: expectedToDepth ? Math.min(1, seen.size / expectedToDepth) : 0,
+      generations: Array.from({ length: maxGen - branch.startGen + 1 }, (_, i) => {
+        const generation = branch.startGen + i;
+        return {
+          generation,
+          known: levels.get(generation)?.size || 0,
+          expected: 2 ** (generation - branch.startGen),
+        };
+      }),
+    });
+  }
+  return out.sort((a, b) => b.maxGeneration - a.maxGeneration || b.unique - a.unique || a.label.localeCompare(b.label));
+}
+
+function _kfAncestorBranchDepthSvg(branches) {
+  const width = 920;
+  const rowH = 66;
+  const height = Math.max(300, 86 + branches.length * rowH);
+  const ml = 205, mr = 140, mt = 50;
+  const maxGen = Math.max(1, ...branches.flatMap(b => b.generations.map(g => g.generation)), ...branches.map(b => b.maxGeneration));
+  const x0 = ml, x1 = width - mr;
+  const xFor = gen => x0 + ((gen - 1) / Math.max(1, maxGen - 1)) * (x1 - x0);
+  const axis = Array.from({ length: maxGen }, (_, i) => i + 1).map(gen => {
+    const x = xFor(gen);
+    return `<line x1="${x}" x2="${x}" y1="${mt - 18}" y2="${height - 28}" stroke="#edf1f6"/>` +
+      `<text x="${x}" y="${mt - 25}" text-anchor="middle" font-size="10" fill="#667085">g${gen}</text>`;
+  }).join("");
+  const rows = branches.map((b, i) => {
+    const y = mt + i * rowH + 28;
+    const color = _kfVizColor(i, 0.9);
+    const barStart = xFor(b.startGen);
+    const barEnd = xFor(b.maxGeneration);
+    const cells = b.generations.filter(g => g.known).map(g => {
+      const ratio = Math.min(1, g.known / Math.max(1, g.expected));
+      const r = Math.max(5, Math.min(17, 4 + Math.sqrt(g.known) * 3));
+      return `<circle cx="${xFor(g.generation)}" cy="${y}" r="${r.toFixed(1)}" fill="${_kfVizColor(i, 0.25 + 0.62 * ratio)}" stroke="${color}" stroke-width="1.5"><title>${escHtml(b.label)} generation ${g.generation}: ${g.known}/${g.expected} known</title></circle>` +
+        `<text x="${xFor(g.generation)}" y="${y + 3.5}" text-anchor="middle" font-size="9" font-weight="700" fill="#172033">${g.known}</text>`;
+    }).join("");
+    return `<text x="18" y="${y - 8}" font-size="12" font-weight="800" fill="#172033">${escHtml(b.label)}</text>` +
+      `<text x="18" y="${y + 9}" font-size="10.5" fill="#667085">${escHtml(_kfVizShortLabel(b.name, 27))}</text>` +
+      `<line x1="${barStart}" x2="${barEnd}" y1="${y}" y2="${y}" stroke="${_kfVizColor(i, 0.2)}" stroke-width="18" stroke-linecap="round"/>` +
+      cells +
+      `<text x="${width - 126}" y="${y - 5}" font-size="11" font-weight="800" fill="#172033">to g${b.maxGeneration}</text>` +
+      `<text x="${width - 126}" y="${y + 12}" font-size="10" fill="#667085">${b.unique} known · ${Math.round(b.completeness * 100)}%</text>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#fff"/>` +
+    `<text x="${x0}" y="18" font-size="11" fill="#667085">generation from home person</text>${axis}${rows}</svg>`;
 }
 
 const _KF_COUNTRY_LABELS = { US:"USA", GB:"United Kingdom", UK:"United Kingdom", FR:"France", CA:"Canada", DE:"Germany", IE:"Ireland", IT:"Italy", MX:"Mexico", NL:"Netherlands", ES:"Spain", PL:"Poland", SE:"Sweden", NO:"Norway", DK:"Denmark" };
@@ -9200,9 +9444,19 @@ function _kfVizPedigreeCollapse() {
 }
 
 function _kfVizGenerationDepth() {
-  const stats = _kfAncestorStats(12);
-  const body = _kfAncestorRingSvg(stats) + `<div class="note">Each ring is one ancestor generation. Opacity reflects how complete that generation is relative to the theoretical 2^n ancestors.</div>`;
-  return _kfVizPage("Generation Depth Sunburst", "Ancestor depth from the current home person", body, [{ name: "browser family graph", code: "Walk parent links from the current home person and summarize unique ancestors per generation." }]);
+  const branches = _kfAncestorBranchStats(12);
+  if (!branches.length) {
+    return _kfVizPage("Generation Depth by Branch", "Ancestor depth from the current home person", `<div class="card">No parent branches are recorded for the current home person.</div>`, [{ name: "browser family graph", code: "Find the current home person's parent/grandparent branches and walk each branch independently." }]);
+  }
+  const deepest = branches[0];
+  const weakest = branches.slice().sort((a, b) => a.maxGeneration - b.maxGeneration || a.completeness - b.completeness)[0];
+  const cards = `<div class="grid">` +
+    `<div class="card"><div class="label">Deepest branch</div><div class="metric">g${deepest.maxGeneration}</div><div class="note">${escHtml(deepest.label)} · ${escHtml(deepest.name)}</div></div>` +
+    `<div class="card"><div class="label">Shallowest branch</div><div class="metric">g${weakest.maxGeneration}</div><div class="note">${escHtml(weakest.label)} · ${escHtml(weakest.name)}</div></div>` +
+    `<div class="card"><div class="label">Branches shown</div><div class="metric">${branches.length}</div><div class="note">based on recorded parent/grandparent links</div></div>` +
+  `</div>`;
+  const body = cards + _kfAncestorBranchDepthSvg(branches) + `<div class="note">Numbers inside circles are known ancestors at that generation within that branch. Percentages compare known unique ancestors to the theoretical slots through the deepest reached generation.</div>`;
+  return _kfVizPage("Generation Depth by Branch", "Ancestor depth from the current home person", body, [{ name: "browser family graph", code: "Find the current home person's parent/grandparent branches and walk each branch independently, counting known ancestors by generation." }]);
 }
 
 function _kfVizDnaCascade() {
@@ -9248,7 +9502,7 @@ function _kfVizGreatRiver() {
 function _kfVizTimelineHeartbeat() {
   const sql = `SELECT CAST(birth_year / 10 AS INTEGER) * 10 AS decade, COUNT(*) AS births FROM individuals WHERE birth_year IS NOT NULL GROUP BY decade ORDER BY decade`;
   const rows = _kfVizSqlRows(sql, 1000);
-  return _kfVizPage("Animated Timeline Heartbeat", "Birth pulses by decade", _kfVizBarSvg(rows.map(r => ({ label: String(r.decade), value: r.births })), { animate: true, bottom: 70 }), [{ name: "births by decade", sql }]);
+  return _kfVizPage("Animated Timeline Heartbeat", "Birth pulses by decade", _kfVizBarSvg(rows.map(r => ({ label: String(r.decade), value: r.births })), { animate: true, bottom: 70, maxLabels: 22, labelChars: 5 }), [{ name: "births by decade", sql }]);
 }
 
 function _kfVizMarriageWeb() {
