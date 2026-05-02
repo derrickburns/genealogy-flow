@@ -11,6 +11,53 @@ const _spEl = $("selectedPerson");
 const _personEmptyEl = $("personEmpty");
 const _clusterEl = $("selectedCluster");
 const _clusterEmptyEl = $("clusterEmpty");
+const _mobileSheetHandleEl = $("mobileSheetHandle");
+const _mobileSheetTitleEl = $("mobileSheetTitle");
+
+function _kfUpdateMobileSheetTitle(tab) {
+  if (!_mobileSheetTitleEl) return;
+  _mobileSheetTitleEl.textContent =
+    tab === "person" ? "Person" :
+    tab === "cluster" ? "Cluster" :
+    "Kindred Genealogist";
+}
+
+function _kfSyncMobileControlHeight() {
+  const ui = $("ui");
+  if (!ui) return;
+  const h = Math.ceil(ui.getBoundingClientRect().height) + 8;
+  document.documentElement.style.setProperty("--kf-mobile-ui-h", `${Math.max(78, h)}px`);
+}
+
+function _kfSetMobileSheetState(state) {
+  const panel = $("panel");
+  if (!panel) return;
+  const next = state === "full" || state === "open" ? state : "peek";
+  panel.dataset.sheet = next;
+  if (_mobileSheetHandleEl) {
+    _mobileSheetHandleEl.setAttribute("aria-expanded", next !== "peek" ? "true" : "false");
+    _mobileSheetHandleEl.setAttribute(
+      "aria-label",
+      next === "peek" ? "Open details panel" : next === "open" ? "Expand details panel" : "Collapse details panel",
+    );
+  }
+  requestAnimationFrame(() => { resize(); renderMigBar(); });
+}
+
+function _kfPromoteMobileSheet() {
+  const cur = $("panel")?.dataset.sheet || "peek";
+  _kfSetMobileSheetState(cur === "peek" ? "open" : "full");
+}
+
+function _kfDemoteMobileSheet() {
+  const cur = $("panel")?.dataset.sheet || "peek";
+  _kfSetMobileSheetState(cur === "full" ? "open" : "peek");
+}
+
+function _kfBumpMobileSheetForTab(tab) {
+  if (!_kfIsMobileLayout()) return;
+  _kfSetMobileSheetState(tab === "chat" ? "full" : "open");
+}
 
 function _kfSetSideTab(tab) {
   const next = tab === "person" || tab === "cluster" ? tab : "chat";
@@ -20,10 +67,64 @@ function _kfSetSideTab(tab) {
   document.querySelectorAll("#chatPanel .sidePane").forEach(pane => {
     pane.classList.toggle("on", pane.id === `${next}Pane`);
   });
+  _kfUpdateMobileSheetTitle(next);
+  _kfBumpMobileSheetForTab(next);
 }
 document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
   btn.addEventListener("click", () => _kfSetSideTab(btn.dataset.sideTab));
 });
+_kfUpdateMobileSheetTitle("chat");
+_kfSetMobileSheetState("peek");
+_kfSyncMobileControlHeight();
+window.addEventListener("resize", () => {
+  _kfSyncMobileControlHeight();
+  if (!_kfIsMobileLayout()) _kfSetMobileSheetState("peek");
+});
+const _kfMobileUiResizeObserver = typeof ResizeObserver !== "undefined"
+  ? new ResizeObserver(() => _kfSyncMobileControlHeight())
+  : null;
+if (_kfMobileUiResizeObserver && $("ui")) _kfMobileUiResizeObserver.observe($("ui"));
+if (_mobileSheetHandleEl) {
+  let drag = null;
+  _mobileSheetHandleEl.addEventListener("pointerdown", e => {
+    if (!_kfIsMobileLayout()) return;
+    drag = { y: e.clientY, moved: false };
+    _mobileSheetHandleEl.setPointerCapture?.(e.pointerId);
+  });
+  _mobileSheetHandleEl.addEventListener("pointermove", e => {
+    if (!drag) return;
+    if (Math.abs(e.clientY - drag.y) > 8) drag.moved = true;
+  });
+  _mobileSheetHandleEl.addEventListener("pointerup", e => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    const moved = drag.moved;
+    drag = null;
+    if (!moved) {
+      const cur = $("panel")?.dataset.sheet || "peek";
+      if (cur === "peek") _kfSetMobileSheetState("open");
+      else if (cur === "open") _kfSetMobileSheetState("full");
+      else _kfSetMobileSheetState("peek");
+    } else if (dy < -45) {
+      _kfPromoteMobileSheet();
+    } else if (dy > 45) {
+      _kfDemoteMobileSheet();
+    }
+  });
+  _mobileSheetHandleEl.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const cur = $("panel")?.dataset.sheet || "peek";
+      _kfSetMobileSheetState(cur === "peek" ? "open" : "peek");
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      _kfPromoteMobileSheet();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      _kfDemoteMobileSheet();
+    }
+  });
+}
 
 const EVENT_LABEL = {
   BIRT: "Born",
@@ -401,7 +502,7 @@ function _kfShowClusterCard(c, opts = {}) {
     _kfClusterDigestHtml(c, rows) +
     _kfClusterIssuesHtml(c, rows) +
     _kfClusterQuestionHtml(rows) +
-    `<div class="cluster-list-head"><span>People</span><span>${escHtml(orderText)}</span></div>` +
+    `<div class="cluster-list-head"><span class="cluster-list-title">People</span><span class="cluster-list-order">${escHtml(orderText)}</span></div>` +
     `<div class="cluster-list">${rows.map(r => r.html).join("")}</div>` +
     `<div class="cluster-actions"><button type="button" class="cluster-ask" data-ask="${escHtml(prompt)}">Explain this cluster</button></div>`;
   _clusterEl.hidden = false;
@@ -630,6 +731,7 @@ function _kfShowPersonCard(di) {
   _kfBindQuestionChips(_spEl);
   _spEl.querySelector(".sp-dismiss").addEventListener("click", () => {
     _kfHidePersonCard();
+    if (_kfIsMobileLayout()) _kfSetMobileSheetState("peek");
     highlightedDwell = -1;
     highlightInferredYear = -1;
     highlightInferredSrcYear = -1;

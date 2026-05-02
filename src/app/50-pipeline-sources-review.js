@@ -892,7 +892,16 @@ async function processFile(file) {
   welcome.classList.add("hidden");
   localStorage.setItem("kf_returning", "1");
   stats.textContent = `reading ${file.name}...`;
-  const text = await file.text();
+  let text = await file.text();
+  let parsedJson = null;
+  const isPublicDemoFile = DEMO_GED_URL && /^demo\.json$/i.test(file.name || "");
+  if (text.trimStart().startsWith("{")) {
+    parsedJson = JSON.parse(text);
+    if (isPublicDemoFile) {
+      parsedJson = _kfSanitizePublicDemoJson(parsedJson);
+      text = JSON.stringify(parsedJson);
+    }
+  }
   window._lastLoadedGedcomRaw = text; // captured for cloud save
   // Multi-source: append this tree to the proxy DB. Prior chat is preserved
   // (it's still factually about the trees that remain loaded). The proxy
@@ -920,8 +929,8 @@ async function processFile(file) {
   await ensureGazetteer();
   stats.textContent = "parsing GEDCOM...";
   await new Promise(r => requestAnimationFrame(r));
-  const { individuals, families } = text.trimStart().startsWith("{")
-    ? parseGedcomFromJson(JSON.parse(text))
+  const { individuals, families } = parsedJson
+    ? parseGedcomFromJson(parsedJson)
     : parseGedcom(text);
   const { indiById, indiIdxById, parentsOf, isParent, childrenOf } = computeRelations(individuals, families);
   lastIndividuals = individuals; lastIndiById = indiById; lastIndiIdxById = indiIdxById;

@@ -34,8 +34,21 @@ function childIds(value: unknown): string[] {
   }).filter(Boolean);
 }
 
-function isPresumedLiving(ind: Record<string, any>, currentYear: number): boolean {
-  if (numberOrNull(ind.death_year ?? ind.deathYear) != null) return false;
+function nameLooksPrivate(value: unknown): boolean {
+  return /\b(living|private|redacted|withheld)\b/i.test(String(value ?? ""));
+}
+
+function hasExplicitDeathEvidence(ind: Record<string, any>): boolean {
+  if (numberOrNull(ind.death_year ?? ind.deathYear) != null) return true;
+  return records(ind.events).some(event => {
+    const type = String(event.tag ?? event.type ?? "").toUpperCase();
+    return type === "DEAT" && (event.year != null || event.date != null || event.place != null);
+  });
+}
+
+function isPrivateDemoPerson(ind: Record<string, any>, currentYear: number): boolean {
+  if (nameLooksPrivate(ind.name)) return true;
+  if (hasExplicitDeathEvidence(ind)) return false;
   const birth = numberOrNull(ind.birth_year ?? ind.birthYear);
   if (birth == null) return true;
   return currentYear - birth < LIVING_MAX_AGE;
@@ -72,7 +85,7 @@ function sanitizePublicDemo(json: any): any {
 
   const individuals = records(json?.individuals).map(ind => {
     const id = idOf(ind.id ?? ind.xref ?? ind.individual_id);
-    const living = isPresumedLiving(ind, currentYear);
+    const living = isPrivateDemoPerson(ind, currentYear);
     if (living) {
       livingCount++;
       livingLabels.set(id, `Living person ${livingCount}`);
@@ -84,8 +97,8 @@ function sanitizePublicDemo(json: any): any {
       sex: living ? "U" : (ind.sex ?? "U"),
       birth_year: living ? null : (numberOrNull(ind.birth_year ?? ind.birthYear)),
       death_year: living ? null : (numberOrNull(ind.death_year ?? ind.deathYear)),
-      famc: ind.famc ?? ind.family_child ?? null,
-      fams: Array.isArray(ind.fams) ? ind.fams : [],
+      famc: living ? null : (ind.famc ?? ind.family_child ?? null),
+      fams: living ? [] : (Array.isArray(ind.fams) ? ind.fams : []),
       events: living ? [] : records(ind.events).map(cleanEvent),
       notes: [],
       sources: [],
@@ -99,13 +112,13 @@ function sanitizePublicDemo(json: any): any {
     const hasLivingMember = [husb, wife, ...chil].some(id => id && livingIds.has(id));
     return {
       id: idOf(fam.id ?? fam.xref ?? fam.family_id),
-      husb,
-      wife,
-      chil,
+      husb: husb && livingIds.has(husb) ? null : husb,
+      wife: wife && livingIds.has(wife) ? null : wife,
+      chil: chil.filter(id => !livingIds.has(id)),
       marr: hasLivingMember ? null : cleanFamilyEvent(fam.marr),
       div: hasLivingMember ? null : cleanFamilyEvent(fam.div),
     };
-  });
+  }).filter(fam => fam.husb || fam.wife || fam.chil.length);
 
   return {
     individuals,

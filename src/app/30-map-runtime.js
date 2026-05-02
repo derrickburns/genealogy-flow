@@ -63,7 +63,7 @@ function _kfPickClusterAt(x, y) {
     return;
   }
 
-  const HIT_RADIUS = 14;
+  const HIT_RADIUS = _kfIsMobileLayout() ? 24 : 14;
   const HIT_R2 = HIT_RADIUS * HIT_RADIUS;
   rebuildPersonMarkers();
   let bestI = -1, bestDist = Infinity;

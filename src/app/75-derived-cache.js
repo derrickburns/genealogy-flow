@@ -13,6 +13,7 @@ const _kfDerivedCache = {
   cluster: new Map(),
   clusterIndividuals: null,
   activeClusterLabel: "",
+  activeDigestMode: "",
   lastChromeKey: "",
 };
 
@@ -64,6 +65,48 @@ function _kfEventDwellKey(year, place, typeCode = "") {
   return `${year}|${place || ""}|${typeCode}`;
 }
 
+function _kfYearsFromDateText(date) {
+  const matches = String(date || "").match(/\b\d{3,4}\b/g) || [];
+  return matches
+    .map(v => parseInt(v, 10))
+    .filter(y => Number.isFinite(y) && y >= 1000 && y <= 2100);
+}
+
+function _kfEventDateBounds(ev) {
+  const date = String(ev?.date || "").trim();
+  const upper = date.toUpperCase();
+  const years = _kfYearsFromDateText(date);
+  const fallbackStart = Number(ev?.year);
+  const fallbackEnd = Number(ev?.year_end ?? ev?.year);
+  if (!years.length && Number.isFinite(fallbackStart)) {
+    return {
+      earliest: fallbackStart,
+      latest: Number.isFinite(fallbackEnd) ? fallbackEnd : fallbackStart,
+      label: String(ev?.year ?? ""),
+    };
+  }
+  if (!years.length) return { earliest: null, latest: null, label: "" };
+  const first = years[0];
+  const last = years[years.length - 1];
+  if (/\bBEF(?:ORE)?\b/.test(upper)) return { earliest: null, latest: first, label: date || String(first) };
+  if (/\bAFT(?:ER)?\b/.test(upper)) return { earliest: first, latest: null, label: date || String(first) };
+  if (/\b(FROM|BET)\b/.test(upper) && years.length >= 2) return { earliest: first, latest: last, label: date || `${first}-${last}` };
+  if (/\bTO\b/.test(upper) && !/\bFROM\b/.test(upper)) return { earliest: null, latest: last, label: date || String(last) };
+  if (/\bFROM\b/.test(upper) && years.length === 1) return { earliest: first, latest: null, label: date || String(first) };
+  if (/\b(ABT|ABOUT|EST|CAL|CIRCA|CA)\b/.test(upper)) return { earliest: first - 2, latest: first + 2, label: date || String(first) };
+  if (years.length >= 2) return { earliest: first, latest: last, label: date || `${first}-${last}` };
+  return { earliest: first, latest: first, label: date || String(first) };
+}
+
+function _kfDateBoundsFromEventOrYear(ev, year) {
+  if (ev) return _kfEventDateBounds(ev);
+  if (Number.isFinite(Number(year))) {
+    const y = Number(year);
+    return { earliest: y, latest: y, label: String(y) };
+  }
+  return { earliest: null, latest: null, label: "" };
+}
+
 function _kfTreeFacts() {
   if (_kfDerivedCache.treeFacts &&
       _kfDerivedCache.treeFacts.individuals === lastIndividuals &&
@@ -89,6 +132,13 @@ function _kfTreeFacts() {
       .sort((a, b) => Number(a.year) - Number(b.year));
     const birth = Number.isFinite(Number(ind.birth_year)) ? Number(ind.birth_year) : null;
     const death = Number.isFinite(Number(ind.death_year)) ? Number(ind.death_year) : null;
+    const birthEv = events.find(ev => ev.type === "BIRT") || null;
+    const deathEv = events.find(ev => ev.type === "DEAT") || null;
+    const birthBounds = _kfDateBoundsFromEventOrYear(birthEv, birth);
+    const deathBounds = _kfDateBoundsFromEventOrYear(deathEv, death);
+    if (birthBounds.earliest != null && deathBounds.latest != null && birthBounds.earliest > deathBounds.latest + 1) {
+      issues.push(`birth date is after recorded death (${birthBounds.label || birthBounds.earliest})`);
+    }
     const seenPlaces = new Set();
     let vaguePlaces = 0;
     let rangedEvents = 0;
@@ -103,8 +153,13 @@ function _kfTreeFacts() {
       if (!exactEventBuckets.has(exactKey)) exactEventBuckets.set(exactKey, ev);
       if (!fallbackEventBuckets.has(fallbackKey)) fallbackEventBuckets.set(fallbackKey, ev);
       const eventLabel = _kfEventPlainLabel(ev.type, { noun: true });
-      if (birth != null && y < birth - 1) issues.push(`${eventLabel} before birth (${y})`);
-      if (death != null && y > death + 1) issues.push(`${eventLabel} after death (${y})`);
+      const bounds = _kfEventDateBounds(ev);
+      if (ev.type !== "BIRT" && birthBounds.earliest != null && bounds.latest != null && bounds.latest < birthBounds.earliest - 1) {
+        issues.push(`${eventLabel} is before recorded birth (${bounds.label || y})`);
+      }
+      if (ev.type !== "DEAT" && deathBounds.latest != null && bounds.earliest != null && bounds.earliest > deathBounds.latest + 1) {
+        issues.push(`${eventLabel} is after recorded death (${bounds.label || y})`);
+      }
       const yEnd = Number(ev.year_end ?? ev.year);
       if (Number.isFinite(yEnd) && yEnd - y > 10) {
         rangedEvents++;
@@ -127,8 +182,6 @@ function _kfTreeFacts() {
     }
     const first = events[0] || null;
     const last = events[events.length - 1] || null;
-    const birthEv = events.find(ev => ev.type === "BIRT") || null;
-    const deathEv = events.find(ev => ev.type === "DEAT") || null;
     const facts = {
       ind,
       idx,
@@ -420,9 +473,17 @@ function _kfMapTopLabels(map, limit = 3) {
     .map(([label, count]) => `${String(label).replace(/\.ged$/i, "")} ${count.toLocaleString()}`);
 }
 
+function _kfYearDigestHeaderHtml(title, sub = "") {
+  return `<div class="year-digest-head">` +
+    `<span class="year-digest-title">${escHtml(title)}</span>` +
+    (sub ? `<span class="year-digest-sub">${escHtml(sub)}</span>` : "") +
+    `<button class="year-digest-close" type="button" data-year-digest-close aria-label="Hide guided tour">hide</button>` +
+    `</div>`;
+}
+
 function _kfYearTourHtml() {
   if (!timelineLoaded || !lastIndividuals) {
-    return `<div class="year-digest-head"><span class="year-digest-title">Guided tour</span></div>` +
+    return _kfYearDigestHeaderHtml("Guided tour") +
       `<ul class="year-digest-list"><li>Load one or more GEDCOM trees to enable the year tour.</li></ul>`;
   }
   const y = Math.floor(curYear);
@@ -443,7 +504,7 @@ function _kfYearTourHtml() {
   }
   if (d.weak.length) lines.push(`${d.weak.length.toLocaleString()} visible markers have weak place evidence; use "weak evidence" to review them.`);
   if (!lines.length) lines.push("This year has no notable marker changes under the current filters.");
-  return `<div class="year-digest-head"><span class="year-digest-title">Guided tour for ${y}</span><span class="year-digest-sub">${_kfViewModeLabel()}</span></div>` +
+  return _kfYearDigestHeaderHtml(`Guided tour for ${y}`, _kfViewModeLabel()) +
     `<div class="year-digest-metrics">` +
       _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
       _kfYearDigestMetricHtml(d.current.exact.toLocaleString(), "specific") +
@@ -453,11 +514,34 @@ function _kfYearTourHtml() {
     `<ul class="year-digest-list">${lines.slice(0, 6).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
 }
 
-function _kfShowYearTour() {
+function _kfHideYearDigest() {
   const digestEl = $("yearDigest");
   if (!digestEl) return;
-  digestEl.hidden = false;
-  digestEl.innerHTML = _kfYearTourHtml();
+  _kfDerivedCache.activeDigestMode = "";
+  digestEl.hidden = true;
+  digestEl.innerHTML = "";
+}
+
+function _kfBindYearDigestControls(digestEl) {
+  digestEl.querySelector("[data-year-digest-close]")?.addEventListener("click", _kfHideYearDigest);
+}
+
+function _kfRenderActiveYearDigest() {
+  const digestEl = $("yearDigest");
+  if (!digestEl) return;
+  if (_kfDerivedCache.activeDigestMode === "tour") {
+    digestEl.hidden = false;
+    digestEl.innerHTML = _kfYearTourHtml();
+    _kfBindYearDigestControls(digestEl);
+  } else {
+    digestEl.hidden = true;
+    digestEl.innerHTML = "";
+  }
+}
+
+function _kfShowYearTour() {
+  _kfDerivedCache.activeDigestMode = "tour";
+  _kfRenderActiveYearDigest();
 }
 
 function _kfOutlierReportMarkdown(limit = 8) {
@@ -490,6 +574,7 @@ function _kfOutlierReportMarkdown(limit = 8) {
 }
 
 function _kfShowOutlierReport(limit = 8) {
+  _kfHideYearDigest();
   _kfSetSideTab("chat");
   chatHistory.push({
     role: "bot",
@@ -568,10 +653,8 @@ function _kfRefreshViewChrome(force = false) {
     breadEl.textContent = bits.join(" > ");
   }
   if (whyEl) whyEl.hidden = !timelineLoaded || !lastIndividuals;
-  if (digestEl) {
-    digestEl.hidden = true;
-    digestEl.innerHTML = "";
-  }
+  if (!timelineLoaded || !lastIndividuals) _kfDerivedCache.activeDigestMode = "";
+  if (digestEl) _kfRenderActiveYearDigest();
   if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
 }
 

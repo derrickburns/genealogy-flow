@@ -88,6 +88,83 @@ function _kfCatalogChildIds(value) {
     .filter(Boolean);
 }
 
+const _KF_PUBLIC_DEMO_MAX_AGE = 115;
+function _kfDemoNumberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function _kfDemoNameLooksPrivate(value) {
+  return /\b(living|private|redacted|withheld)\b/i.test(String(value ?? ""));
+}
+function _kfDemoHasExplicitDeathEvidence(ind) {
+  if (_kfDemoNumberOrNull(ind?.death_year ?? ind?.deathYear) != null) return true;
+  return _kfCatalogRecords(ind?.events).some(event => {
+    const type = String(event.tag ?? event.type ?? "").toUpperCase();
+    return type === "DEAT" && (event.year != null || event.date != null || event.place != null);
+  });
+}
+function _kfDemoIsPrivatePerson(ind, currentYear = new Date().getUTCFullYear()) {
+  if (_kfDemoNameLooksPrivate(ind?.name)) return true;
+  if (_kfDemoHasExplicitDeathEvidence(ind)) return false;
+  const birth = _kfDemoNumberOrNull(ind?.birth_year ?? ind?.birthYear);
+  if (birth == null) return true;
+  return currentYear - birth < _KF_PUBLIC_DEMO_MAX_AGE;
+}
+function _kfSanitizePublicDemoJson(json) {
+  const currentYear = new Date().getUTCFullYear();
+  const livingIds = new Set();
+  const labels = new Map();
+  let livingCount = 0;
+  const individuals = _kfCatalogRecords(json?.individuals).map(ind => {
+    const id = _kfCatalogId(ind, ["id", "xref", "individual_id"]);
+    const isPrivate = _kfDemoIsPrivatePerson(ind, currentYear);
+    if (isPrivate) {
+      livingCount++;
+      labels.set(id, `Living person ${livingCount}`);
+      if (id) livingIds.add(id);
+    }
+    return {
+      id,
+      name: isPrivate ? (labels.get(id) || "Living person") : (ind.name || id),
+      sex: isPrivate ? "U" : (ind.sex || "U"),
+      birth_year: isPrivate ? null : _kfDemoNumberOrNull(ind.birth_year ?? ind.birthYear),
+      death_year: isPrivate ? null : _kfDemoNumberOrNull(ind.death_year ?? ind.deathYear),
+      famc: isPrivate ? null : (ind.famc || ind.family_child || null),
+      fams: isPrivate ? [] : (Array.isArray(ind.fams) ? ind.fams : []),
+      events: isPrivate ? [] : _kfCatalogRecords(ind.events).map(e => ({
+        ...e,
+        sources: [],
+      })),
+      notes: [],
+      sources: [],
+    };
+  });
+  const families = _kfCatalogRecords(json?.families).map(fam => {
+    const husb = _kfCatalogId(fam, ["husb", "husb_id", "husband", "husband_id"]) || null;
+    const wife = _kfCatalogId(fam, ["wife", "wife_id"]) || null;
+    const chil = _kfCatalogChildIds(fam.chil ?? fam.children ?? fam.child_ids);
+    const hasPrivateMember = [husb, wife, ...chil].some(id => id && livingIds.has(id));
+    return {
+      id: _kfCatalogId(fam, ["id", "xref", "family_id"]),
+      husb: husb && livingIds.has(husb) ? null : husb,
+      wife: wife && livingIds.has(wife) ? null : wife,
+      chil: chil.filter(id => !livingIds.has(id)),
+      marr: hasPrivateMember ? null : (fam.marr || null),
+      div: hasPrivateMember ? null : (fam.div || null),
+    };
+  }).filter(fam => fam.husb || fam.wife || fam.chil.length);
+  return {
+    individuals,
+    families,
+    sources: [],
+    privacy: {
+      tier: "public-demo",
+      living_people: "anonymized",
+      living_details: "removed",
+    },
+  };
+}
+
 function parseGedcomFromJson(json) {
   const individuals = _kfCatalogRecords(json?.individuals)
     .map(ind => {

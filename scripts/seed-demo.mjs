@@ -64,8 +64,16 @@ function geocode(place) {
 }
 
 const LIVING_MAX_AGE = 115;
-function isPresumedLiving(ind, currentYear = new Date().getUTCFullYear()) {
-  if (ind.death_year != null) return false;
+function nameLooksPrivate(value) {
+  return /\b(living|private|redacted|withheld)\b/i.test(String(value ?? ""));
+}
+function hasExplicitDeathEvidence(ind) {
+  if (ind.death_year != null) return true;
+  return (ind.events || []).some(e => e.tag === "DEAT" && (e.year != null || e.date || e.place));
+}
+function isPrivateDemoPerson(ind, currentYear = new Date().getUTCFullYear()) {
+  if (nameLooksPrivate(ind.name)) return true;
+  if (hasExplicitDeathEvidence(ind)) return false;
   if (ind.birth_year == null) return true;
   return currentYear - ind.birth_year < LIVING_MAX_AGE;
 }
@@ -76,7 +84,7 @@ function sanitizePublicDemo(input) {
   const livingLabels = new Map();
   let livingCount = 0;
   const individuals = input.individuals.map(ind => {
-    const living = isPresumedLiving(ind, currentYear);
+    const living = isPrivateDemoPerson(ind, currentYear);
     if (living) {
       livingCount++;
       livingIds.add(ind.id);
@@ -88,9 +96,9 @@ function sanitizePublicDemo(input) {
       sex: living ? "U" : ind.sex,
       birth_year: living ? null : ind.birth_year,
       death_year: living ? null : ind.death_year,
-      famc: ind.famc,
-      fams: ind.fams,
-      events: living ? [] : ind.events.map(e => ({ ...e, sources: [] })),
+      famc: living ? null : ind.famc,
+      fams: living ? [] : ind.fams,
+      events: living ? [] : (ind.events || []).map(e => ({ ...e, sources: [] })),
       notes: [],
       sources: [],
     };
@@ -100,13 +108,13 @@ function sanitizePublicDemo(input) {
     const hasLivingMember = members.some(id => livingIds.has(id));
     return {
       id: fam.id,
-      husb: fam.husb,
-      wife: fam.wife,
-      chil: fam.chil,
+      husb: fam.husb && livingIds.has(fam.husb) ? null : fam.husb,
+      wife: fam.wife && livingIds.has(fam.wife) ? null : fam.wife,
+      chil: (fam.chil || []).filter(id => !livingIds.has(id)),
       marr: hasLivingMember ? null : fam.marr,
       div: hasLivingMember ? null : fam.div,
     };
-  });
+  }).filter(fam => fam.husb || fam.wife || (fam.chil || []).length);
   return {
     individuals,
     families,
