@@ -17,6 +17,9 @@
 <div id="authBar">
   <span id="authStatus" class="authTier anon">not signed in</span>
   <span id="authEmail" class="authEmail" style="display:none"></span>
+  <div id="sourcesPanel" class="hidden">
+    <div id="sourcesList" aria-label="Loaded trees"></div>
+  </div>
   <span id="apiKeyRow">
     <label for="apiKeyInput">Anthropic key:</label>
     <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
@@ -64,9 +67,6 @@
     <div id="lensCaption" style="display:none;"></div>
     <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select>
   </span>
-  <div id="sourcesPanel" class="hidden">
-    <div id="sourcesList" aria-label="Loaded trees"></div>
-  </div>
 </div>
 <div id="middle">
 <div id="vizArea">

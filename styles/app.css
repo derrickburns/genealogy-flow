@@ -130,6 +130,7 @@
   #ui button, #optionsPane button:not(.quickChip) { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
   #ui button:hover, #optionsPane button:not(.quickChip):hover { background:#1c3669; }
   #ui button[disabled], #optionsPane button:not(.quickChip)[disabled] { background:#9aa6bc; border-color:#7c8aa3; cursor:default; }
+  #play { flex:0 0 auto; min-width:54px; padding:3px 9px !important; font-size:11px; line-height:1.15; }
   .loopControl { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; color:#566480; font-size:11px; }
   .loopControl .loopLabel { color:#7c8aa3; font-size:10px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; }
   #ui .loopControl button, #optionsPane .loopControl button { padding:3px 7px; border-radius:5px; font-size:10.5px; line-height:1.2; }
@@ -411,7 +412,7 @@
   .legend .square { border-radius:0; }
   .legend .diamond { width:12px; height:12px; border-radius:2px; transform:rotate(45deg); }
   /* Auth bar */
-  #authBar { display:flex; align-items:center; gap:8px; padding:4px 14px; background:rgba(255,255,255,0.85); border-bottom:1px solid #d0dce8; font-size:11.5px; color:#566480; flex-shrink:0; }
+  #authBar { display:flex; align-items:center; gap:8px; padding:4px 14px; background:rgba(255,255,255,0.85); border-bottom:1px solid #d0dce8; font-size:11.5px; color:#566480; flex-shrink:0; min-width:0; }
   #authBar .authSpacer { flex:1; }
   #authBar .authTier { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; padding:2px 7px; border-radius:10px; }
   #authBar .authTier.vip { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
@@ -547,7 +548,7 @@
     #rootSearch { width:100% !important; min-width:0; }
     #rootSuggest { min-width:0 !important; width:100%; max-height:45dvh; }
 
-    #sourcesPanel { order:19; flex:1 1 100%; margin-left:0; position:relative; }
+    #sourcesPanel { order:1; flex:1 1 auto; min-width:0; margin-left:0; position:relative; }
     #sourcesList { overflow-x:auto; padding:2px 0; }
     #sourcesPanel .src, #sourcesPanel .srcAction { min-height:32px; border-radius:999px; }
     #sourcesPanel .src .sel { width:18px; height:18px; }
@@ -573,6 +574,7 @@
     #range::-webkit-slider-thumb { width:24px; height:24px; }
     #range::-moz-range-thumb { width:24px; height:24px; }
     #yearThumbLabel { display:none !important; }
+    .rangeMark.loop { display:none !important; }
     #migBar { height:32px; padding-top:15px; }
 
     #panel {
