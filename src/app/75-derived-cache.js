@@ -317,6 +317,23 @@ function _kfVisibleMarkerData() {
   return data;
 }
 
+function _kfVisibleMarkerViewportCount(rows = null) {
+  const items = rows || (typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData().rows : []);
+  const bounds = _kfMap && _kfMap.getBounds ? _kfMap.getBounds() : null;
+  if (!bounds || !_kfDwellPositions || !items) return items?.length || 0;
+  const bW = bounds.getWest(), bE = bounds.getEast();
+  const bS = bounds.getSouth(), bN = bounds.getNorth();
+  let count = 0;
+  for (const row of items) {
+    const m = row?.marker;
+    if (!Number.isFinite(m) || m < 0) continue;
+    const lon = _kfDwellPositions[m * 2];
+    const lat = _kfDwellPositions[m * 2 + 1];
+    if (lon >= bW && lon <= bE && lat >= bS && lat <= bN) count++;
+  }
+  return count;
+}
+
 function _kfVisibleRowsForYear(yint) {
   if (_kfDerivedCache.visibleByYearIndividuals !== lastIndividuals) {
     _kfDerivedCache.visibleByYear.clear();

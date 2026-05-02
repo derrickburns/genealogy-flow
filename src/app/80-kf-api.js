@@ -947,6 +947,10 @@ window.kfApi = {
     return { error: "map not ready" };
   },
   getState() {
+    const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
+    const viewportVisible = visible && typeof _kfVisibleMarkerViewportCount === "function"
+      ? _kfVisibleMarkerViewportCount(visible.rows)
+      : visible?.count || 0;
     return {
       ok: true,
       year: Math.floor(curYear),
@@ -960,6 +964,8 @@ window.kfApi = {
       kinLines: kinLinesN,
       clusterMode,
       total: lastIndividuals?.length || 0,
+      visiblePeople: visible?.count || 0,
+      visiblePeopleInViewport: viewportVisible,
     };
   },
   findPerson(query) {

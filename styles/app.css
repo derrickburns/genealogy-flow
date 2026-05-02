@@ -322,8 +322,11 @@
   #chatHistory .msg.bot .body td { padding:3px 8px; border:1px solid #e0e6ee; vertical-align:top; }
   #chatHistory .msg.bot .body tr:nth-child(even) td { background:#f8fafd; }
   #chatHistory .msg.tool { font-size:11px; color:#888; }
+  #chatHistory .msg.action { font-size:11px; color:#64748b; }
   #chatHistory .msg.tool .who { color:#9aa6bc; }
+  #chatHistory .msg.action .who { color:#94a3b8; }
   #chatHistory .msg.tool .body { word-wrap:break-word; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  #chatHistory .msg.action .body { word-wrap:break-word; }
   #chatHistory .msg.tool .body p { margin:0 0 4px; }
   #chatHistory .msg.tool .body p:last-child { margin-bottom:0; }
   #chatHistory .msg.bot .body a { color:#2a4a8c; }
@@ -499,7 +502,7 @@
   .cluster-ask { background:#2a4a8c; color:#fff; border:none; border-radius:5px; padding:5px 10px; font:inherit; font-size:11px; cursor:pointer; }
   .cluster-ask:hover { background:#1c3669; }
 
-  @media (max-width: 700px) {
+  @media (max-width: 900px), (pointer: coarse) and (max-width: 980px) {
     :root { --kf-mobile-ui-h: 132px; }
     html, body { height:100dvh; overflow:hidden; }
     #app { grid-template-rows:auto 1fr auto; gap:6px; padding:6px; min-height:0; }

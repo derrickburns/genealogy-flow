@@ -942,7 +942,7 @@ function renderChat() {
     chatHistoryEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
     return;
   }
-  const visible = _chatShowTools ? chatHistory : chatHistory.filter(m => m.kind !== "tool");
+  const visible = _chatShowTools ? chatHistory : chatHistory.filter(m => m.kind !== "tool" && m.kind !== "action");
   if (visible.length === 0) {
     chatHistoryEl.innerHTML = `<div class="empty">Tool calls hidden. Toggle "tools" to show them.</div>`;
     return;
@@ -959,7 +959,9 @@ function renderChat() {
     const chips = (m.chips && m.chips.length)
       ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}">${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}</button>`).join("")}</div>`
       : "";
-    return `<div class="msg ${m.role}${m.kind === "tool" ? " tool" : ""}"><span class="who">${m.role === "user" ? "you" : m.kind === "tool" ? "tool" : "claude"}</span><div class="body">${body}</div>${chips}</div>`;
+    const kindClass = m.kind === "tool" ? " tool" : m.kind === "action" ? " action" : "";
+    const who = m.role === "user" ? "you" : m.kind === "tool" ? "tool" : m.kind === "action" ? "action" : "claude";
+    return `<div class="msg ${m.role}${kindClass}"><span class="who">${who}</span><div class="body">${body}</div>${chips}</div>`;
   }).join("");
   // Wire chip clicks. Each chip carries an action (kfApi method + args) that
   // fires once on click, mirroring how KFCALL markers work but via UI.
@@ -1058,10 +1060,9 @@ function _kfReportChipResult(chip, r) {
     const out = (r && typeof r === "object") ? JSON.stringify(r).slice(0, 200) : String(r);
     summary = `\u2713 **${chip.label || chip.method}**: ${out}`;
   }
-  // Push as a regular bot message (not kind:"tool") so it's always visible
-  // regardless of the "tools on/off" toggle. Chip results are user-facing
-  // feedback, not internal plumbing.
-  chatHistory.push({ role: "bot", content: summary });
+  // Action feedback is not Claude's answer. Keep it hidden with tools off so
+  // the chat remains a clean user/Claude transcript.
+  chatHistory.push({ role: "bot", kind: "action", content: summary });
   renderChat();
   const last = chatHistoryEl.lastElementChild;
   if (last && last.scrollIntoView) {
@@ -1159,7 +1160,31 @@ function buildChatContext() {
   // Visible people in the actual map marker set: one marker per person,
   // using the latest valid dwell at the current year after all filters.
   if (timelineLoaded) {
-    const visibleRows = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData().rows : [];
+    const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
+    const visibleRows = visible?.rows || [];
+    const totalVisible = visible?.count ?? visibleRows.length;
+    const viewportVisible = typeof _kfVisibleMarkerViewportCount === "function"
+      ? _kfVisibleMarkerViewportCount(visibleRows)
+      : totalVisible;
+    lines.push(`Visible map marker total after current tree/filter/year: ${totalVisible.toLocaleString()} people.`);
+    if (viewportVisible !== totalVisible) {
+      lines.push(`Current map viewport contains ${viewportVisible.toLocaleString()} of those ${totalVisible.toLocaleString()} people; legend counts are shown as viewport / total.`);
+    }
+    if (visible?.sourceCounts?.size) {
+      const sources = Array.from(visible.sourceCounts.entries())
+        .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+        .slice(0, 5)
+        .map(([name, n]) => `${String(name || "unknown").replace(/\.ged$/i, "")}: ${n}`);
+      if (sources.length) lines.push(`Visible marker counts by tree: ${sources.join("; ")}.`);
+    }
+    if (typeof _kfVisibleRowsForYear === "function") {
+      const yearly = _kfVisibleRowsForYear(Math.floor(curYear));
+      const places = Array.from(yearly.placeCounts.entries())
+        .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+        .slice(0, 8)
+        .map(([place, n]) => `${place}: ${n}`);
+      if (places.length) lines.push(`Top places among visible markers: ${places.join("; ")}.`);
+    }
     const showSource = typeof _kfSelectedVizSourceList === "function" && _kfSelectedVizSourceList().length > 1;
     const values = [];
     for (const row of visibleRows) {
@@ -1168,7 +1193,7 @@ function buildChatContext() {
       if (values.length >= 80) break;
     }
     if (values.length > 0) {
-      lines.push(`Currently rendered map markers (max 80; alive/presumed-alive after filters): ${values.join("; ")}.`);
+      lines.push(`Sample of rendered map markers only (first ${values.length.toLocaleString()} of ${totalVisible.toLocaleString()}, not the total): ${values.join("; ")}.`);
     }
   }
   return lines.join("\n");
