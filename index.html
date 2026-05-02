@@ -4791,7 +4791,15 @@ async function fetchCatalogTrees() {
       headers: { "Authorization": "Bearer " + _clerkToken },
     });
     const j = await r.json();
-    if (!r.ok) throw new Error(j?.error ? `${r.status} ${j.error}` : `catalog ${r.status}`);
+    if (!r.ok) {
+      const details = [j?.error ? `${r.status} ${j.error}` : `catalog ${r.status}`];
+      if (j?.user?.type) details.push(`server saw ${j.user.type}${j.user.email ? ` ${j.user.email}` : ""}`);
+      if (j?.auth?.status && j.auth.status !== "signed-in") {
+        details.push(`auth ${j.auth.status}${j.auth.reason ? `: ${j.auth.reason}` : ""}`);
+      }
+      if (j?.auth?.message && j.auth.status !== "signed-in") details.push(j.auth.message);
+      throw new Error(details.join("; "));
+    }
     const fetched = j && Array.isArray(j.trees) ? j.trees : [];
     _kfCatalogTrees = fetched.length ? fetched : _kfCatalogFallbackTrees();
   } catch (e) {
@@ -9037,9 +9045,9 @@ async function fetchServerAuthContext() {
     const r = await fetch("/api/auth/me", {
       headers: { "Authorization": "Bearer " + _clerkToken },
     });
-    if (!r.ok) return null;
     const j = await r.json();
-    return j?.user || null;
+    if (!r.ok) return { user: null, auth: j?.auth || null, error: j?.error || `auth ${r.status}` };
+    return { user: j?.user || null, auth: j?.auth || null, error: null };
   } catch (e) {
     console.warn("[kf] fetchServerAuthContext:", e?.message || e);
     return null;
@@ -9126,7 +9134,11 @@ async function updateAuthUI(user) {
 
   _kfAuthTokenRetryCount = 0;
   clearTimeout(_kfAuthTokenRetryTimer);
-  const serverUser = await fetchServerAuthContext();
+  const serverAuthContext = await fetchServerAuthContext();
+  const serverUser = serverAuthContext?.user || null;
+  if (_clerkToken && serverAuthContext?.auth && serverAuthContext.auth.status !== "signed-in") {
+    console.warn("[kf] server auth did not verify Clerk session:", serverAuthContext.auth);
+  }
   if (serverUser?.email) email = serverUser.email;
   _clerkUserTier = serverUser?.type === "vip"
     ? "vip"

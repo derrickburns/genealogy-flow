@@ -1,9 +1,20 @@
-import { createClerkClient, verifyToken } from "@clerk/backend";
+import { createClerkClient } from "@clerk/backend";
 
 export interface UserContext {
   type: "anon" | "regular" | "vip";
   id: string;
   email?: string;
+}
+
+export interface AuthDiagnostics {
+  headerPresent: boolean;
+  status: "not-attempted" | "signed-in" | "signed-out" | "handshake" | "error";
+  reason?: string | null;
+  message?: string | null;
+  userId?: string | null;
+  email?: string | null;
+  emailSource?: "clerk-user" | "session-claims" | "none";
+  userLookupError?: string;
 }
 
 export interface Env {
@@ -91,40 +102,107 @@ async function upsertAuthenticatedUser(
     .run();
 }
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function extractEmailFromSessionClaims(claims: unknown): string {
+  if (!claims || typeof claims !== "object") return "";
+  const record = claims as Record<string, unknown>;
+  for (const key of ["email", "email_address", "primary_email_address"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.includes("@")) return value;
+  }
+  const emailAddresses = record.email_addresses;
+  if (Array.isArray(emailAddresses)) {
+    for (const item of emailAddresses) {
+      if (typeof item === "string" && item.includes("@")) return item;
+      if (item && typeof item === "object") {
+        const value = (item as Record<string, unknown>).email_address ?? (item as Record<string, unknown>).emailAddress;
+        if (typeof value === "string" && value.includes("@")) return value;
+      }
+    }
+  }
+  return "";
+}
+
 export const onRequest: PagesFunction<Env> = async (ctx) => {
   const { request, env, next } = ctx;
   const authHeader = request.headers.get("Authorization");
+  ctx.data.auth = {
+    headerPresent: !!authHeader,
+    status: "not-attempted",
+  } satisfies AuthDiagnostics;
 
   if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
     try {
       const clerk = createClerkClient({
         secretKey: env.CLERK_SECRET_KEY,
         publishableKey: env.CLERK_PUBLISHABLE_KEY,
       });
-      const payload = await verifyToken(token, {
+      const requestState = await clerk.authenticateRequest(request, {
         secretKey: env.CLERK_SECRET_KEY,
+        publishableKey: env.CLERK_PUBLISHABLE_KEY,
       });
-      const userId = payload.sub;
+      ctx.data.auth = {
+        headerPresent: true,
+        status: requestState.status,
+        reason: requestState.reason,
+        message: requestState.message,
+      } satisfies AuthDiagnostics;
+      if (requestState.status !== "signed-in") {
+        console.warn("[auth] request not signed in:", requestState.reason || requestState.message || requestState.status);
+      } else {
+        const auth = requestState.toAuth({ treatPendingAsSignedOut: false });
+        const userId = auth.userId;
+        if (!userId) throw new Error("Clerk signed-in request did not include a user id");
 
-      // Fetch email from Clerk
-      const user = await clerk.users.getUser(userId);
-      const email =
-        user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
-          ?.emailAddress ?? "";
+        let email = extractEmailFromSessionClaims(auth.sessionClaims);
+        let emailSource: AuthDiagnostics["emailSource"] = email ? "session-claims" : "none";
+        let userLookupError: string | undefined;
+        try {
+          const user = await clerk.users.getUser(userId);
+          const primaryEmail =
+            user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
+              ?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "";
+          if (primaryEmail) {
+            email = primaryEmail;
+            emailSource = "clerk-user";
+          }
+        } catch (e) {
+          userLookupError = errorMessage(e);
+          console.error("[auth] Clerk user lookup failed:", userLookupError);
+          if (!email) throw e;
+        }
 
-      const vips = getVipEmails(env);
-      const type = vips.has(email.toLowerCase()) ? "vip" : "regular";
+        const vips = getVipEmails(env);
+        const type = vips.has(email.toLowerCase()) ? "vip" : "regular";
 
-      ctx.data.user = { type, id: userId, email };
-      ctx.waitUntil(
-        upsertAuthenticatedUser(userId, email, env).catch((e) => {
-          console.error("[auth] user upsert failed:", e instanceof Error ? e.message : String(e));
-        })
-      );
-      return next();
+        ctx.data.auth = {
+          ...(ctx.data.auth as AuthDiagnostics),
+          userId,
+          email: email || null,
+          emailSource,
+          userLookupError,
+        } satisfies AuthDiagnostics;
+        ctx.data.user = { type, id: userId, email };
+        if (email) {
+          ctx.waitUntil(
+            upsertAuthenticatedUser(userId, email, env).catch((e) => {
+              console.error("[auth] user upsert failed:", errorMessage(e));
+            })
+          );
+        }
+        return next();
+      }
     } catch (e) {
-      console.error("[auth] token verification failed:", e instanceof Error ? e.message : String(e));
+      const message = errorMessage(e);
+      ctx.data.auth = {
+        headerPresent: true,
+        status: "error",
+        message,
+      } satisfies AuthDiagnostics;
+      console.error("[auth] token verification failed:", message);
       // Fall through to anon
     }
   }
