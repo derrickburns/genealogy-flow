@@ -20,14 +20,17 @@ function _kfUpdateMobileSheetTitle(tab) {
   _mobileSheetTitleEl.textContent =
     tab === "person" ? "Person" :
     tab === "cluster" ? "Cluster" :
+    tab === "options" ? "Options" :
+    tab === "tour" ? "Tour" :
     "Kindred Genealogist";
 }
 
 function _kfSyncMobileControlHeight() {
   const ui = $("ui");
   if (!ui) return;
-  const h = Math.ceil(ui.getBoundingClientRect().height) + 8;
-  document.documentElement.style.setProperty("--kf-mobile-ui-h", `${Math.max(78, h)}px`);
+  const tabs = $("sideTabs");
+  const h = Math.ceil(ui.getBoundingClientRect().height + (tabs?.getBoundingClientRect().height || 0)) + 8;
+  document.documentElement.style.setProperty("--kf-mobile-ui-h", `${Math.max(118, h)}px`);
 }
 
 function _kfSetMobileSheetState(state) {
@@ -61,7 +64,7 @@ function _kfBumpMobileSheetForTab(tab) {
 }
 
 function _kfSetSideTab(tab) {
-  const next = tab === "person" || tab === "cluster" ? tab : "chat";
+  const next = tab === "person" || tab === "cluster" || tab === "options" || tab === "tour" ? tab : "chat";
   document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
     btn.classList.toggle("on", btn.dataset.sideTab === next);
   });

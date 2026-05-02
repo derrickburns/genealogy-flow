@@ -95,7 +95,7 @@ Available tools. jsonArgs is a single JSON value:
 - setZoom(k)                       Absolute zoom level, 1..64. Reasonable values: 1 (whole world), 4 (continent), 8 (country), 16 (region), 32+ (city). Re-centers around current viewport center.
 - zoomIn(factor=2)                 Multiply current zoom by factor.
 - zoomOut(factor=2)                Divide current zoom by factor.
-- showYearTour()                  Open the deterministic guided-tour overlay for the current year.
+- showYearTour()                  Open the deterministic Tour panel for the current year.
 - showOutliers(limit?)            List visible records that most need review because of weak place evidence or chronology warnings.
 - getState()                       Returns current view state. Use to ground answers.
 - findPerson(name)                 Returns {id,name,birth,death,found}. Use to confirm spelling before selecting.

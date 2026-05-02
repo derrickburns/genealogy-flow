@@ -494,7 +494,6 @@ function _kfYearDigestHeaderHtml(title, sub = "") {
   return `<div class="year-digest-head">` +
     `<span class="year-digest-title">${escHtml(title)}</span>` +
     (sub ? `<span class="year-digest-sub">${escHtml(sub)}</span>` : "") +
-    `<button class="year-digest-close" type="button" data-year-digest-close aria-label="Hide guided tour">hide</button>` +
     `</div>`;
 }
 
@@ -532,11 +531,12 @@ function _kfYearTourHtml() {
 }
 
 function _kfHideYearDigest() {
-  const digestEl = $("yearDigest");
-  if (!digestEl) return;
   _kfDerivedCache.activeDigestMode = "";
-  digestEl.hidden = true;
-  digestEl.innerHTML = "";
+  _kfRenderActiveYearDigest();
+}
+
+function _kfTourEmptyHtml() {
+  return `<div class="tour-empty">Press tour year to explain the current year in this view.</div>`;
 }
 
 function _kfBindYearDigestControls(digestEl) {
@@ -544,21 +544,20 @@ function _kfBindYearDigestControls(digestEl) {
 }
 
 function _kfRenderActiveYearDigest() {
-  const digestEl = $("yearDigest");
+  const digestEl = $("tourPaneContent");
   if (!digestEl) return;
   if (_kfDerivedCache.activeDigestMode === "tour") {
-    digestEl.hidden = false;
     digestEl.innerHTML = _kfYearTourHtml();
     _kfBindYearDigestControls(digestEl);
   } else {
-    digestEl.hidden = true;
-    digestEl.innerHTML = "";
+    digestEl.innerHTML = _kfTourEmptyHtml();
   }
 }
 
 function _kfShowYearTour() {
   _kfDerivedCache.activeDigestMode = "tour";
   _kfRenderActiveYearDigest();
+  if (typeof _kfSetSideTab === "function") _kfSetSideTab("tour");
 }
 
 function _kfOutlierReportMarkdown(limit = 8) {
@@ -647,7 +646,7 @@ function _kfRefreshViewChrome(force = false) {
   const summaryEl = $("viewSummary");
   const breadEl = $("focusBreadcrumb");
   const whyEl = $("viewWhy");
-  const digestEl = $("yearDigest");
+  const digestEl = $("tourPaneContent");
   if (!summaryEl && !breadEl && !whyEl && !digestEl) return;
   const y = Math.floor(curYear);
   const data = _kfVisibleMarkerData();
