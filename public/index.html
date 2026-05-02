@@ -226,7 +226,7 @@
   #sourcesPanel .src .x:hover { color:#b3261e; }
   #sourcesPanel .srcAction { font:inherit; font-size:10.5px; border:1px solid #c0ccd8; border-radius:10px; padding:2px 7px; background:#fff; color:#44536d; cursor:pointer; margin:2px 4px 2px 0; }
   #sourcesPanel .srcAction:disabled { opacity:0.45; cursor:default; }
-  #selectedPerson { border-bottom:1px solid #e0e6ee; padding:8px 12px; background:linear-gradient(135deg,#eef3fa 0%,#f5f8fd 100%); font-size:11.5px; }
+  #selectedPerson { flex:0 1 auto; min-height:0; max-height:min(52dvh, 420px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; border-bottom:1px solid #e0e6ee; padding:8px 12px; background:linear-gradient(135deg,#eef3fa 0%,#f5f8fd 100%); font-size:11.5px; }
   #selectedPerson .sp-name { font-weight:700; font-size:13px; color:#0a1426; margin-bottom:2px; }
   #selectedPerson .sp-sub { color:#566480; font-size:11px; margin-bottom:4px; }
   #selectedPerson .sp-events { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
@@ -282,7 +282,7 @@
   #selectedPerson .sp-ask:hover { background:#1c3669; }
   #selectedPerson .sp-dismiss { background:none; border:1px solid #c0ccd8; border-radius:5px; padding:4px 8px; font:inherit; font-size:11px; color:#566480; cursor:pointer; }
   #selectedPerson .sp-dismiss:hover { background:#f0f4f8; }
-  #chatHistory { flex:1; overflow-y:auto; padding:10px 12px; font-size:12px; line-height:1.5; color:#1c2433; }
+  #chatHistory { flex:1; min-height:0; overflow-y:auto; padding:10px 12px; font-size:12px; line-height:1.5; color:#1c2433; }
   #chatHistory .msg { margin-bottom:10px; }
   #chatHistory .msg.user { color:#1c2433; }
   #chatHistory .msg.user .who { color:#2a4a8c; font-weight:700; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; display:block; margin-bottom:2px; }
