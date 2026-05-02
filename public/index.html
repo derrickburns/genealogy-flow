@@ -132,21 +132,9 @@
   #title { font-size:14px; color:#1c2433; letter-spacing:0.02em; background:rgba(255,255,255,0.85); padding:6px 12px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   #title b { color:#0a1426; font-weight:700; letter-spacing:0; }
   #title input[type=text] { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:4px 6px; font:inherit; }
-  #optionsWrap { position:relative; }
-  #optionsBtn { background:#1a2238; color:#fff; border:1px solid #2a3654; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
-  #optionsBtn:hover { background:#243056; }
-  #optionsMenu { position:absolute; top:calc(100% + 6px); right:0; min-width:300px; max-width:340px; max-height:80vh; overflow-y:auto; background:#fff; border:1px solid #c0ccd8; border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.12); padding:10px 14px; display:flex; flex-direction:column; gap:6px; z-index:30; visibility:hidden; opacity:0; pointer-events:none; transition:opacity 0.08s; }
-  #optionsMenu.open { visibility:visible; opacity:1; pointer-events:auto; }
-  #optionsMenu label { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; color:#566480; }
-  #optionsMenu select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:4px; padding:3px 6px; font:inherit; }
-  #optionsMenu input[type=range] { -webkit-appearance:none; appearance:none; width:120px; height:3px; background:#c0ccd8; border-radius:2px; outline:none; }
-  #optionsMenu input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#2a4a8c; cursor:pointer; }
-  #optionsMenu input[type=range]::-moz-range-thumb { width:12px; height:12px; border-radius:50%; background:#2a4a8c; cursor:pointer; border:none; }
-  #optionsMenu .section { display:flex; flex-direction:column; gap:6px; padding-top:6px; border-top:1px solid #e0e6ee; margin-top:2px; }
-  #optionsMenu .section:first-of-type { border-top:none; padding-top:0; margin-top:0; }
-  #optionsMenu .section h4 { margin:0 0 2px; font-size:9px; font-weight:700; color:#888; letter-spacing:0.08em; text-transform:uppercase; }
-  #optionsMenu .legend { display:flex; flex-wrap:wrap; gap:8px; font-size:11px; color:#566480; }
-  #optionsMenu .clusterSec.hidden { display:none; }
+  #hiddenControls { display:none; }
+  .speedControl { display:inline-flex; align-items:center; gap:5px; color:#566480; font-size:11px; white-space:nowrap; }
+  .speedControl select { padding:4px 6px; font-size:11px; }
   select { background:#fff; color:#1c2433; border:1px solid #c0ccd8; border-radius:6px; padding:5px 8px; font:inherit; }
   label { color:#566480; font-size:11px; }
   #pick { background:#2a4a8c; color:#fff; border:1px solid #1c3669; border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
@@ -470,7 +458,7 @@
     <button id="apiKeySave">Save</button>
   </span>
   <span class="authSpacer"></span>
-  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">e0e5bde</span>
+  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">095aef6</span>
   <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
   <button id="authBtn">Sign in</button>
 </div>
@@ -494,37 +482,21 @@
     <div id="rootSuggest" style="display:none; position:absolute; top:100%; left:0; min-width:340px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; margin-top:3px; max-height:340px; overflow-y:auto; z-index:9999; box-shadow:0 4px 14px rgba(0,0,0,0.12);"></div>
     <select id="rootSel" style="display:none;"></select>
   </span>
-  <span id="optionsWrap" style="display:none; margin-left:auto;">
-    <button id="optionsBtn">Options ▾</button>
-    <div id="optionsMenu">
-      <div style="display:none">
-        <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select>
-        <input type="range" id="rot" min="-180" max="180" step="1" value="0">
-        <select id="colorMode"><option value="lineage" selected>maternal/paternal</option><option value="gender">gender</option><option value="tree">tree</option></select>
-        <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select>
-        <select id="clusterMode"><option value="none" selected>none</option><option value="aggregate">sized circles</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="dispersion">on zoom</option></select>
-        <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"><b id="clusterRadiusLabel">30</b>
-        <input type="range" id="kinN" min="0" max="20" step="1" value="0"><b id="kinNLabel">0</b>
-        <div id="clusterSection"></div>
-      </div>
-      <div class="section">
-        <h4>Lens <span style="font-weight:normal; font-size:10px; color:#888;">(claude-defined queries)</span></h4>
-        <label>active
-          <select id="lensSel"><option value="">none</option></select>
-        </label>
-        <div style="display:flex; gap:6px; align-items:center;">
-          <button id="lensFork" disabled style="padding:3px 8px; border:1px solid #c0ccd8; border-radius:3px; background:#fff; cursor:pointer; font:inherit; font-size:11px;">fork</button>
-          <button id="lensDelete" disabled style="padding:3px 8px; border:1px solid #c0ccd8; border-radius:3px; background:#fff; cursor:pointer; font:inherit; font-size:11px;">delete</button>
-          <span id="lensInfo" style="font-size:10px; color:#9aa6bc; flex:1;"></span>
-        </div>
-        <div id="lensCaption" style="font-size:11px; color:#1c2433; line-height:1.35; margin-top:4px; display:none;"></div>
-      </div>
-      <div class="section">
-        <h4>Animation</h4>
-        <label>speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
-        <label>fade <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select></label>
-      </div>
-    </div>
+  <span id="hiddenControls">
+    <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select>
+    <input type="range" id="rot" min="-180" max="180" step="1" value="0">
+    <select id="colorMode"><option value="lineage" selected>maternal/paternal</option><option value="gender">gender</option><option value="tree">tree</option></select>
+    <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select>
+    <select id="clusterMode"><option value="none" selected>none</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="dispersion">on zoom</option></select>
+    <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"><b id="clusterRadiusLabel">30</b>
+    <input type="range" id="kinN" min="0" max="20" step="1" value="0"><b id="kinNLabel">0</b>
+    <div id="clusterSection"></div>
+    <select id="lensSel"><option value="">none</option></select>
+    <button id="lensFork" disabled>fork</button>
+    <button id="lensDelete" disabled>delete</button>
+    <span id="lensInfo"></span>
+    <div id="lensCaption" style="display:none;"></div>
+    <select id="trail"><option value="0.06">short</option><option value="0.03" selected>medium</option><option value="0.012">long</option><option value="0.004">infinite</option></select>
   </span>
 </div>
 <div id="middle">
@@ -641,7 +613,6 @@
       <button class="quickChip" data-cluster="parents" title="Group nearby people and show how many have 0, 1, or 2 known biological parents.">parents</button>
       <button class="quickChip" data-cluster="pie" title="Group nearby people and break each cluster down by ancestral lineage (mother's vs father's side).">lineage</button>
       <button class="quickChip" data-cluster="tree" title="Group nearby people and show which loaded GEDCOM file each came from.">tree</button>
-      <button class="quickChip" data-cluster="aggregate" title="Group nearby people into single sized circles. Bigger circle = more people.">density</button>
     </span>
     <span class="chipGroup" data-grp="filter">
       <span class="chipLabel">filter:</span>
@@ -669,6 +640,8 @@
   <div class="uirow primary">
     <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
     <button id="play" disabled>Play</button>
+    <label class="speedControl">speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
+    <label class="speedControl">migration <select id="migrationView"><option value="continuous" selected>continuous</option><option value="observations">observation pulses</option></select></label>
     <div class="rangeWrap" style="position:relative;">
       <canvas id="yearHist"></canvas>
       <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
@@ -693,6 +666,7 @@ const playBtn = $("play"), range = $("range");
 const yearWatermarkEl = $("yearWatermark");
 const yearThumbLabelEl = $("yearThumbLabel");
 const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
+const migrationViewSel = $("migrationView");
 const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
 const rootwrap = $("rootwrap");
 // Demo mode: set to a URL of a .ged file to preload it and hide every upload
@@ -827,9 +801,7 @@ function _kfSurnameOf(name) {
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
-// Migration is always rendered continuously now; "lines" and "pulse" and
-// "discrete" were removed from the UI in the simplification pass.
-const migrationViz = "continuous";
+let migrationViz = "continuous";
 let clusterMode = "none";
 let clusterRadius = 30;
 let kinLinesN = 0;
@@ -861,7 +833,7 @@ let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
 let isDraggingSlider = false;
 
 let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null, lastIndiIdxById = null, lastFamilies = null;
-let lastSideById = null, lastRootId = null;
+let lastSideById = null, lastAncestorSet = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
 let _kfSourceId = null;      // D1 source_id for VIP server-side queries
 let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data already in D1)
@@ -1767,10 +1739,7 @@ function rebuildPersonMarkers() {
     if (!ind) continue;
     if (!_kfPersonMayBeAliveAtYear(ind, yint)) continue;
     // Lineage / blood / status filters still apply
-    if (curFilter === "ancestors") {
-      const sd = lastSideById ? lastSideById.get(ind.id) : null;
-      if (sd !== 0 && sd !== 1) continue;
-    }
+    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(idx)) continue;
     if (curFilter === "blood" && lastBloodSet && !lastBloodSet.has(ind.id)) continue;
     if (_kfSexFilter && ind.sex !== _kfSexFilter) continue;
     if (_kfSurnameFilter) {
@@ -2222,6 +2191,7 @@ function makeFlowLayer() {
                     || useDispersion
                     || !!_kfActiveLens;   // active lens replaces dwells too
   if (replaceMode) return null;
+  if (migrationViz === "observations") return makeFlowObservationArcLayer();
   // Animated particle flow: each in-flight migration emits a head dot at the
   // current great-circle position plus a TRAIL of older dots at decreasing
   // opacity. The trail spacing is in t-units (fraction of trip), so a
@@ -2237,7 +2207,7 @@ function makeFlowLayer() {
     const fromY = flowFromY[i], toY = flowToY[i];
     if (y <= fromY || y >= toY) continue;
     const fs = flowSide[i];
-    if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
+    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(flowIndi[i])) continue;
     if (curFilter === "blood" && !flowBlood[i]) continue;
     const span = Math.max(1, toY - fromY);
     const t = (y - fromY) / span;
@@ -2273,6 +2243,64 @@ function makeFlowLayer() {
   });
 }
 
+const FLOW_AMBIGUOUS_GAP_YEARS = 10;
+
+function _kfFlowPassesFilter(i) {
+  if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(flowIndi[i])) return false;
+  if (curFilter === "blood" && !flowBlood[i]) return false;
+  return true;
+}
+
+function _kfObservationPulse(i, y = curYear) {
+  const fromY = flowFromY[i], toY = flowToY[i];
+  const gap = Math.max(0, toY - fromY);
+  const ambiguous = gap > FLOW_AMBIGUOUS_GAP_YEARS;
+  const lead = ambiguous ? 3.0 : 1.2;
+  const tail = ambiguous ? 0.9 : 0.5;
+  const start = toY - lead;
+  const end = toY + tail;
+  if (y < start || y > end) return null;
+  const strength = y <= toY
+    ? 0.35 + 0.65 * ((y - start) / Math.max(lead, 0.1))
+    : Math.max(0.2, 1 - ((y - toY) / Math.max(tail, 0.1)));
+  return { gap, ambiguous, strength: Math.max(0, Math.min(1, strength)) };
+}
+
+function makeFlowObservationArcLayer() {
+  if (!deck || !deck.ArcLayer) return null;
+  const data = [];
+  for (let i = 0; i < flowFromLat.length; i++) {
+    if (!_kfFlowPassesFilter(i)) continue;
+    const pulse = _kfObservationPulse(i);
+    if (!pulse) continue;
+    if (flowFromLon[i] === flowToLon[i] && flowFromLat[i] === flowToLat[i]) continue;
+    const c = colorForFinal(flowSide[i], flowSrc[i], flowIndi[i]);
+    const alpha = pulse.ambiguous
+      ? Math.round(38 + 78 * pulse.strength)
+      : Math.round(105 + 120 * pulse.strength);
+    data.push({
+      from: [flowFromLon[i], flowFromLat[i]],
+      to: [flowToLon[i], flowToLat[i]],
+      sourceColor: [c[0], c[1], c[2], Math.round(alpha * 0.12)],
+      targetColor: [c[0], c[1], c[2], alpha],
+      width: pulse.ambiguous ? 0.9 : 1.7,
+    });
+  }
+  if (!data.length) return null;
+  return new deck.ArcLayer({
+    id: "kf-flow-observation-arcs",
+    data,
+    getSourcePosition: d => d.from,
+    getTargetPosition: d => d.to,
+    getSourceColor: d => d.sourceColor,
+    getTargetColor: d => d.targetColor,
+    getWidth: d => d.width,
+    widthUnits: "pixels",
+    greatCircle: true,
+    pickable: false,
+  });
+}
+
 // Hollow destination rings drawn at the END of every in-flight migration.
 // Without this, the user sees the trail moving but no visible "X marks the
 // spot" — and if the destination dwell year is the same year the person dies,
@@ -2293,15 +2321,26 @@ function makeFlowDestLayer() {
   const y = curYear;
   const positions = [];
   const colors = [];
+  const radii = [];
+  const widths = [];
   for (let i = 0; i < F; i++) {
     const fromY = flowFromY[i], toY = flowToY[i];
-    if (y <= fromY || y >= toY) continue;
-    const fs = flowSide[i];
-    if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
-    if (curFilter === "blood" && !flowBlood[i]) continue;
-    const c = colorForFinal(fs, flowSrc[i], flowIndi[i]);
+    let pulse = null;
+    if (migrationViz === "observations") {
+      pulse = _kfObservationPulse(i, y);
+      if (!pulse) continue;
+    } else if (y <= fromY || y >= toY) {
+      continue;
+    }
+    if (!_kfFlowPassesFilter(i)) continue;
+    const c = colorForFinal(flowSide[i], flowSrc[i], flowIndi[i]);
     positions.push(flowToLon[i], flowToLat[i]);
-    colors.push(c[0], c[1], c[2], 200);
+    const alpha = pulse
+      ? (pulse.ambiguous ? Math.round(85 + 65 * pulse.strength) : Math.round(150 + 80 * pulse.strength))
+      : 200;
+    colors.push(c[0], c[1], c[2], alpha);
+    radii.push(pulse ? (pulse.ambiguous ? 7 + 6 * pulse.strength : 5 + 5 * pulse.strength) : 5);
+    widths.push(pulse?.ambiguous ? 1 : 1.5);
   }
   if (!positions.length) return null;
   return new deck.ScatterplotLayer({
@@ -2309,13 +2348,13 @@ function makeFlowDestLayer() {
     data: { length: positions.length / 2, attributes: {
       getPosition:    { value: new Float32Array(positions), size: 2 },
       getLineColor:   { value: new Uint8Array(colors),      size: 4 },
+      getRadius:      { value: new Float32Array(radii),     size: 1 },
+      getLineWidth:   { value: new Float32Array(widths),    size: 1 },
     }},
-    getRadius: 5,
     radiusUnits: "pixels",
     stroked: true,
     filled: false,
     lineWidthUnits: "pixels",
-    getLineWidth: 1.5,
     pickable: false,
   });
 }
@@ -2739,6 +2778,17 @@ function updateMapLegend() {
     }
   }
 
+  if (flowFromY && flowFromY.length && clusterMode === "none" && !_kfActiveLens) {
+    html += hdr("Migration");
+    if (migrationViz === "observations") {
+      html += swatch("#2a4a8c", 12, "arc", "Observation pulse");
+      html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Arcs appear near the destination record date; faint arcs mark gaps over ${FLOW_AMBIGUOUS_GAP_YEARS} years.</div>`;
+    } else {
+      html += swatch("#2a4a8c", 8, "circle", "Continuous movement");
+      html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Particles interpolate between dated records.</div>`;
+    }
+  }
+
   // Kin lines annotation (appended regardless of cluster mode)
   if (kinLinesN > 0) {
     html += hdr("Kin lines");
@@ -2834,7 +2884,7 @@ function frame(activeTrailFade) {
   // positions change every tick. The trail-fade compositing leaves ghost
   // pixels at old positions, which produces a blink. Force a full clear
   // during map movement so each frame redraws cleanly.
-  if (_kfMapMoving || migrationViz === "lines" || highlightedDwell >= 0) {
+  if (_kfMapMoving || migrationViz === "observations" || migrationViz === "lines" || highlightedDwell >= 0) {
     fxCtx.clearRect(0, 0, W, H);
   } else {
     fxCtx.globalCompositeOperation = "destination-out";
@@ -2892,6 +2942,29 @@ function frame(activeTrailFade) {
 
   if (_kfFlowsOnDeck) {
     // Flows render via deck.gl ArcLayer; skip the fxCanvas flow paths.
+  } else if (migrationViz === "observations") {
+    const fLen = flowFromY.length;
+    for (let i = 0; i < fLen; i++) {
+      const pulse = _kfObservationPulse(i, y);
+      if (!pulse || !_kfFlowPassesFilter(i)) continue;
+      const lon0 = flowFromLon[i], lat0 = flowFromLat[i], lon1 = flowToLon[i], lat1 = flowToLat[i];
+      if (lon0 === lon1 && lat0 === lat1) continue;
+      const c = colorForFinal(flowSide[i], flowSrc[i], flowIndi[i]);
+      const alpha = pulse.ambiguous
+        ? (0.12 + 0.22 * pulse.strength)
+        : (0.35 + 0.45 * pulse.strength);
+      fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(3)})`;
+      fxCtx.lineWidth = pulse.ambiguous ? 0.8 : 1.6;
+      drawGreatCircle(fxCtx, lon0, lat0, lon1, lat1);
+      const p = safeProject([lon1, lat1]);
+      if (p) {
+        fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${Math.min(0.9, alpha + 0.2).toFixed(3)})`;
+        fxCtx.lineWidth = pulse.ambiguous ? 1 : 1.5;
+        fxCtx.beginPath();
+        fxCtx.arc(p[0], p[1], pulse.ambiguous ? 7 + 6 * pulse.strength : 5 + 5 * pulse.strength, 0, Math.PI * 2);
+        fxCtx.stroke();
+      }
+    }
   } else if (migrationViz === "lines") {
     const fLen = flowFromY.length;
     for (let i = 0; i < fLen; i++) {
@@ -2899,8 +2972,7 @@ function frame(activeTrailFade) {
       const age = y - flowToY[i];
       if (age > 200) continue;
       const fs = flowSide[i], fp = flowSrc[i], idi = flowIndi[i];
-      if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
-      if (curFilter === "blood" && !flowBlood[i]) continue;
+      if (!_kfFlowPassesFilter(i)) continue;
       const lon0 = flowFromLon[i], lat0 = flowFromLat[i], lon1 = flowToLon[i], lat1 = flowToLat[i];
       if (lon0 === lon1 && lat0 === lat1) continue;
       const c = colorForFinal(fs, fp, idi);
@@ -2925,8 +2997,7 @@ function frame(activeTrailFade) {
       }
       if (t <= 0 || t >= 1) continue;
       const fs = flowSide[i], fp = flowSrc[i], idi = flowIndi[i];
-      if (curFilter === "ancestors" && fs !== 0 && fs !== 1) continue;
-      if (curFilter === "blood" && !flowBlood[i]) continue;
+      if (!_kfFlowPassesFilter(i)) continue;
       const p = positionOnGreatCircle(flowFromLon[i], flowFromLat[i], flowToLon[i], flowToLat[i], t);
       if (!p) continue;
       const c = colorForFinal(fs, fp, idi);
@@ -3047,7 +3118,7 @@ function drawKinLines(lo, hi, y, dw) {
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
     const dyy = y - dwellY[i]; if (dyy < 0) continue;
-    if (curFilter === "ancestors" && dwellSide[i] !== 0 && dwellSide[i] !== 1) continue;
+    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(dwellIndi[i])) continue;
     if (curFilter === "blood" && !dwellBlood[i]) continue;
     if (!typeFilter.has(dwellType[i])) continue;
     if (!passesStatus(dwellIndi[i])) continue;
@@ -3804,6 +3875,17 @@ function ancestorSet(rootId, parentsOf) {
     if (p) { if (p[0]) stack.push(p[0]); if (p[1]) stack.push(p[1]); }
   }
   return set;
+}
+
+function directAncestorSet(rootId, parentsOf) {
+  const set = ancestorSet(rootId, parentsOf);
+  set.delete(rootId);
+  return set;
+}
+
+function _kfIsDirectAncestorIndiIdx(idx) {
+  const ind = lastIndividuals && lastIndividuals[idx];
+  return !!(ind && lastAncestorSet && lastAncestorSet.has(ind.id));
 }
 
 function ancestorsWithDepth(id, parentsOf, maxDepth = 30) {
@@ -5169,7 +5251,6 @@ async function processFile(file) {
   applyRoot(rootId);
 
   rootwrap.style.display = "";
-  $("optionsWrap").style.display = "";
   $("clusterSection").classList.remove("hidden");
   $("quickChips").classList.remove("hidden");
   $("mapLegend").classList.remove("hidden");
@@ -5231,6 +5312,7 @@ function applyRoot(rootId) {
   if (!rootId) return;
   lastRootId = rootId;
   lastSideById = classifySides(rootId, lastParentsOf, lastChildrenOf, lastIndividuals);
+  lastAncestorSet = directAncestorSet(rootId, lastParentsOf);
   lastBloodSet = bloodRelatives(rootId, lastParentsOf, lastChildrenOf);
   recomputeRelationships();
   if (timelineLoaded) {
@@ -5457,30 +5539,6 @@ $("rootSel").addEventListener("change", e => {
     applyRoot(e.target.value);
   }
 });
-let _menuOpen = false;
-$("optionsBtn").addEventListener("click", e => {
-  e.stopPropagation();
-  const m = $("optionsMenu");
-  m.classList.toggle("open");
-  _menuOpen = m.classList.contains("open");
-  if (!_menuOpen) _baseDirty = true; // wake the redraw loop
-});
-// Pre-warm the menu's layout so the first click is paint-only. The menu is
-// visibility:hidden by default; reading offsetHeight once forces the browser
-// to compute layout for all its children up front instead of on first open.
-requestAnimationFrame(() => {
-  const m = $("optionsMenu");
-  if (m) void m.offsetHeight;
-});
-document.addEventListener("click", e => {
-  const menu = $("optionsMenu");
-  if (!menu.classList.contains("open")) return;
-  if (!$("optionsWrap").contains(e.target)) {
-    menu.classList.remove("open");
-    _menuOpen = false;
-    _baseDirty = true;
-  }
-});
 $("filt").addEventListener("change", e => {
   curFilter = e.target.value;
   fxCtx.clearRect(0, 0, W, H);
@@ -5497,6 +5555,14 @@ $("colorMode").addEventListener("change", e => {
   if (_kfDwellsOnDeck || _kfFlowsOnDeck) updateDeckDwellLayer();
   updateMapLegend();
 });
+if (migrationViewSel) {
+  migrationViewSel.addEventListener("change", e => {
+    migrationViz = e.target.value === "observations" ? "observations" : "continuous";
+    fxCtx.clearRect(0, 0, W, H);
+    if (_kfDeckOverlay) updateDeckDwellLayer();
+    updateMapLegend();
+  });
+}
 
 // Lens dropdown — selecting a lens activates it (replaces cluster mode in
 // effect: dwells/flows hide, the lens-supplied SQL drives a polygon /
@@ -5758,8 +5824,7 @@ function updatePanel(force) {
   const visibleIndis = new Set();
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
-    const sd = dwellSide[i];
-    if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
+    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(dwellIndi[i])) continue;
     if (curFilter === "blood" && !dwellBlood[i]) continue;
     if (!typeFilter.has(dwellType[i])) continue;
     if (!passesStatus(dwellIndi[i])) continue;
@@ -5775,7 +5840,7 @@ function updatePanel(force) {
     const ind = lastIndividuals[idx];
     if (!ind.events.length) continue;
     const sd = lastSideById ? (lastSideById.get(ind.id) ?? 2) : 2;
-    if (curFilter === "ancestors" && sd !== 0 && sd !== 1) continue;
+    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(idx)) continue;
     if (curFilter === "blood" && lastBloodSet && !lastBloodSet.has(ind.id)) continue;
     const by = ind.birth_year, dy_ = ind.death_year;
     if (by != null && by > yint) continue;
@@ -5940,14 +6005,8 @@ function updateSliderMarkers() {
   if (!lastIndividuals || !lastRootId || !lastBloodSet) {
     mb.style.display = "none"; ma.style.display = "none"; return;
   }
-  const root = lastIndiById.get(lastRootId);
   let bloodMin = Infinity, ancMin = Infinity;
-  const ancestors = lastSideById
-    ? new Set([...lastIndividuals].filter(p => {
-        const s = lastSideById.get(p.id);
-        return (s === 0 || s === 1) && p.id !== lastRootId;
-      }).map(p => p.id))
-    : new Set();
+  const ancestors = lastAncestorSet || new Set();
   for (const ind of lastIndividuals) {
     if (ind.id === lastRootId) continue;
     const by = ind.birth_year;
@@ -7615,7 +7674,7 @@ window.kfApi = {
     return { ok: true, kinLines: n };
   },
   setClusterMode(mode) {
-    const valid = ["none", "aggregate", "pie", "parents", "gender", "tree", "state", "dispersion"];
+    const valid = ["none", "pie", "parents", "gender", "tree", "state", "dispersion"];
     if (!valid.includes(mode)) return { error: "valid modes: " + valid.join(", ") };
     $("clusterMode").value = mode;
     $("clusterMode").dispatchEvent(new Event("change", { bubbles: true }));
@@ -8775,7 +8834,6 @@ function autoIntroOnce() {
     content: "Here are some visualizations to explore:",
     chips: [
       { label: "Lineage clusters",   method: "setClusterMode", args: { mode: "pie" } },
-      { label: "Family density",     method: "setClusterMode", args: { mode: "aggregate" } },
       { label: "By US state",        method: "setClusterMode", args: { mode: "state" } },
       { label: "Parent knowledge",   method: "setClusterMode", args: { mode: "parents" } },
       { label: "Gender breakdown",   method: "setClusterMode", args: { mode: "gender" } },
@@ -8957,6 +9015,21 @@ const VIP_EMAILS = new Set([
 
 let _clerkReady = false;
 
+async function fetchServerAuthContext() {
+  if (!_clerkToken) return null;
+  try {
+    const r = await fetch("/api/auth/me", {
+      headers: { "Authorization": "Bearer " + _clerkToken },
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j?.user || null;
+  } catch (e) {
+    console.warn("[kf] fetchServerAuthContext:", e?.message || e);
+    return null;
+  }
+}
+
 async function initClerk() {
   try {
     // clerk.browser.js auto-initializes via data-clerk-publishable-key attribute.
@@ -9018,8 +9091,14 @@ async function updateAuthUI(user) {
     _clerkToken = await _clerkInstance.session.getToken();
   } catch (_) { _clerkToken = null; }
 
-  const email = user.primaryEmailAddress?.emailAddress ?? "";
-  _clerkUserTier = VIP_EMAILS.has(email.toLowerCase()) ? "vip" : "regular";
+  let email = user.primaryEmailAddress?.emailAddress ?? "";
+  const serverUser = await fetchServerAuthContext();
+  if (serverUser?.email) email = serverUser.email;
+  _clerkUserTier = serverUser?.type === "vip"
+    ? "vip"
+    : serverUser?.type === "regular" || serverUser?.type === "anon"
+      ? "regular"
+      : VIP_EMAILS.has(email.toLowerCase()) ? "vip" : "regular";
 
   statusEl.textContent = _clerkUserTier === "vip" ? "VIP" : "member";
   statusEl.className = "authTier " + _clerkUserTier;
