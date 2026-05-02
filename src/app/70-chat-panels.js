@@ -1019,8 +1019,22 @@ function _kfRefreshChatScope() {
   _kfBindChatScopeQuestions();
 }
 
+function _kfLoggedInUserContextLine() {
+  const user = (typeof _clerkInstance !== "undefined" && _clerkInstance?.user) ? _clerkInstance.user : null;
+  const email =
+    user?.primaryEmailAddress?.emailAddress ||
+    (typeof document !== "undefined" ? document.getElementById("authEmail")?.textContent?.trim() : "") ||
+    "";
+  const tier = (typeof _clerkUserTier !== "undefined" && _clerkUserTier) ? _clerkUserTier : "anon";
+  if (!email) return "Logged-in user: not signed in.";
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.fullName || "";
+  const tierLabel = tier === "vip" ? "VIP" : tier === "regular" ? "member" : tier;
+  return `Logged-in user: ${name ? `${name} <${email}>` : email} (${tierLabel}).`;
+}
+
 function buildChatContext() {
   const lines = [];
+  lines.push(_kfLoggedInUserContextLine());
   if (lastIndividuals) {
     lines.push(`Tree: ${lastIndividuals.length.toLocaleString()} individuals, ${dwellY ? dwellY.length.toLocaleString() : 0} events.`);
     lines.push(`Year range: ${minYear}-${maxYear}.`);
