@@ -572,6 +572,7 @@
       <form id="chatForm">
         <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
         <div id="chatBar">
+          <button type="button" id="chatMigrationMap" title="Open the deterministic migration map visualization">migration map</button>
           <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools on</button>
           <button type="button" id="chatReview" title="Review cross-tree link candidates" hidden>review</button>
           <button type="button" id="chatClear" title="Clear conversation">clear</button>
@@ -913,11 +914,19 @@ function initMapLibre() {
   // composite) per tick during drag — avoids the blink that comes from
   // clearing on every move event while frame() redraws asynchronously.
   _kfMap.on("movestart", () => { _kfMapMoving = true; });
-  _kfMap.on("moveend",   () => { _kfMapMoving = false; updateMapLegend(); });
+  _kfMap.on("moveend",   () => {
+    _kfMapMoving = false;
+    _kfInvalidateClusterCache();
+    if (timelineLoaded && _kfDeckOverlay) updateDeckDwellLayer();
+    updateMapLegend();
+  });
   _kfMap.on("move", () => {
     const k = Math.pow(2, _kfMap.getZoom());
     zoomTransform = { k, x: 0, y: 0 };
-    if (timelineLoaded) projectAll();
+    if (timelineLoaded) {
+      projectAll();
+      _kfInvalidateClusterCache();
+    }
     _baseDirty = true;
   });
   _kfMap.on("load", () => {
@@ -1962,6 +1971,18 @@ function makeHighlightLayer() {
 // one of those changes.
 let _kfClusterCache = null;
 let _kfClusterCacheKey = "";
+
+function _kfInvalidateClusterCache() {
+  _kfClusterCache = null;
+  _kfClusterCacheKey = "";
+}
+
+function _kfClusterViewKey() {
+  if (!_kfMap) return `${W}x${H}`;
+  const c = _kfMap.getCenter();
+  return `${_kfMap.getZoom().toFixed(3)}|${c.lng.toFixed(3)}|${c.lat.toFixed(3)}|${W}x${H}`;
+}
+
 function _kfBuildClustersForDeck() {
   if (!timelineLoaded) return null;
   // Use person-marker set so cluster counts reflect alive-at-curYear persons
@@ -2065,7 +2086,7 @@ function _kfFormatClusterTooltip(c) {
   return lines.join("");
 }
 function _kfGetClustersForDeck() {
-  const key = `${Math.floor(curYear)}|${zoomTransform.k.toFixed(2)}|${clusterRadius}|${curFilter}|${dwellWindow}|${clusterMode}`;
+  const key = `${_kfPersonsCacheYear}|${_kfClusterViewKey()}|${clusterRadius}|${clusterMode}|${_kfDwellCount}`;
   if (_kfClusterCacheKey !== key) {
     _kfClusterCacheKey = key;
     _kfClusterCache = _kfBuildClustersForDeck();
@@ -5692,6 +5713,7 @@ document.querySelectorAll("#quickChips .quickChip").forEach(el => {
 });
 $("clusterMode").addEventListener("change", e => {
   clusterMode = e.target.value;
+  _kfInvalidateClusterCache();
   fxCtx.clearRect(0, 0, W, H);
   if (_kfDeckOverlay) updateDeckDwellLayer();
   if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
@@ -5700,7 +5722,9 @@ $("clusterMode").addEventListener("change", e => {
 $("clusterRadius").addEventListener("input", e => {
   clusterRadius = parseInt(e.target.value, 10) || 30;
   $("clusterRadiusLabel").textContent = clusterRadius;
+  _kfInvalidateClusterCache();
   fxCtx.clearRect(0, 0, W, H);
+  if (_kfDeckOverlay) updateDeckDwellLayer();
 });
 function _kfSetKinLines(n) {
   kinLinesN = n;
@@ -8477,6 +8501,7 @@ chatFormEl.addEventListener("submit", async e => {
     chatSendBtn.textContent = "Send";
   }
 });
+$("chatMigrationMap")?.addEventListener("click", _kfShowMigrationMapViz);
 chatInputEl.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
@@ -8784,6 +8809,122 @@ function queryBrowserDb(query) {
     return { ok: true, rows: rows.slice(0, 200), truncated: rows.length > 200, totalRows: rows.length };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
+  }
+}
+
+// --------------- Built-in map visualizations ---------------
+
+function _kfBrowserRows(query, limit = 2000) {
+  if (!_kfBrowserDb) throw new Error("No browser database is ready. Load one or more GEDCOM trees first.");
+  if (!/^\s*(select|with)\b/i.test(query)) throw new Error("Map visualization queries must be read-only SELECTs.");
+  _kfRefreshBrowserViews();
+  const results = _kfBrowserDb.exec(query);
+  if (!results.length) return [];
+  const { columns, values } = results[0];
+  return values.slice(0, limit).map(row => Object.fromEntries(columns.map((c, i) => [c, row[i]])));
+}
+
+function _kfMapVizProject(lon, lat, width = 920, height = 430) {
+  return [((Number(lon) + 180) / 360) * width, ((85 - Number(lat)) / 170) * height];
+}
+
+function _kfMapVizColor(i, alpha = 1) {
+  const p = [[42,74,140],[220,90,70],[80,160,100],[230,160,60],[130,95,190],[55,170,190],[200,80,150],[130,150,60]];
+  const c = p[i % p.length];
+  return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+}
+
+const _kfMapVizWorldCache = new Map();
+function _kfMapVizWorldLayer(width = 920, height = 430) {
+  const key = `${width}x${height}`;
+  if (_kfMapVizWorldCache.has(key)) return _kfMapVizWorldCache.get(key);
+  if (!world || !world.objects || !world.objects.countries) {
+    const grid = `<g stroke="#c8d5e4" stroke-width=".7" opacity=".55">` +
+      `${[-120,-60,0,60,120].map(lon => `<line x1="${_kfMapVizProject(lon,-80,width,height)[0]}" x2="${_kfMapVizProject(lon,80,width,height)[0]}" y1="0" y2="${height}"/>`).join("")}` +
+      `${[-40,0,40].map(lat => `<line x1="0" x2="${width}" y1="${_kfMapVizProject(0,lat,width,height)[1]}" y2="${_kfMapVizProject(0,lat,width,height)[1]}"/>`).join("")}` +
+    `</g>`;
+    _kfMapVizWorldCache.set(key, grid);
+    return grid;
+  }
+  const transform = d3.geoTransform({
+    point(lon, lat) {
+      const p = _kfMapVizProject(lon, lat, width, height);
+      this.stream.point(p[0], p[1]);
+    },
+  });
+  const path = d3.geoPath(transform);
+  const countries = topojson.feature(world, world.objects.countries);
+  const paths = (countries.features || []).map(f => {
+    const d = path(f);
+    return d ? `<path d="${d}"/>` : "";
+  }).join("");
+  const layer = `<g fill="#f8f2e6" stroke="#b8c3d2" stroke-width=".55">${paths}</g>` +
+    `<g stroke="#d8e2ee" stroke-width=".6" opacity=".65">` +
+      `${[-120,-60,0,60,120].map(lon => `<line x1="${_kfMapVizProject(lon,-80,width,height)[0]}" x2="${_kfMapVizProject(lon,80,width,height)[0]}" y1="0" y2="${height}"/>`).join("")}` +
+      `${[-40,0,40].map(lat => `<line x1="0" x2="${width}" y1="${_kfMapVizProject(0,lat,width,height)[1]}" y2="${_kfMapVizProject(0,lat,width,height)[1]}"/>`).join("")}` +
+    `</g>`;
+  _kfMapVizWorldCache.set(key, layer);
+  return layer;
+}
+
+const MIGRATION_MAP_QUERY = `
+WITH births AS (
+  SELECT source_id, individual_id, MIN(year) AS year, lat, lon, place
+  FROM events
+  WHERE type='BIRT' AND lat IS NOT NULL AND lon IS NOT NULL
+  GROUP BY source_id, individual_id
+)
+SELECT p.name AS parent_name, c.name AS child_name,
+       pb.year AS parent_year, cb.year AS child_year,
+       pb.lat AS from_lat, pb.lon AS from_lon, cb.lat AS to_lat, cb.lon AS to_lon
+FROM family_children fc
+JOIN families f ON f.source_id=fc.source_id AND f.id=fc.family_id
+JOIN individuals c ON c.source_id=fc.source_id AND c.id=fc.child_id
+JOIN individuals p ON p.source_id=f.source_id AND (p.id=f.husb_id OR p.id=f.wife_id)
+JOIN births pb ON pb.source_id=p.source_id AND pb.individual_id=p.id
+JOIN births cb ON cb.source_id=c.source_id AND cb.individual_id=c.id
+WHERE pb.lat IS NOT NULL AND cb.lat IS NOT NULL
+LIMIT 2000`;
+
+function _kfMigrationMapSvg(rows) {
+  const width = 920, height = 430;
+  const data = rows.map(r => ({
+    ...r,
+    dist: _kfHaversineMiles(Number(r.from_lat), Number(r.from_lon), Number(r.to_lat), Number(r.to_lon)),
+  })).filter(r => Number.isFinite(r.dist) && r.dist > 10).sort((a, b) => b.dist - a.dist).slice(0, 120);
+  const paths = data.map((r, i) => {
+    const [x1, y1] = _kfMapVizProject(r.from_lon, r.from_lat, width, height);
+    const [x2, y2] = _kfMapVizProject(r.to_lon, r.to_lat, width, height);
+    const mx = (x1 + x2) / 2;
+    const my = Math.min(y1, y2) - Math.min(90, Math.abs(x2 - x1) * 0.18);
+    const d = `M${x1.toFixed(1)},${y1.toFixed(1)} Q${mx.toFixed(1)},${my.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
+    return `<path d="${d}" fill="none" stroke="${_kfMapVizColor(i, 0.24)}" stroke-width="${Math.max(0.8, Math.min(5, Math.sqrt(r.dist) / 14)).toFixed(2)}"><title>${escHtml(r.parent_name || "parent")} -> ${escHtml(r.child_name || "child")} (${Math.round(r.dist)} mi)</title></path>`;
+  }).join("");
+  const dots = data.map((r, i) => {
+    const [x2, y2] = _kfMapVizProject(r.to_lon, r.to_lat, width, height);
+    return `<circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="2.7" fill="${_kfMapVizColor(i, 0.78)}"/>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#eaf4fb"/>${_kfMapVizWorldLayer(width, height)}${paths}${dots}</svg>`;
+}
+
+function _kfShowMigrationMapViz() {
+  try {
+    const rows = _kfBrowserRows(MIGRATION_MAP_QUERY, 2000);
+    const html = `<style>
+      .mapViz { color:#172033; font:13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
+      .mapViz h1 { margin:0 0 3px; font-size:20px; letter-spacing:-0.02em; }
+      .mapViz .sub { color:#667085; margin-bottom:12px; }
+      .mapViz .note { color:#667085; font-size:11px; margin-top:8px; }
+      .mapViz svg { width:100%; height:auto; display:block; }
+    </style><div class="mapViz">
+      <h1>Migration Map</h1>
+      <div class="sub">${rows.length} parent-child birthplace links from selected trees</div>
+      ${_kfMigrationMapSvg(rows)}
+      <div class="note">Arcs connect parent birthplaces to child birthplaces. This shows generational movement, not exact travel routes.</div>
+    </div>`;
+    kfApi.showViz({ type: "html", title: "Migration Map", spec: html });
+  } catch (e) {
+    appendError(e.message || String(e));
   }
 }
 
