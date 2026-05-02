@@ -21,7 +21,7 @@ export interface Env {
   DB: D1Database;
   STORAGE: R2Bucket;
   CLERK_SECRET_KEY: string;
-  CLERK_PUBLISHABLE_KEY: string;
+  CLERK_PUBLISHABLE_KEY?: string;
   ANTHROPIC_API_KEY: string;
   KEY_ENCRYPTION_SECRET: string;
   VIP_EMAILS?: string;
@@ -41,6 +41,20 @@ const DEFAULT_VIP_EMAILS = [
   "paigeunterberg@gmail.com",
   "james.raby@gmail.com",
 ];
+
+// Public Clerk browser key used by index.html. Keeping this as a fallback avoids
+// turning authenticated API requests into anonymous requests if the Pages var is
+// absent in a deployment environment.
+const DEFAULT_CLERK_PUBLISHABLE_KEY = "pk_live_Y2xlcmsua2luZHJlZHNlYXJjaC5jb20k";
+
+function getClerkPublishableKey(env: Env): string {
+  const configured = typeof env.CLERK_PUBLISHABLE_KEY === "string" ? env.CLERK_PUBLISHABLE_KEY.trim() : "";
+  return configured || DEFAULT_CLERK_PUBLISHABLE_KEY;
+}
+
+function getClerkSecretKey(env: Env): string {
+  return typeof env.CLERK_SECRET_KEY === "string" ? env.CLERK_SECRET_KEY.trim() : "";
+}
 
 function getVipEmails(env: Env): Set<string> {
   const raw = [
@@ -136,13 +150,16 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
 
   if (authHeader?.startsWith("Bearer ")) {
     try {
+      const secretKey = getClerkSecretKey(env);
+      if (!secretKey) throw new Error("Clerk secret key is missing in Pages Functions environment");
+      const publishableKey = getClerkPublishableKey(env);
       const clerk = createClerkClient({
-        secretKey: env.CLERK_SECRET_KEY,
-        publishableKey: env.CLERK_PUBLISHABLE_KEY,
+        secretKey,
+        publishableKey,
       });
       const requestState = await clerk.authenticateRequest(request, {
-        secretKey: env.CLERK_SECRET_KEY,
-        publishableKey: env.CLERK_PUBLISHABLE_KEY,
+        secretKey,
+        publishableKey,
       });
       ctx.data.auth = {
         headerPresent: true,
