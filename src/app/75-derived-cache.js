@@ -214,7 +214,7 @@ function _kfPersonIssuesHtml(ind, di = -1) {
   const place = di >= 0 ? _kfDwellPlace(di) : "";
   if (place && _kfPlaceEvidence(place, !!dwellExact?.[di]).rank >= 3) issues.push(`weak current-place evidence: ${place}`);
   if (!issues.length) return "";
-  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.slice(0, 5).map(i => `<li>${escHtml(i)}</li>`).join("")}</ul></div>`;
+  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.slice(0, 5).map(i => `<li>${escHtml(_kfPlainEnglishEventText(i))}</li>`).join("")}</ul></div>`;
 }
 
 function _kfQuestionChipsHtml(questions) {
@@ -436,12 +436,6 @@ function _kfYearDigestHtml() {
     lines.push(`Data check: ${_kfNameShort(ex.row.ind.name)} - ${ex.issue}.`);
   }
   return `<div class="year-digest-head"><span class="year-digest-title">What changed in ${y}</span><span class="year-digest-sub">vs ${y - 1}</span></div>` +
-    `<div class="year-digest-metrics">` +
-      _kfYearDigestMetricHtml(`+${d.appeared.length.toLocaleString()}`, "appear") +
-      _kfYearDigestMetricHtml(d.disappeared.length.toLocaleString(), "leave") +
-      _kfYearDigestMetricHtml(d.moved.length.toLocaleString(), "move") +
-      _kfYearDigestMetricHtml(d.weak.length.toLocaleString(), "weak") +
-    `</div>` +
     `<ul class="year-digest-list">${lines.slice(0, 4).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
 }
 
@@ -674,7 +668,7 @@ function _kfClusterIssuesHtml(c, rows) {
     if (issues.length >= 5) break;
   }
   if (!issues.length) return "";
-  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.map(i => `<li>${escHtml(i)}</li>`).join("")}</ul></div>`;
+  return `<div class="ux-section"><h4>Things to check</h4><ul class="ux-list">${issues.map(i => `<li>${escHtml(_kfPlainEnglishEventText(i))}</li>`).join("")}</ul></div>`;
 }
 
 function _kfClusterQuestionHtml(rows) {

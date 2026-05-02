@@ -645,6 +645,8 @@ function _kfHidePersonCard() {
   if (_personEmptyEl) _personEmptyEl.hidden = false;
 }
 let _chatBusy = false;
+let _kfChatDiagramSeq = 0;
+const _kfChatDiagramSpecs = new Map();
 
 function escChat(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
@@ -662,10 +664,24 @@ function _kfInlineMd(s) {
 // Build a sandboxed inline iframe that renders a Mermaid diagram. Same
 // security model as the viz tab — sandbox='allow-scripts' with no
 // allow-same-origin, so the renderer can't read parent localStorage.
+function _kfOpenChatMermaid(id) {
+  const spec = _kfChatDiagramSpecs.get(Number(id));
+  if (!spec || !window.kfApi || typeof window.kfApi.showViz !== "function") return;
+  window.kfApi.showViz({ type: "mermaid", title: "Chat diagram", spec });
+}
+
 function _kfChatMermaidIframe(src) {
+  const id = ++_kfChatDiagramSeq;
+  _kfChatDiagramSpecs.set(id, String(src || ""));
+  if (_kfChatDiagramSpecs.size > 80) {
+    const oldest = _kfChatDiagramSpecs.keys().next().value;
+    _kfChatDiagramSpecs.delete(oldest);
+  }
   const text = JSON.stringify(String(src || ""));
+  const idJson = JSON.stringify(id);
   const srcdoc = `<!doctype html><html><head><style>
     html,body{margin:0;padding:6px 0;background:transparent;font:13px/1.4 system-ui;}
+    body{cursor:pointer;}
     #out{max-width:100%;overflow:auto;}
     #out svg{max-width:100%;height:auto;display:block;}
     pre.err{color:#b00020;background:#fff3f3;padding:6px;border-radius:4px;font-size:11px;white-space:pre-wrap;}
@@ -674,6 +690,8 @@ function _kfChatMermaidIframe(src) {
   </head><body><div id="out"><pre class="mermaid"></pre></div>
   <script>
     const src=${text};
+    const diagramId=${idJson};
+    document.addEventListener('click', () => parent.postMessage({type:'kf-mermaid-open', id:diagramId}, '*'));
     document.querySelector('.mermaid').textContent=src;
     mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'default'});
     mermaid.run().then(()=>{
@@ -689,7 +707,10 @@ function _kfChatMermaidIframe(src) {
   <\/script>
   </body></html>`;
   const safe = srcdoc.replace(/&/g,"&amp;").replace(/"/g,"&quot;");
-  return `<iframe class="chatMermaid" sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="${safe}" title="diagram" style="width:100%; min-height:80px; border:1px solid #e0e6ee; border-radius:4px; background:#fbfbfd;"></iframe>`;
+  return `<span class="chatDiagram" data-mermaid-id="${id}">` +
+    `<iframe class="chatMermaid" sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="${safe}" title="diagram"></iframe>` +
+    `<span class="chatDiagramBar"><button type="button" class="chatDiagramOpen" data-mermaid-id="${id}">Open as tab</button></span>` +
+  `</span>`;
 }
 
 // Block-level markdown renderer: paragraphs, headers, lists, tables, code
@@ -799,12 +820,18 @@ function renderMd(s) {
 // They postMessage their rendered height; we resize their iframe element
 // to match so diagrams don't get clipped by an arbitrary fixed height.
 window.addEventListener("message", e => {
-  if (!e.data || e.data.type !== "kf-mermaid-size") return;
-  const frames = chatHistoryEl ? chatHistoryEl.querySelectorAll("iframe.chatMermaid") : [];
-  for (const f of frames) {
-    if (f.contentWindow === e.source) {
-      f.style.height = (Math.max(80, Number(e.data.h) || 80)) + "px";
-      break;
+  if (!e.data) return;
+  if (e.data.type === "kf-mermaid-open") {
+    _kfOpenChatMermaid(e.data.id);
+    return;
+  }
+  if (e.data.type === "kf-mermaid-size") {
+    const frames = chatHistoryEl ? chatHistoryEl.querySelectorAll("iframe.chatMermaid") : [];
+    for (const f of frames) {
+      if (f.contentWindow === e.source) {
+        f.style.height = (Math.max(80, Number(e.data.h) || 80)) + "px";
+        break;
+      }
     }
   }
 });
@@ -856,6 +883,9 @@ function renderChat() {
         // re-applied from chip._spent so we don't need to touch the new btn.
       }
     });
+  });
+  chatHistoryEl.querySelectorAll(".chatDiagramOpen[data-mermaid-id]").forEach(btn => {
+    btn.addEventListener("click", () => _kfOpenChatMermaid(btn.dataset.mermaidId));
   });
   if (wasAtBottom) chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
   else chatHistoryEl.scrollTop = prevScrollTop;
