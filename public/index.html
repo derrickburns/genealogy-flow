@@ -217,10 +217,15 @@
   #sourcesPanel.hidden { display:none; }
   #sourcesPanel .label { font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#566480; margin-right:4px; font-size:10px; }
   #sourcesPanel .src { display:inline-flex; align-items:center; gap:3px; padding:2px 6px; margin:2px 4px 2px 0; border:1px solid #c0ccd8; border-radius:10px; background:#fff; }
+  #sourcesPanel .src.on { border-color:#2a4a8c; box-shadow:0 0 0 1px rgba(42,74,140,0.15) inset; }
+  #sourcesPanel .src .sel { margin:0 2px 0 0; }
   #sourcesPanel .src .name { color:#1c2433; font-weight:600; }
+  #sourcesPanel .src .name[data-activate] { cursor:pointer; }
   #sourcesPanel .src .meta { color:#9aa6bc; font-size:10px; }
   #sourcesPanel .src .x { cursor:pointer; color:#9aa6bc; padding:0 2px; user-select:none; }
   #sourcesPanel .src .x:hover { color:#b3261e; }
+  #sourcesPanel .srcAction { font:inherit; font-size:10.5px; border:1px solid #c0ccd8; border-radius:10px; padding:2px 7px; background:#fff; color:#44536d; cursor:pointer; margin:2px 4px 2px 0; }
+  #sourcesPanel .srcAction:disabled { opacity:0.45; cursor:default; }
   #selectedPerson { border-bottom:1px solid #e0e6ee; padding:8px 12px; background:linear-gradient(135deg,#eef3fa 0%,#f5f8fd 100%); font-size:11.5px; }
   #selectedPerson .sp-name { font-weight:700; font-size:13px; color:#0a1426; margin-bottom:2px; }
   #selectedPerson .sp-sub { color:#566480; font-size:11px; margin-bottom:4px; }
@@ -304,6 +309,10 @@
   #chatHistory .msg.bot .body blockquote { margin:4px 0; padding:2px 10px; border-left:3px solid #c0ccd8; color:#566480; }
   #chatHistory .msg.bot .body hr { border:none; border-top:1px solid #e0e6ee; margin:8px 0; }
   #chatHistory .msg.bot .body iframe.chatMermaid { display:block; margin:6px 0; }
+  #chatHistory .msg.bot .body table { border-collapse:collapse; font-size:11px; margin:6px 0; width:100%; }
+  #chatHistory .msg.bot .body th { background:#f0f4fa; color:#2a3a58; font-weight:700; padding:4px 8px; border:1px solid #d0dae8; text-align:left; }
+  #chatHistory .msg.bot .body td { padding:3px 8px; border:1px solid #e0e6ee; vertical-align:top; }
+  #chatHistory .msg.bot .body tr:nth-child(even) td { background:#f8fafd; }
   #chatHistory .msg.tool { font-size:11px; color:#888; }
   #chatHistory .msg.tool .who { color:#9aa6bc; }
   #chatHistory .msg.tool .body { word-wrap:break-word; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
@@ -329,6 +338,8 @@
   #chatSend { margin-left:auto; background:#2a4a8c !important; color:#fff !important; border-color:#1c3669 !important; padding:5px 14px !important; }
   #chatSend:hover { background:#1c3669 !important; }
   #chatSend:disabled { background:#9aa6bc !important; cursor:default; border-color:#7c8aa3 !important; }
+  #cannedViz { font:inherit; font-size:11px; border:1px solid #c0ccd8; border-radius:4px; background:#fff; color:#566480; padding:3px 6px; cursor:pointer; width:100%; }
+  #cannedViz:focus { outline:none; border-color:#2a4a8c; }
   #panel {
     background:rgba(255,255,255,0.98); border:1px solid #c0ccd8; border-radius:10px;
     box-shadow:0 2px 12px rgba(0,0,0,0.08);
@@ -426,7 +437,7 @@
   <b>Kindred Flow</b>
   <span id="stats">starting...</span>
   <button id="pick">Open .ged</button>
-  <button id="uploadCloud" title="Upload current GEDCOM to cloud storage" style="display:none">Upload GEDCOM</button>
+  <button id="uploadCloud" title="Upload all loaded trees to cloud storage" style="display:none">Upload Trees</button>
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
   <span id="rootwrap" style="display:none; margin-left:6px; position:relative;">
     <span id="rootSearchBox" style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:0 4px 0 8px; transition:border-color 0.1s, box-shadow 0.1s;">
@@ -509,6 +520,33 @@
     </div>
     <div id="chatHistory"></div>
     <form id="chatForm">
+      <select id="cannedViz">
+        <option value="">-- Canned Visualizations --</option>
+        <optgroup label="Most Illuminating">
+          <option value="Show me a geographic migration flow map: plot birth locations with arrows connecting parent to child generations, colored by century. Trace the Norman to English to American migration story.">Geographic Migration Flow Map</option>
+          <option value="Show me a birth year histogram by 50-year bin across the entire tree, so I can see where data is reliable vs reconstructed and identify the ordinary ancestor gap between 1300-1600.">Birth Year Histogram by Century</option>
+          <option value="Show me a surname lineage Sankey diagram tracing how surnames transform across generations (e.g. Richvaride to de L'Aigle to Le Chaundeler to Chandler to modern surnames).">Surname Lineage Sankey Diagram</option>
+        </optgroup>
+        <optgroup label="Highly Revealing">
+          <option value="Show me a data completeness heatmap: for each individual score completeness (birth date known, death date known, parents known, spouse known) and plot it as a tree, revealing which branches need more research.">Data Completeness Heatmap</option>
+          <option value="Show me a lifespan box plot by century using available death dates, so I can see median lifespan trends, childhood mortality spikes during plague centuries, and life expectancy improvement post-1800.">Lifespan Box Plot by Century</option>
+          <option value="Show me a fan/pedigree collapse chart centered on the home person. Highlight individuals who appear multiple times (pedigree collapse). Show the collapse ratio of unique ancestors to expected ancestors.">Pedigree Collapse Fan Chart</option>
+        </optgroup>
+        <optgroup label="Supporting Views">
+          <option value="Show me an event type frequency timeline: of all events (births, deaths, marriages, military service, immigration), which types cluster in which centuries? Show battle deaths spiking around 1066, 1095, etc.">Event Type Frequency Timeline</option>
+          <option value="Show me a country of birth treemap: breakdown of individuals by country (France, England, Scotland, colonies, USA) showing the Norman-to-British pipeline.">Country of Birth Treemap</option>
+          <option value="Show me a generation depth sunburst chart: how many generations deep is each branch from the home person? Color by branch depth and show where research gravity lies.">Generation Depth by Branch</option>
+        </optgroup>
+        <optgroup label="Animated">
+          <option value="Show me an animated Great River flow: start at the earliest ancestor and animate descendants branching outward like a river delta, tributaries splitting and merging through marriages, flooding forward through time to 2026.">Animated: The Great River Flow</option>
+          <option value="Show me an animated geographic migration pulse: dots appear at birthplaces then travel along arcs to settlement locations, generation by generation, tracing the France to England to colonies to America journey.">Animated: Geographic Migration Pulse</option>
+          <option value="Show me an animated timeline heartbeat: a horizontal timeline from 1010 to 2026 where people pulse into existence at birth and fade at death, showing who was alive simultaneously at key historical moments like 1066.">Animated: Timeline Heartbeat</option>
+          <option value="Show me an animated DNA inheritance cascade: colored gene blocks pass from parent to child each generation, halving each time, showing why a 10th-great-grandparent contributes only ~0.4% DNA despite being equally family.">Animated: DNA Inheritance Cascade</option>
+          <option value="Show me an animated web of marriages: start with the home person, then animate parents connecting, then their parents, with lines flying in from geographic and social clusters, showing endogamy as tight loops and social crossings as dramatic breaks.">Animated: Web of Marriages</option>
+          <option value="Show me an ancestor burn animation starting from a dark screen. The home person lights up, then direct ancestors light up one by one branching backward, with non-direct relatives dim and the direct line blazing, tracing back to the earliest Norman ancestor.">Animated: Ancestor Burn</option>
+          <option value="Show me an animated population wave: a bar chart that fills in showing births vs deaths per decade across the tree, making plague years, wars, and famines visible as valleys, with the 1340s Black Death highlighted.">Animated: Population Wave (Births/Deaths)</option>
+        </optgroup>
+      </select>
       <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
       <div id="chatBar">
         <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools on</button>
@@ -750,7 +788,12 @@ let _kfOverlayPins = [];     // {lat, lon, label, color}
 let _kfOverlayPaths = [];    // {points: [{lat,lon,label?}], color, label}
 let _kfSubtreeFilter = null; // Set<string> of indi ids; if non-null, render restricts to these
 let _kfActiveTreeName = null;
-const _kfTreeCache = new Map(); // sourceName -> snapshot of parsed state
+const _kfTreeCache = new Map(); // sourceName -> raw GEDCOM/JSON text
+const _kfLoadedSources = new Map(); // sourceName -> parsed source snapshot for browser SQL
+const _kfSourceIdByName = new Map(); // sourceName -> stable browser source_id
+let _kfNextBrowserSourceId = 1;
+let _kfSelectedSourceIds = new Set();
+let _kfCatalogTrees = [];
 let _kfPlayStopAt = null;    // when playing, year at which to auto-pause
 let _kfSkipNextProxyLoad = false; // setActiveTree → processFile path skips the upload
 let _kfHighlightSet = null;       // Set<string> indi ids; rings drawn over their latest dwell
@@ -770,6 +813,7 @@ let lastSideById = null, lastRootId = null;
 let lastTimeline = null, lastFileName = "genealogy";
 let _kfSourceId = null;      // D1 source_id for VIP server-side queries
 let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data already in D1)
+let _kfSkipNextSeedCount = 0; // suppress VIP autosave for N upcoming processFile() calls
 let _kfBrowserDb = null;     // sql.js in-memory SQLite DB built from the loaded GEDCOM
 let _sqlJsReady = null;      // Promise — resolves when sql.js WASM is loaded
 const CHAT_PROXY_LS = "kf-chat-proxy";
@@ -843,7 +887,7 @@ function initMapLibre() {
   // composite) per tick during drag — avoids the blink that comes from
   // clearing on every move event while frame() redraws asynchronously.
   _kfMap.on("movestart", () => { _kfMapMoving = true; });
-  _kfMap.on("moveend",   () => { _kfMapMoving = false; });
+  _kfMap.on("moveend",   () => { _kfMapMoving = false; updateMapLegend(); });
   _kfMap.on("move", () => {
     const k = Math.pow(2, _kfMap.getZoom());
     zoomTransform = { k, x: 0, y: 0 };
@@ -1636,9 +1680,19 @@ function rebuildPersonMarkers() {
     const ind = lastIndividuals[idx];
     if (!ind) continue;
     if (ind.birth_year != null && ind.birth_year > yint) continue;
-    // Use inferred death year (adult life-expectancy table) when not recorded.
-    const dy = _kfInferredDeathYear(ind);
-    if (dy != null && dy < yint) continue;
+    // Exclude if death is recorded and has passed.
+    if (ind.death_year != null && ind.death_year < yint) continue;
+    // No recorded death: apply life-expectancy estimate only for historical
+    // people where the estimate is reliable. Anyone born within 115 years of
+    // curYear could plausibly still be alive — don't infer them dead.
+    if (ind.death_year == null && ind.birth_year != null) {
+      if (yint - ind.birth_year >= 115) continue; // biologically impossible to be alive
+      const inferred = _kfInferredDeathYear(ind);
+      // Only remove marker if yint is meaningfully past the cohort median — a
+      // 15-year buffer means we keep showing e.g. a 1945-born male until age
+      // 85 (2030) rather than cutting them at age 80 (2025).
+      if (inferred != null && yint > inferred + 15) continue;
+    }
     // Lineage / blood / status filters still apply
     if (curFilter === "ancestors") {
       const sd = lastSideById ? lastSideById.get(ind.id) : null;
@@ -1662,17 +1716,10 @@ function rebuildPersonMarkers() {
     _kfDwellPositions[count * 2 + 1] = dwellLat[bestDi];
     _kfDwellRadii[count]             = dwellExact[bestDi] ? 4 : 3;
     const c = colorForFinal(dwellSide[bestDi], dwellSrc[bestDi], idx);
-    // Fade out over the last 5 years of life so the marker dims before vanishing.
-    const FADE_YEARS = 5;
-    let alpha = 220;
-    if (dy != null) {
-      const yearsLeft = dy - yint;
-      if (yearsLeft < FADE_YEARS) alpha = Math.round(220 * Math.max(0, yearsLeft / FADE_YEARS));
-    }
     _kfDwellColors[count * 4]     = c[0];
     _kfDwellColors[count * 4 + 1] = c[1];
     _kfDwellColors[count * 4 + 2] = c[2];
-    _kfDwellColors[count * 4 + 3] = alpha;
+    _kfDwellColors[count * 4 + 3] = 220;
     _kfPersonIndi[count]  = idx;
     _kfPersonDwell[count] = bestDi;
     count++;
@@ -1741,7 +1788,6 @@ function updateDeckDwellLayer() {
     makeAggregateLayer(),
     makeAggregateLabelsLayer(),
     makeMatchLineLayer(),
-    makeMatchRingLayer(),
     makeHighlightLayer(),
     makePinsLayer(),
     makePinLabelsLayer(),
@@ -1959,6 +2005,32 @@ function _kfFormatClusterTooltip(c) {
   if (c.sourceCounts) {
     const top = Array.from(c.sourceCounts.entries()).sort((a, b) => b[1] - a[1]);
     lines.push(`<div class="tipYrs">${top.map(([sid, n]) => `${escHtml(c.sourceNames?.get(sid) || String(sid))} ${n}`).join(" &middot; ")}</div>`);
+  }
+  // Top 5 nearest relatives of the home person in this cluster
+  if (c.members && c.members.length && lastIndividuals && relDistCache.size) {
+    const N_REL = 5;
+    const rels = [];
+    for (const di of c.members) {
+      const idx = dwellIndi ? dwellIndi[di] : -1;
+      if (idx < 0 || !lastIndividuals[idx]) continue;
+      const ind = lastIndividuals[idx];
+      const dist = relDistCache.get(ind.id) ?? Infinity;
+      if (!isFinite(dist) || dist === 0) continue; // skip unknown / self
+      const rel = relationCache.get(ind.id) || "";
+      const place = (dwellPlace && placesList && dwellPlace[di] >= 0) ? placesList[dwellPlace[di]] : "";
+      const shortPlace = place ? place.split(",")[0].trim() : "";
+      rels.push({ name: ind.name || "?", rel, dist, place: shortPlace });
+    }
+    rels.sort((a, b) => a.dist - b.dist || a.name.localeCompare(b.name));
+    const top = rels.slice(0, N_REL);
+    if (top.length) {
+      lines.push(`<div style="border-top:1px solid #e0e6ee;margin-top:4px;padding-top:3px;font-size:10.5px;color:#566480;font-weight:700;">Closest relatives</div>`);
+      for (const r of top) {
+        const relBadge = r.rel ? `<span style="background:#e8eef8;border-radius:3px;padding:1px 4px;font-size:9.5px;color:#2a4a8c;margin-right:4px;font-weight:700;">${r.rel}</span>` : "";
+        const place = r.place ? ` <span style="color:#9aa6bc;font-size:10px;">${escHtml(r.place)}</span>` : "";
+        lines.push(`<div style="font-size:10.5px;padding:1px 0;">${relBadge}${escHtml(r.name)}${place}</div>`);
+      }
+    }
   }
   return lines.join("");
 }
@@ -2226,6 +2298,54 @@ let _baseDirty = false;
   if (!timelineLoaded) return;
   const _rect = $("mapWrap").getBoundingClientRect();
   const x = e.clientX - _rect.left, y = e.clientY - _rect.top;
+
+  // In cluster modes the individual dots are hidden. Find the cluster nearest
+  // the click and show the home-person's closest relative within it.
+  const isClusterMode = clusterMode !== "none" && !!_kfActiveLens === false &&
+    (clusterMode === "aggregate" || clusterMode === "pie" || clusterMode === "parents" ||
+     clusterMode === "gender"    || clusterMode === "tree" || clusterMode === "state" ||
+     (clusterMode === "dispersion" && zoomTransform.k < 2));
+  if (isClusterMode) {
+    const clusters = _kfGetClustersForDeck();
+    if (clusters && clusters.length) {
+      let bestCluster = null, bestD2 = Infinity;
+      for (const cl of clusters) {
+        const [lon, lat] = cl.position;
+        const p = _kfMap ? _kfMap.project([lon, lat]) : null;
+        if (!p) continue;
+        const dx = p.x - x, dy = p.y - y;
+        const d2 = dx * dx + dy * dy;
+        const rPx = (cl.radius + 8) * (cl.radius + 8);
+        if (d2 < rPx && d2 < bestD2) { bestD2 = d2; bestCluster = cl; }
+      }
+      if (bestCluster && bestCluster.members && relDistCache.size) {
+        // Find the closest relative of the home person among cluster members
+        let bestDwell = -1, bestRelDist = Infinity;
+        for (const di of bestCluster.members) {
+          const idx = dwellIndi ? dwellIndi[di] : -1;
+          if (idx < 0 || !lastIndividuals || !lastIndividuals[idx]) continue;
+          const ind = lastIndividuals[idx];
+          const dist = relDistCache.get(ind.id) ?? Infinity;
+          if (dist < bestRelDist) { bestRelDist = dist; bestDwell = di; }
+        }
+        if (bestDwell >= 0) {
+          pushHistory();
+          if (highlightedDwell === bestDwell && highlightInferredYear < 0) {
+            highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
+            _kfHidePersonCard();
+          } else {
+            highlightedDwell = bestDwell; highlightInferredYear = -1; highlightInferredSrcYear = -1;
+            if (playing) { playing = false; playBtn.textContent = "Play"; }
+            _kfShowPersonCard(bestDwell);
+          }
+          fxCtx.clearRect(0, 0, W, H);
+          applyExpansion();
+        }
+      }
+    }
+    return;
+  }
+
   const HIT_RADIUS = 14;
   const HIT_R2 = HIT_RADIUS * HIT_RADIUS;
   const dw = dwellWindow;
@@ -2437,15 +2557,64 @@ function updateMapLegend() {
   const el = document.getElementById("mapLegend");
   if (!el || el.classList.contains("hidden")) return;
 
-  function dot(rgb, label) {
+  // --- compute viewport stats ---
+  const isIndividualMode = !(clusterMode === "pie" || clusterMode === "parents" ||
+    clusterMode === "gender" || clusterMode === "tree" ||
+    clusterMode === "aggregate" || clusterMode === "dispersion" || clusterMode === "state");
+
+  const total = _kfDwellCount || 0;
+  let inView = total;
+  // [paternal, maternal, other]
+  const sideTot = [0, 0, 0], sideView = [0, 0, 0];
+  // {M, F, U}
+  const sexTot = {M:0, F:0, U:0}, sexView = {M:0, F:0, U:0};
+
+  const bounds = _kfMap && _kfMap.getBounds ? _kfMap.getBounds() : null;
+  if (bounds && total && _kfDwellPositions && _kfPersonDwell && _kfPersonIndi) {
+    const bW = bounds.getWest(), bE = bounds.getEast();
+    const bS = bounds.getSouth(), bN = bounds.getNorth();
+    inView = 0;
+    for (let m = 0; m < total; m++) {
+      const lon = _kfDwellPositions[m * 2];
+      const lat = _kfDwellPositions[m * 2 + 1];
+      const v = lon >= bW && lon <= bE && lat >= bS && lat <= bN;
+      if (v) inView++;
+      if (isIndividualMode) {
+        const side = (dwellSide && _kfPersonDwell[m] >= 0) ? (dwellSide[_kfPersonDwell[m]] ?? 2) : 2;
+        const si = side < 2 ? side : 2;
+        sideTot[si]++;
+        if (v) sideView[si]++;
+        const ind = lastIndividuals ? lastIndividuals[_kfPersonIndi[m]] : null;
+        const sx = ind ? (ind.sex === "M" ? "M" : ind.sex === "F" ? "F" : "U") : "U";
+        sexTot[sx]++;
+        if (v) sexView[sx]++;
+      }
+    }
+  } else if (isIndividualMode && total && _kfPersonDwell && _kfPersonIndi) {
+    for (let m = 0; m < total; m++) {
+      const side = (dwellSide && _kfPersonDwell[m] >= 0) ? (dwellSide[_kfPersonDwell[m]] ?? 2) : 2;
+      const si = side < 2 ? side : 2;
+      sideTot[si]++; sideView[si]++;
+      const ind = lastIndividuals ? lastIndividuals[_kfPersonIndi[m]] : null;
+      const sx = ind ? (ind.sex === "M" ? "M" : ind.sex === "F" ? "F" : "U") : "U";
+      sexTot[sx]++; sexView[sx]++;
+    }
+  }
+
+  // suffix: "view/total" or just "total" if no bounds info
+  function cnt(t, v) {
+    if (!t) return "";
+    const s = bounds ? `${v} / ${t}` : `${t}`;
+    return ` <span style="color:#9aa6bc;font-size:10px;font-variant-numeric:tabular-nums;">(${s})</span>`;
+  }
+  function dot(rgb, label, t, v) {
     const c = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-    return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};margin-right:5px;vertical-align:middle;"></span>${label}</div>`;
+    return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};margin-right:5px;vertical-align:middle;"></span>${label}${cnt(t, v)}</div>`;
   }
   function hdr(text) {
     return `<div style="font-weight:700;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin:5px 0 3px;">${text}</div>`;
   }
-  function swatch(color, size, shape, label) {
-    // shape: "circle" | "diamond" | "square" | "arc"
+  function swatch(color, size, shape, label, t, v) {
     let s = "";
     if (shape === "diamond") {
       s = `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:1px;transform:rotate(45deg);border:1.5px solid ${color};margin-right:6px;vertical-align:middle;"></span>`;
@@ -2456,7 +2625,7 @@ function updateMapLegend() {
     } else {
       s = `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${color};margin-right:5px;vertical-align:middle;"></span>`;
     }
-    return `<div>${s}${label}</div>`;
+    return `<div>${s}${label}${cnt(t, v)}</div>`;
   }
 
   let html = "";
@@ -2496,18 +2665,18 @@ function updateMapLegend() {
     // "none" or unknown — show individual particle legend
     if (colorMode === "gender") {
       html += hdr("Gender");
-      html += dot(COLOR_GENDER_M, "Male");
-      html += dot(COLOR_GENDER_F, "Female");
-      html += dot(COLOR_GENDER_U, "Unknown");
+      html += dot(COLOR_GENDER_M, "Male",    sexTot.M, sexView.M);
+      html += dot(COLOR_GENDER_F, "Female",  sexTot.F, sexView.F);
+      html += dot(COLOR_GENDER_U, "Unknown", sexTot.U, sexView.U);
     } else if (colorMode === "tree") {
       html += hdr("Tree");
       const name = _kfActiveTreeName || "Current tree";
       html += dot(TREE_PALETTE[_kfTreeColorFromName(name)], name.replace(/\.ged$/i, ""));
     } else {
       html += hdr("Lineage");
-      html += dot(COLOR_PATERNAL, "Paternal line");
-      html += dot(COLOR_MATERNAL, "Maternal line");
-      html += dot(COLOR_OTHER,    "Collateral");
+      html += dot(COLOR_PATERNAL, "Paternal line", sideTot[0], sideView[0]);
+      html += dot(COLOR_MATERNAL, "Maternal line", sideTot[1], sideView[1]);
+      html += dot(COLOR_OTHER,    "Collateral",    sideTot[2], sideView[2]);
       html += hdr("Parents");
       html += swatch("#566480", 10, "circle",  "Both known");
       html += swatch("#566480",  9, "diamond", "One unknown");
@@ -2519,7 +2688,21 @@ function updateMapLegend() {
   if (kinLinesN > 0) {
     html += hdr("Kin lines");
     html += swatch(`rgb(${COLOR_PATERNAL[0]},${COLOR_PATERNAL[1]},${COLOR_PATERNAL[2]})`, 12, "arc",
-      `${kinLinesN} nearest kin`);
+      "Paternal lineage");
+    html += swatch(`rgb(${COLOR_MATERNAL[0]},${COLOR_MATERNAL[1]},${COLOR_MATERNAL[2]})`, 12, "arc",
+      "Maternal lineage");
+    html += swatch(`rgb(${COLOR_OTHER[0]},${COLOR_OTHER[1]},${COLOR_OTHER[2]})`, 12, "arc",
+      "Collateral");
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Arc color = lineage side of source person &middot; ${kinLinesN} nearest kin</div>`;
+  }
+
+  // Summary stats
+  if (total > 0) {
+    const viewStr = bounds ? `${inView} / ${total}` : `${total}`;
+    html += `<div style="border-top:1px solid #e0e6ee;margin-top:5px;padding-top:4px;font-size:10px;color:#566480;font-variant-numeric:tabular-nums;">`;
+    html += `<span style="font-weight:700;">${viewStr}</span> alive in ${Math.floor(curYear)}`;
+    if (bounds) html += ` <span style="color:#9aa6bc;">(view / total)</span>`;
+    html += `</div>`;
   }
 
   el.innerHTML = html;
@@ -2823,7 +3006,7 @@ function drawKinLines(lo, hi, y, dw) {
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
     const indi = dwellIndi[i];
-    if (!visibleByIndi.has(indi)) visibleByIndi.set(indi, i);
+    visibleByIndi.set(indi, i); // last-wins = latest event, matching the dominant visible marker
   }
   const drawn = new Set();
   fxCtx.lineWidth = 0.6;
@@ -2939,7 +3122,7 @@ function drawClusters(visible, radius, mode, year, dw) {
     // states like RI / DC).
     if (!ensureStateIndex()) return;
     const stateCounts = new Map();
-    const stateBreak = new Map();   // state idx → {sides, parents, genders}
+    const stateBreak = new Map();   // state idx → {sides, parents, genders, members}
     for (let m = 0; m < _kfDwellCount; m++) {
       const di = _kfPersonDwell[m];
       if (di == null || di < 0) continue;
@@ -2947,7 +3130,8 @@ function drawClusters(visible, radius, mode, year, dw) {
       if (s < 0) continue;
       stateCounts.set(s, (stateCounts.get(s) || 0) + 1);
       let b = stateBreak.get(s);
-      if (!b) { b = { sides: [0,0,0], parents: [0,0,0], genders: [0,0,0] }; stateBreak.set(s, b); }
+      if (!b) { b = { sides: [0,0,0], parents: [0,0,0], genders: [0,0,0], members: [] }; stateBreak.set(s, b); }
+      b.members.push(di);
       const sd = dwellSide[di], ps = dwellSrc[di];
       if (sd >= 0 && sd < 3) b.sides[sd]++;
       if (ps >= 0 && ps < 3) b.parents[ps]++;
@@ -2963,6 +3147,7 @@ function drawClusters(visible, radius, mode, year, dw) {
         stateIdx: s,
         abbr: _kfStateAbbrByIdx[s],
         count,
+        members: b.members,
         sides: b.sides, parents: b.parents, genders: b.genders,
       });
     }
@@ -3089,6 +3274,7 @@ function drawClusters(visible, radius, mode, year, dw) {
       _kfFxClusterHits.push({
         kind: "circle", cx: cl.cx, cy: cl.cy, r,
         count: total,
+        members: cl.members,
         sides: cl.sides, parents: cl.parents, genders: cl.genders,
         sourceCounts, sourceNames,
       });
@@ -3143,6 +3329,7 @@ function drawClusters(visible, radius, mode, year, dw) {
       _kfFxClusterHits.push({
         kind: "circle", cx: cl.cx, cy: cl.cy, r,
         count: total,
+        members: cl.members,
         sides: cl.sides, parents: cl.parents, genders: cl.genders,
       });
     }
@@ -3229,6 +3416,7 @@ function tick(now) {
       yearThumbLabelEl.style.left = (pct * 100) + "%";
     }
     updateStatusLabels(yint);
+    updateMapLegend();
   }
   // MapLibre owns the basemap and projection state — no more lerp/transform
   // dance. We just re-project dwells whenever the map moves (_baseDirty is
@@ -3585,6 +3773,7 @@ function pathFromRoot(otherId) {
 }
 
 let relationCache = new Map();
+let relDistCache = new Map(); // id -> m + n (total generation steps from root)
 function recomputeRelationships() {
   // Single BFS through the consanguinity DAG from root, recording (m, n)
   // — generations up to MRCA, then generations down — for every reachable
@@ -3620,10 +3809,12 @@ function recomputeRelationships() {
       }
     }
   }
+  relDistCache = new Map();
   for (const ind of lastIndividuals) {
     const r = mn.get(ind.id);
-    if (!r) { relationCache.set(ind.id, ""); continue; }
-    if (ind.id === lastRootId) { relationCache.set(ind.id, "self"); continue; }
+    if (!r) { relationCache.set(ind.id, ""); relDistCache.set(ind.id, Infinity); continue; }
+    if (ind.id === lastRootId) { relationCache.set(ind.id, "self"); relDistCache.set(ind.id, 0); continue; }
+    relDistCache.set(ind.id, r[0] + r[1]);
     relationCache.set(ind.id, formatRelation(r[0], r[1], lastRootId, ind.id, lastParentsOf));
   }
   const elapsed = performance.now() - t0;
@@ -3934,7 +4125,12 @@ function buildGeocoder(gz) {
 }
 
 // ---------- Pipeline ----------
-function jitter(lat, lon) { return [lat + (Math.random() - 0.5) * 0.6, lon + (Math.random() - 0.5) * 0.6]; }
+function jitter(lat, lon, level) {
+  // Scale jitter to geocode precision so city-level points don't drift into
+  // the ocean. City ~1 km, county ~10 km, state ~30 km.
+  const r = level === "city" ? 0.02 : level === "county" ? 0.15 : 0.4;
+  return [lat + (Math.random() - 0.5) * r, lon + (Math.random() - 0.5) * r];
+}
 
 function hasRecordedParent(id, parentsOf) {
   const p = parentsOf.get(id);
@@ -3972,8 +4168,8 @@ function buildTimeline(individuals, geocode, parentsOf) {
       if (g === undefined) { g = geocode(e.place); cache.set(e.place, g); }
       if (!g) { missed++; continue; }
       geocoded++;
-      const [lat, lon] = jitter(g.lat, g.lon);
       const exact = g.level === "city" ? 1 : 0;
+      const [lat, lon] = jitter(g.lat, g.lon, g.level);
       if (exact) {
         const key = g.lat.toFixed(2) + "," + g.lon.toFixed(2);
         let ec = evCities.get(key);
@@ -3986,25 +4182,30 @@ function buildTimeline(individuals, geocode, parentsOf) {
         ec.count++;
       }
       const tcode = EVENT_TYPE_CODE[e.type] ?? 10;
-      coded.push([e.year, lat, lon, exact, tcode, placeIdx(e.place)]);
+      // Store base (un-jittered) coords at indices 6,7 for flow comparison.
+      coded.push([e.year, lat, lon, exact, tcode, placeIdx(e.place), g.lat, g.lon]);
     }
     if (!coded.length) continue;
     coded.sort((a, b) => a[0] - b[0]);
     let prev = null;
     for (const c of coded) {
-      const [y, lat, lon, exact, tcode, pidx] = c;
+      const [y, lat, lon, exact, tcode, pidx, blat, blon] = c;
       if (y < mn) mn = y; if (y > mx) mx = y;
       dwells.push([y, lat, lon]); dwellIndi.push(idx); dwellSrc.push(isSource); dwellExact.push(exact);
       dwellType.push(tcode); dwellPlace.push(pidx);
       if (prev) {
-        const [py, plat, plon, pex] = prev;
-        if ((plat !== lat || plon !== lon) && y > py) {
+        const [py, plat, plon, pex, , , pblat, pblon] = prev;
+        // Use base geocode coords (not jittered) to determine whether a real
+        // move occurred. Comparing jittered coords incorrectly created flows
+        // between consecutive events at the same location, causing the
+        // destination ring to appear at a different jitter than the marker.
+        if ((pblat !== blat || pblon !== blon) && y > py) {
           flows.push([py, y, plat, plon, lat, lon]);
           flowIndi.push(idx); flowSrc.push(isSource);
           flowExact.push(exact && pex ? 1 : 0);
         }
       }
-      prev = [y, lat, lon, exact];
+      prev = [y, lat, lon, exact, tcode, pidx, blat, blon];
     }
   }
   if (mn > mx) { mn = 1700; mx = 2026; }
@@ -4297,24 +4498,91 @@ async function fetchPersonSources() {
   } catch (_) { _kfPersonSources = null; }
 }
 
-async function fetchSources() {
-  const proxy = await detectChatProxy();
-  if (!proxy) return null;
+function _kfGetLoadedSourcesList() {
+  return [..._kfLoadedSources.values()]
+    .map(s => ({
+      id: s.source_id,
+      name: s.name,
+      loaded_at: s.loaded_at,
+      n_individuals: s.n_individuals,
+      active: s.name === _kfActiveTreeName,
+      selected: _kfSelectedSourceIds.has(s.source_id),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function _kfEnsureSelectedSources() {
+  const validIds = new Set([..._kfLoadedSources.values()].map(s => s.source_id));
+  _kfSelectedSourceIds = new Set([..._kfSelectedSourceIds].filter(id => validIds.has(id)));
+  if (_kfSelectedSourceIds.size === 0) {
+    for (const id of validIds) _kfSelectedSourceIds.add(id);
+  }
+}
+
+function _kfSelectedIdsSqlList() {
+  const ids = [..._kfSelectedSourceIds].filter(Number.isFinite);
+  return ids.length ? ids.join(",") : "NULL";
+}
+
+function _kfRefreshBrowserViews() {
+  if (!_kfBrowserDb) return;
+  const idsSql = _kfSelectedIdsSqlList();
+  const hasSelection = _kfSelectedSourceIds.size > 0;
+  const where = hasSelection ? `source_id IN (${idsSql})` : "0";
   try {
-    const r = await fetch(proxy + "/sources");
+    _kfBrowserDb.run(`DROP VIEW IF EXISTS sources`);
+    _kfBrowserDb.run(`DROP VIEW IF EXISTS individuals`);
+    _kfBrowserDb.run(`DROP VIEW IF EXISTS events`);
+    _kfBrowserDb.run(`DROP VIEW IF EXISTS families`);
+    _kfBrowserDb.run(`DROP VIEW IF EXISTS family_children`);
+    _kfBrowserDb.run(`CREATE VIEW sources AS SELECT * FROM base_sources WHERE id IN (${idsSql})`);
+    _kfBrowserDb.run(`CREATE VIEW individuals AS SELECT * FROM base_individuals WHERE ${where}`);
+    _kfBrowserDb.run(`CREATE VIEW events AS SELECT * FROM base_events WHERE ${where}`);
+    _kfBrowserDb.run(`CREATE VIEW families AS SELECT * FROM base_families WHERE ${where}`);
+    _kfBrowserDb.run(`CREATE VIEW family_children AS SELECT * FROM base_family_children WHERE ${where}`);
+  } catch (e) {
+    console.warn("[kf] refreshBrowserViews:", e.message || e);
+  }
+}
+
+async function fetchCatalogTrees() {
+  if (_clerkUserTier !== "vip" || !_clerkToken) { _kfCatalogTrees = []; return []; }
+  try {
+    const r = await fetch("/api/catalog/trees", {
+      headers: { "Authorization": "Bearer " + _clerkToken },
+    });
     const j = await r.json();
-    return j.ok ? j.sources : null;
-  } catch (_) { return null; }
+    _kfCatalogTrees = j && Array.isArray(j.trees) ? j.trees : [];
+  } catch (_) {
+    _kfCatalogTrees = [];
+  }
+  return _kfCatalogTrees;
+}
+
+async function loadCatalogTree(key) {
+  if (!key || !_clerkToken) return false;
+  const r = await fetch("/api/catalog/tree?key=" + encodeURIComponent(key), {
+    headers: { "Authorization": "Bearer " + _clerkToken },
+  });
+  if (!r.ok) return false;
+  const j = await r.json();
+  const text = typeof j?.text === "string" ? j.text : "";
+  const name = typeof j?.name === "string" ? j.name : key;
+  if (!text) return false;
+  const file = new File([text], name, { type: "text/plain" });
+  await processFile(file);
+  return true;
 }
 
 async function deleteSource(id) {
-  const proxy = await detectChatProxy();
-  if (!proxy) return false;
-  try {
-    const r = await fetch(proxy + "/sources/" + id, { method: "DELETE" });
-    const j = await r.json();
-    return !!j.ok;
-  } catch (_) { return false; }
+  const src = [..._kfLoadedSources.values()].find(s => s.source_id === id);
+  if (!src) return false;
+  _kfLoadedSources.delete(src.name);
+  _kfTreeCache.delete(src.name);
+  _kfSelectedSourceIds.delete(id);
+  _kfEnsureSelectedSources();
+  buildBrowserDb();
+  return true;
 }
 
 function renderSources(list) {
@@ -4323,25 +4591,51 @@ function renderSources(list) {
   if (!wrap || !inner) return;
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
   _kfLoadedTreeCount = filtered.length;
-  if (filtered.length === 0) {
+  if (filtered.length === 0 && _kfCatalogTrees.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
     if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
     return;
   }
   wrap.classList.remove("hidden");
-  const parts = [`<span class="label">trees</span>`];
+  const parts = [`<span class="label">trees</span>`, `<button type="button" class="srcAction" data-select="all">all</button>`];
   for (const s of filtered) {
     const n = (s.n_individuals || 0).toLocaleString();
     parts.push(
-      `<span class="src" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
-      `<span class="name">${escChat(s.name)}</span>` +
+      `<span class="src${s.active ? " on" : ""}" data-id="${s.id}" title="${escChat(s.loaded_at || "")}">` +
+      `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in SQL queries and AI visualizations">` +
+      `<span class="name" data-activate="${escChat(s.name)}" title="Make this the active map tree">${escChat(s.name)}</span>` +
       `<span class="meta">${n}</span>` +
       `<span class="x" data-del="${s.id}" data-name="${escChat(s.name)}" title="Remove this tree">x</span>` +
       `</span>`,
     );
   }
+  if (_kfCatalogTrees.length) {
+    parts.push(`<span class="label" style="margin-left:8px">vip library</span>`);
+    for (const t of _kfCatalogTrees) {
+      const disabled = t.available === false ? " disabled" : "";
+      const title = t.available === false ? "Not available in storage yet" : "Load this server tree";
+      parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}"${disabled} title="${escChat(title)}">${escChat(t.name)}</button>`);
+    }
+  }
   inner.innerHTML = parts.join("");
+  inner.querySelectorAll(".sel[data-sel]").forEach(el => {
+    el.addEventListener("change", () => {
+      const id = Number(el.getAttribute("data-sel"));
+      if (!id) return;
+      if (el.checked) _kfSelectedSourceIds.add(id);
+      else _kfSelectedSourceIds.delete(id);
+      _kfEnsureSelectedSources();
+      _kfRefreshBrowserViews();
+      renderSources(_kfGetLoadedSourcesList());
+    });
+  });
+  inner.querySelectorAll(".name[data-activate]").forEach(el => {
+    el.addEventListener("click", () => {
+      const name = el.getAttribute("data-activate") || "";
+      if (name) kfApi.setActiveTree(name);
+    });
+  });
   inner.querySelectorAll(".x[data-del]").forEach(el => {
     el.addEventListener("click", async () => {
       const id = Number(el.getAttribute("data-del"));
@@ -4368,12 +4662,28 @@ function renderSources(list) {
       refreshSources();
     });
   });
+  inner.querySelectorAll(".srcAction[data-select='all']").forEach(el => {
+    el.addEventListener("click", () => {
+      _kfSelectedSourceIds = new Set(filtered.map(s => s.id));
+      _kfRefreshBrowserViews();
+      renderSources(_kfGetLoadedSourcesList());
+    });
+  });
+  inner.querySelectorAll(".srcAction[data-catalog]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const key = el.getAttribute("data-catalog") || "";
+      if (!key) return;
+      el.setAttribute("disabled", "disabled");
+      try { await loadCatalogTree(key); }
+      finally { el.removeAttribute("disabled"); refreshSources(); }
+    });
+  });
   if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
 }
 
 async function refreshSources() {
-  const list = await fetchSources();
-  renderSources(list);
+  if (_clerkUserTier === "vip") await fetchCatalogTrees();
+  renderSources(_kfGetLoadedSourcesList());
   refreshReviewBadge();
 }
 
@@ -4601,6 +4911,23 @@ async function processFile(file) {
   // a previously-loaded tree without forcing the user to drop the file again.
   _kfActiveTreeName = lastFileName;
   _kfTreeCache.set(lastFileName, text);
+  let browserSourceId = _kfSourceIdByName.get(lastFileName);
+  if (!browserSourceId) {
+    browserSourceId = _kfNextBrowserSourceId++;
+    _kfSourceIdByName.set(lastFileName, browserSourceId);
+  }
+  const eventCount = individuals.reduce((sum, ind) => sum + ((ind.events && ind.events.length) || 0), 0);
+  _kfLoadedSources.set(lastFileName, {
+    source_id: browserSourceId,
+    name: lastFileName,
+    loaded_at: new Date().toISOString(),
+    n_individuals: individuals.length,
+    n_events: eventCount,
+    n_families: families.size,
+    individuals,
+    families,
+  });
+  _kfSelectedSourceIds.add(browserSourceId);
   _kfTreeColorIdx = _kfTreeColorFromName(lastFileName);
 
   const candidates = rankRootCandidates(individuals, isParent, parentsOf, indiById);
@@ -4653,10 +4980,12 @@ async function processFile(file) {
   }
   requestAnimationFrame(() => { if (!playing) playBtn.click(); });
   buildBrowserDb(); // build in-memory SQLite for kfApi.sql() — all users
-  if (_clerkToken && _clerkUserTier === "vip" && !_kfSkipNextSeed) {
-    seedCloudDb(); // VIP only: seed D1 so server-side chat.ts agentic loop can query
+  refreshSources();
+  if (_clerkToken && _clerkUserTier === "vip" && !_kfSkipNextSeed && _kfSkipNextSeedCount <= 0) {
+    seedCloudDb(); // VIP autosaves this tree into the server-side set
   }
   _kfSkipNextSeed = false;
+  if (_kfSkipNextSeedCount > 0) _kfSkipNextSeedCount--;
 }
 
 function populateRootSelect(candidates) {
@@ -5576,7 +5905,7 @@ panelList.addEventListener("click", e => {
 
 async function handleFiles(files) {
   const arr = Array.from(files || []);
-  const ged = arr.find(f => /\.(ged|gedcom)$/i.test(f.name));
+  const geds = arr.filter(f => /\.(ged|gedcom)$/i.test(f.name));
   const jsons = arr.filter(f => /\.json$/i.test(f.name));
   for (const j of jsons) {
     try {
@@ -5596,7 +5925,7 @@ async function handleFiles(files) {
       stats.textContent = `error reading ${j.name}: ${e.message}`;
     }
   }
-  if (ged) {
+  for (const ged of geds) {
     try { await processFile(ged); }
     catch (e) { stats.textContent = "error: " + e.message; console.error(e); }
   }
@@ -5870,7 +6199,9 @@ function _kfShowPersonCard(di) {
   if (!ind) return;
 
   const sex = ind.sex === "M" ? "Male" : ind.sex === "F" ? "Female" : "";
-  const sub = sex;
+  const rel = (relationCache && ind.id !== lastRootId) ? (relationCache.get(ind.id) || "") : "";
+  console.log("[kf] personCard rel:", ind.id, "->", JSON.stringify(rel), "cacheSize:", relationCache?.size, "rootId:", lastRootId);
+  const sub = [sex, rel].filter(Boolean).join(" · ");
 
   const clickedType = dwellType[di];
   const clickedYear = dwellY[di];
@@ -6014,8 +6345,8 @@ function _kfChatMermaidIframe(src) {
   return `<iframe class="chatMermaid" sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="${safe}" title="diagram" style="width:100%; min-height:80px; border:1px solid #e0e6ee; border-radius:4px; background:#fbfbfd;"></iframe>`;
 }
 
-// Block-level markdown renderer: paragraphs, headers, lists, code fences
-// (with language detection so ```mermaid blocks render as diagrams),
+// Block-level markdown renderer: paragraphs, headers, lists, tables, code
+// fences (with language detection so ```mermaid blocks render as diagrams),
 // blockquotes, and horizontal rules. Inline transforms run via _kfInlineMd.
 function renderMd(s) {
   const lines = String(s).split("\n");
@@ -6023,8 +6354,23 @@ function renderMd(s) {
   let inFence = false, fenceLang = "", fenceBuf = [];
   let listType = null;
   let paraBuf = [];
+  let tableBuf = [];  // accumulates pipe-delimited rows
   function closeList() {
     if (listType) { out.push(`</${listType}>`); listType = null; }
+  }
+  function flushTable() {
+    if (!tableBuf.length) return;
+    // Split each row by | and trim cells; skip separator rows (only dashes/colons/spaces/pipes)
+    const isSep = r => /^[\|\s\-:]+$/.test(r);
+    const rows = tableBuf.filter(r => !isSep(r));
+    if (rows.length) {
+      const splitRow = r => r.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const [header, ...body] = rows;
+      const ths = splitRow(header).map(c => `<th>${_kfInlineMd(c)}</th>`).join("");
+      const trs = body.map(r => `<tr>${splitRow(r).map(c => `<td>${_kfInlineMd(c)}</td>`).join("")}</tr>`).join("");
+      out.push(`<table style="border-collapse:collapse;font-size:11px;margin:6px 0;width:100%;"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`);
+    }
+    tableBuf = [];
   }
   function flushPara() {
     if (paraBuf.length) {
@@ -6047,10 +6393,18 @@ function renderMd(s) {
     const fence = line.match(/^```\s*(\w*)\s*$/);
     if (fence) {
       if (inFence) flushFence();
-      else { flushPara(); closeList(); inFence = true; fenceLang = fence[1] || ""; }
+      else { flushPara(); closeList(); flushTable(); inFence = true; fenceLang = fence[1] || ""; }
       continue;
     }
     if (inFence) { fenceBuf.push(line); continue; }
+    // Table rows: lines that start (or end) with a pipe character
+    if (/^\s*\|/.test(line)) {
+      flushPara(); closeList();
+      tableBuf.push(line);
+      continue;
+    } else if (tableBuf.length) {
+      flushTable();
+    }
     const h = line.match(/^(#{1,6})\s+(.+)$/);
     if (h) {
       flushPara(); closeList();
@@ -6089,7 +6443,7 @@ function renderMd(s) {
     closeList();
     paraBuf.push(line);
   }
-  flushPara(); closeList();
+  flushPara(); closeList(); flushTable();
   if (inFence) flushFence();
   return out.join("");
 }
@@ -7322,116 +7676,33 @@ Available tools. jsonArgs is a single JSON value:
 - getContemporaries(name, year?, {radiusYears?})  Returns others alive at that year (default: their birth year). Use to ground "who else was alive when X was born?" or "who was Helen's generation?".
 - setHighlight([names...], {color?: [r,g,b]})  Draw a colored ring over the latest dwell of each named person. Use to visually answer "where were ALL the immigrants from Italy in 1900?" — pair with sql() to enumerate.
 - clearHighlight()                 Remove highlight rings.
-- sql(query)                       Run a read-only SELECT against the SQLite database holding ALL loaded GEDCOMs (multi-source). Returns {ok, rows, truncated, totalRows}. Results capped at 200 rows. Use this for any non-trivial question about the tree (counts, migrations, lineage paths, surname concentrations, place-time co-occurrence). Always prefer SQL over guessing from the visible context when the question is about the WHOLE tree, not just what's currently on screen.
+- sql(query)                       Run a read-only SELECT against the browser SQLite database spanning the currently loaded trees. Returns {ok, rows, truncated, totalRows}. Results capped at 200 rows. The visible tables are automatically scoped to the tree subset the user has checked in the trees panel, so the same query language works whether one tree or several are selected.
 
-SQLite schema (multi-source: every data row carries source_id, scoping its xref to one tree):
+SQLite schema (browser mode: multi-source, automatically scoped to the selected tree subset):
 
-  sources(id INTEGER PK, name TEXT UNIQUE, loaded_at TEXT, n_individuals INT, n_events INT, n_families INT)
-    -- one row per loaded GEDCOM. Default behavior: queries span ALL sources (no filter).
-    -- If the user names a tree (e.g. "in the Golden-Rosenberg tree"), filter via JOIN sources s ON s.id = X.source_id WHERE s.name LIKE '%Golden%'.
-    -- Two trees may contain the same person under different xrefs; v1 leaves them disconnected, so cross-tree joins on individuals.id alone are unsafe — always pair source_id when joining.
+  sources(id INTEGER PK, name TEXT, loaded_at TEXT, n_individuals INT, n_events INT, n_families INT)
+    -- one row per loaded tree inside the current browser session.
 
-  individuals(source_id INTEGER FK, id TEXT, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT)
-    -- composite PK (source_id, id). id is "@I12345@" GEDCOM xref, only unique within a source.
-    -- sex is M/F/U. famc is the family-as-child id (also scoped by source_id).
+  individuals(source_id INTEGER, id TEXT, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT)
+    -- id is the GEDCOM xref like "@I1234@". sex is M/F/U. famc is the family-as-child id.
 
-  events(source_id INTEGER FK, individual_id TEXT FK, type TEXT, year INTEGER, place TEXT,
+  events(source_id INTEGER, individual_id TEXT, type TEXT, year INTEGER, place TEXT,
          lat REAL, lon REAL, geo_level TEXT, geo_cc TEXT, geo_st TEXT)
-    -- type ∈ {BIRT, DEAT, RESI, MARR, EMIG, IMMI, CENS, BAPM, BURI, CHR}.
-    -- one row per dated+placed event. place strings are GEDCOM-style ("City, County, State, USA").
-    -- lat/lon are the geocoded coordinates of place (NULL if unresolved — currently 0% miss).
-    -- geo_level ∈ {city, county, admin1, country} = how precise the geocode is.
-    -- geo_cc is ISO country code ("US","GB","DE",...). geo_st is the admin1 code (US state abbr like "CA").
-    -- to join back to individuals: ON i.source_id = e.source_id AND i.id = e.individual_id.
+    -- type in {BIRT,DEAT,RESI,MARR,EMIG,IMMI,CENS,BAPM,BURI,CHR,OCCU}.
+    -- place is GEDCOM-style text like "City, County, State, Country". lat/lon are geocoded coordinates.
+    -- geo_level is city|county|admin1|country. geo_cc is ISO country code. geo_st is the admin1/state code when known.
+    -- join to individuals: ON events.source_id = individuals.source_id AND events.individual_id = individuals.id
 
-  events_geo(rowid, min_lat, max_lat, min_lon, max_lon)  -- R-tree virtual table
-    -- one row per geocoded event, spans ALL sources. Join on events.rowid = events_geo.rowid.
-    -- Use this for fast bounding-box / distance queries instead of scanning events.
+  families(source_id INTEGER, id TEXT, husb_id TEXT, wife_id TEXT)
+    -- family records linking spouses.
 
-  families(source_id INTEGER FK, id TEXT, husb_id TEXT, wife_id TEXT)
-    -- composite PK (source_id, id). husb_id/wife_id reference individuals within the same source_id.
+  family_children(source_id INTEGER, family_id TEXT, child_id TEXT)
+    -- one row per child in a family.
 
-  family_children(source_id INTEGER FK, family_id TEXT, child_id TEXT)
-    -- one row per child link. To enumerate someone's children, join all three keys with source_id pinned.
-
-  person_links(link_id INTEGER PK, source_a, indi_a, source_b, indi_b, score REAL, evidence TEXT JSON, origin TEXT, created_at TEXT)
-    -- candidate cross-tree identity matches. score in [0,1]. origin ∈ {auto:multi-pass-blocking-v1, manual:confirmed, manual:rejected}.
-    -- evidence is JSON: {given, surname, birth, parents, geo} (each in [0,1]).
-    -- score >= 0.85 is auto-link grade; 0.65–0.85 is review queue.
-    -- to find a person's matches: SELECT * FROM person_links WHERE (source_a=S AND indi_a=I) OR (source_b=S AND indi_b=I).
-
-  person_clusters(cluster_id INTEGER, source_id, indi_id, PRIMARY KEY (source_id, indi_id))
-    -- union-find materialization over confirmed/auto-match links. Two persons in the same cluster_id are believed to be the same individual across trees.
-    -- to bridge a query across trees: JOIN person_clusters pc1 ON pc1.source_id=A.source_id AND pc1.indi_id=A.id JOIN person_clusters pc2 ON pc2.cluster_id=pc1.cluster_id (then pc2 lists every alias of A across trees).
-
-  data_anomalies(source_id, indi_id, kind TEXT, severity TEXT, detail TEXT, PRIMARY KEY (source_id, indi_id, kind))
-    -- automatically detected data-quality issues. severity ∈ {error, warning, info}.
-    -- kind ∈ {death_before_birth, implausible_lifespan, mother_unborn_at_child_birth, mother_dead_at_birth, mother_too_young, mother_too_old, father_unborn_at_child_birth, father_dead_before_birth, father_too_young, father_too_old}.
-    -- error severity on a parent kind means the linker has dropped that parent from comparison; flag pairs with these to the user.
-    -- to find people with suspect data: SELECT i.name, da.kind, da.severity FROM data_anomalies da JOIN individuals i ON i.source_id=da.source_id AND i.id=da.indi_id WHERE da.severity='error' LIMIT 50;
-
-Indexes: (source_id, individual_id), (source_id), name, birth_year, type, year, place, geo_cc, (geo_cc, geo_st), (source_id, husb_id), (source_id, wife_id), (source_id, family_id), (source_id, child_id).
-
-Examples:
-  -- list which trees are loaded
-  SELECT id, name, n_individuals, n_events FROM sources ORDER BY id;
-
-  -- count Florida residency events after 1970, ALL sources
-  SELECT s.name, e.place, COUNT(*) AS n FROM events e
-  JOIN sources s ON s.id = e.source_id
-  WHERE e.type='RESI' AND e.year >= 1970 AND e.geo_cc='US' AND e.geo_st='FL'
-  GROUP BY s.name, e.place ORDER BY n DESC LIMIT 20;
-
-  -- same, but only the "Golden-Rosenberg" tree
-  SELECT e.place, COUNT(*) FROM events e
-  JOIN sources s ON s.id = e.source_id
-  WHERE s.name = 'Golden-Rosenberg' AND e.type='RESI' AND e.geo_cc='US' AND e.geo_st='FL'
-  GROUP BY e.place ORDER BY 2 DESC LIMIT 20;
-
-  -- everyone in a region (lat/lon bbox) at a year. R-tree pre-filters.
-  SELECT s.name AS source, i.name, e.year, e.place
-  FROM events_geo g
-  JOIN events e      ON e.rowid = g.rowid
-  JOIN individuals i ON i.source_id = e.source_id AND i.id = e.individual_id
-  JOIN sources s     ON s.id = e.source_id
-  WHERE g.min_lat BETWEEN 40 AND 45
-    AND g.min_lon BETWEEN -75 AND -70
-    AND e.year BETWEEN 1900 AND 1950
-  LIMIT 200;
-
-  -- within N miles of a point (Haversine in SQL; bbox pre-filters via R-tree).
-  -- 1 deg lat ~= 69 mi; 1 deg lon ~= 69*cos(lat) mi.
-  WITH center(lat,lon,radius_mi) AS (SELECT 42.36,-71.06,50)
-  SELECT s.name AS source, i.name, e.year, e.place,
-         2*3960*asin(sqrt(power(sin(radians((e.lat-center.lat)/2)),2)
-                        + cos(radians(center.lat))*cos(radians(e.lat))
-                        * power(sin(radians((e.lon-center.lon)/2)),2))) AS miles
-  FROM events_geo g, center
-  JOIN events e      ON e.rowid = g.rowid
-  JOIN individuals i ON i.source_id = e.source_id AND i.id = e.individual_id
-  JOIN sources s     ON s.id = e.source_id
-  WHERE g.min_lat BETWEEN center.lat - center.radius_mi/69.0 AND center.lat + center.radius_mi/69.0
-    AND g.min_lon BETWEEN center.lon - center.radius_mi/55.0 AND center.lon + center.radius_mi/55.0
-  HAVING miles <= center.radius_mi
-  ORDER BY miles LIMIT 200;
-
-  -- direct ancestors within ONE source (recursive CTE; pin source_id throughout):
-  WITH RECURSIVE up(source_id, id, gen) AS (
-    SELECT 1, '@I250052527678@', 0
-    UNION ALL
-    SELECT f.source_id, f.husb_id, up.gen+1
-      FROM up JOIN individuals i ON i.source_id=up.source_id AND i.id=up.id
-              JOIN families   f ON f.source_id=i.source_id  AND f.id=i.famc
-      WHERE f.husb_id IS NOT NULL AND up.gen<10
-    UNION ALL
-    SELECT f.source_id, f.wife_id, up.gen+1
-      FROM up JOIN individuals i ON i.source_id=up.source_id AND i.id=up.id
-              JOIN families   f ON f.source_id=i.source_id  AND f.id=i.famc
-      WHERE f.wife_id IS NOT NULL AND up.gen<10
-  )
-  SELECT i.name, i.birth_year FROM up
-  JOIN individuals i ON i.source_id=up.source_id AND i.id=up.id
-  ORDER BY up.gen, i.birth_year;
+Schema rules:
+  - The visible tables are already filtered to the checked trees in the UI. If only one tree is checked, queries behave as if the DB contains only that tree.
+  - There is NO events_geo table.
+  - There are NO browser-side person_links, person_clusters, or data_anomalies tables yet.
 
 Examples:
   User: "show me at 1925"        ->  <<KFCALL:setYear(1925)>>
@@ -7702,6 +7973,12 @@ async function runChatTurn(userText) {
     if (chipParse.chips.length) pending.chips = chipParse.chips;
     renderChat();
     if (!results.length) return;  // no tool calls -> Claude is done
+    // Surface KFCALL errors visibly -- otherwise showViz failures are silent.
+    const kfErrors = results.filter(r => r.result && r.result.error);
+    if (kfErrors.length) {
+      chatHistory.push({ role: "bot", kind: "tool", content: "*[KFCALL error]* " + kfErrors.map(r => `\`${r.call}\`: ${r.result.error}`).join("; ") });
+      renderChat();
+    }
     const log = results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n");
     chatHistory.push({ role: "bot", kind: "tool", content: "*[tool calls]*\n" + log });
     renderChat();
@@ -7731,6 +8008,17 @@ chatFormEl.addEventListener("submit", async e => {
     chatSendBtn.disabled = false;
     chatSendBtn.textContent = "Send";
   }
+});
+$("cannedViz").addEventListener("change", function() {
+  const prompt = this.value;
+  this.value = "";
+  if (!prompt) return;
+  if (_chatBusy) {
+    chatInputEl.value = prompt;
+    chatInputEl.focus();
+    return;
+  }
+  kfApi.sendChat(prompt);
 });
 chatInputEl.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -7849,6 +8137,8 @@ async function updateAuthUI(user) {
     if (uploadCloudBtn) uploadCloudBtn.style.display = "none";
     if (versionEl) versionEl.style.display = "none";
     applyChatAccess("anon");
+    _kfCatalogTrees = [];
+    refreshSources();
     return;
   }
 
@@ -7868,6 +8158,7 @@ async function updateAuthUI(user) {
   if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
   if (versionEl) versionEl.style.display = "inline";
   applyChatAccess(_clerkUserTier);
+  refreshSources();
 
   // Auto-load any previously uploaded GEDCOM for this user
   autoLoadCloudGedcom();
@@ -7875,9 +8166,7 @@ async function updateAuthUI(user) {
 
 async function autoLoadCloudGedcom() {
   if (!_clerkToken) return;
-  // For anonymous users, only auto-load if they've loaded a tree on this device before.
-  // For authenticated users, always check cloud storage — they may be on a new device.
-  const restoring = { role: "bot", content: "Restoring your tree..." };
+  const restoring = { role: "bot", content: "Restoring your trees..." };
   if (typeof chatHistory !== "undefined" && chatHistory.length === 0) {
     chatHistory.push(restoring);
     if (typeof renderChat === "function") renderChat();
@@ -7896,8 +8185,9 @@ async function autoLoadCloudGedcom() {
       stats.textContent = "ready - open a .ged file or drag one in";
       return;
     }
-    const text = await resp.text();
-    if (!text || !text.trim()) {
+    const payload = await resp.json();
+    const trees = Array.isArray(payload?.trees) ? payload.trees : [];
+    if (!trees.length) {
       if (typeof chatHistory !== "undefined") {
         const idx = chatHistory.indexOf(restoring);
         if (idx !== -1) chatHistory.splice(idx, 1);
@@ -7906,17 +8196,17 @@ async function autoLoadCloudGedcom() {
       stats.textContent = "ready - open a .ged file or drag one in";
       return;
     }
-    window._lastLoadedGedcomRaw = text;
-    // Fetch the canonical tree name from D1 before loading so processFile uses it.
-    let treeName = "saved";
-    try {
-      const si = await fetch("/api/gedcom/source-id", { headers: { "Authorization": "Bearer " + _clerkToken } });
-      if (si.ok) { const sd = await si.json(); if (sd.name) treeName = sd.name; _kfSourceId = sd.source_id ?? null; }
-    } catch (_) {}
-    const blob = new Blob([text], { type: "text/plain" });
-    const file = new File([blob], treeName + ".ged");
-    _kfSkipNextSeed = true; // tree already in D1 from prior upload
-    if (window._kfLoadFiles) window._kfLoadFiles([file]);
+    const defaultTree = trees.find(t => t.is_default) || null;
+    const ordered = trees.slice().sort((a, b) => Number(!!a.is_default) - Number(!!b.is_default));
+    _kfSkipNextSeedCount = ordered.length;
+    for (const tree of ordered) {
+      const jsonText = JSON.stringify(tree.data || {});
+      const file = new File([jsonText], (tree.name || "saved") + ".ged", { type: "text/plain" });
+      if (window._kfLoadFiles) await window._kfLoadFiles([file]);
+    }
+    if (defaultTree?.name && window.kfApi?.setActiveTree) {
+      window.kfApi.setActiveTree(defaultTree.name);
+    }
     // Replace restoring message with the auto-intro once the tree is loaded
     if (typeof chatHistory !== "undefined") {
       const idx = chatHistory.indexOf(restoring);
@@ -7953,38 +8243,65 @@ function _ensureSqlJs() {
 }
 
 async function buildBrowserDb() {
-  if (!lastIndividuals || !lastFamilies) return;
+  if (_kfLoadedSources.size === 0) {
+    if (_kfBrowserDb) { _kfBrowserDb.close(); _kfBrowserDb = null; }
+    return;
+  }
   try {
     await _ensureSqlJs();
     if (_kfBrowserDb) { _kfBrowserDb.close(); _kfBrowserDb = null; }
     const db = new window._sqlJs.Database();
-    db.run(`CREATE TABLE individuals (id TEXT PRIMARY KEY, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT)`);
-    db.run(`CREATE TABLE events (individual_id TEXT, type TEXT, year INTEGER, place TEXT, lat REAL, lon REAL)`);
-    db.run(`CREATE TABLE families (id TEXT PRIMARY KEY, husb_id TEXT, wife_id TEXT)`);
-    db.run(`CREATE TABLE family_children (family_id TEXT, child_id TEXT, PRIMARY KEY (family_id, child_id))`);
+    db.run(`CREATE TABLE base_sources (id INTEGER PRIMARY KEY, name TEXT, loaded_at TEXT, n_individuals INTEGER, n_events INTEGER, n_families INTEGER)`);
+    db.run(`CREATE TABLE base_individuals (source_id INTEGER, id TEXT, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT, PRIMARY KEY (source_id, id))`);
+    db.run(`CREATE TABLE base_events (source_id INTEGER, individual_id TEXT, type TEXT, year INTEGER, place TEXT, lat REAL, lon REAL, geo_level TEXT, geo_cc TEXT, geo_st TEXT)`);
+    db.run(`CREATE TABLE base_families (source_id INTEGER, id TEXT, husb_id TEXT, wife_id TEXT, PRIMARY KEY (source_id, id))`);
+    db.run(`CREATE TABLE base_family_children (source_id INTEGER, family_id TEXT, child_id TEXT, PRIMARY KEY (source_id, family_id, child_id))`);
     db.run("BEGIN");
-    const si = db.prepare("INSERT OR REPLACE INTO individuals VALUES (?,?,?,?,?,?)");
-    for (const ind of lastIndividuals) {
-      si.run([ind.id, ind.name || null, ind.sex || null, ind.birth_year ?? null, ind.death_year ?? null, ind.famc ?? null]);
-    }
-    si.free();
-    const se = db.prepare("INSERT INTO events VALUES (?,?,?,?,?,?)");
-    for (const ind of lastIndividuals) {
-      for (const e of (ind.events || [])) {
-        const g = geocoder ? geocoder(e.place) : null;
-        se.run([ind.id, e.type, e.year ?? null, e.place || null, g ? g.lat : null, g ? g.lon : null]);
+    const ss = db.prepare("INSERT INTO base_sources VALUES (?,?,?,?,?,?)");
+    const si = db.prepare("INSERT OR REPLACE INTO base_individuals VALUES (?,?,?,?,?,?,?)");
+    const se = db.prepare("INSERT INTO base_events VALUES (?,?,?,?,?,?,?,?,?,?)");
+    const sf = db.prepare("INSERT OR REPLACE INTO base_families VALUES (?,?,?,?)");
+    const sc = db.prepare("INSERT OR REPLACE INTO base_family_children VALUES (?,?,?)");
+    for (const src of _kfLoadedSources.values()) {
+      ss.run([
+        src.source_id,
+        src.name,
+        src.loaded_at,
+        src.n_individuals,
+        src.n_events,
+        src.n_families,
+      ]);
+      for (const ind of src.individuals) {
+        si.run([src.source_id, ind.id, ind.name || null, ind.sex || null, ind.birth_year ?? null, ind.death_year ?? null, ind.famc ?? null]);
+        for (const e of (ind.events || [])) {
+          const g = geocoder ? geocoder(e.place) : null;
+          se.run([
+            src.source_id,
+            ind.id,
+            e.type,
+            e.year ?? null,
+            e.place || null,
+            g ? g.lat : null,
+            g ? g.lon : null,
+            g ? g.level : null,
+            g ? g.cc : null,
+            g ? g.st : null,
+          ]);
+        }
+      }
+      for (const [, f] of src.families) {
+        sf.run([src.source_id, f.id, f.husb || null, f.wife || null]);
+        for (const c of (f.chil || [])) sc.run([src.source_id, f.id, c]);
       }
     }
+    ss.free();
+    si.free();
     se.free();
-    const sf = db.prepare("INSERT OR REPLACE INTO families VALUES (?,?,?)");
-    const sc = db.prepare("INSERT OR REPLACE INTO family_children VALUES (?,?)");
-    for (const [, f] of lastFamilies) {
-      sf.run([f.id, f.husb || null, f.wife || null]);
-      for (const c of (f.chil || [])) sc.run([f.id, c]);
-    }
     sf.free(); sc.free();
     db.run("COMMIT");
     _kfBrowserDb = db;
+    _kfEnsureSelectedSources();
+    _kfRefreshBrowserViews();
   } catch (e) {
     console.warn("[kf] buildBrowserDb:", e.message || e);
   }
@@ -8002,10 +8319,8 @@ function queryBrowserDb(query) {
   }
 }
 
-// --------------- Cloud D1 (VIP server-side seeding) ---------------
+// --------------- Cloud persistence (signed-in users) ---------------
 
-// Seed the parsed GEDCOM into D1 so Claude can query it server-side.
-// Fires after processFile() completes. VIP only.
 async function seedCloudDb() {
   if (!_clerkToken || !lastIndividuals || !lastFamilies) return;
   const individuals = lastIndividuals.map(ind => ({
@@ -8040,7 +8355,7 @@ async function seedCloudDb() {
     const resp = await fetch("/api/gedcom/seed", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
-      body: JSON.stringify({ name: lastFileName || "My Tree", individuals, events, families }),
+      body: JSON.stringify({ name: lastFileName || "My Tree", is_default: _kfActiveTreeName === lastFileName, individuals, events, families }),
     });
     if (resp.ok) {
       const data = await resp.json();
@@ -8051,20 +8366,27 @@ async function seedCloudDb() {
   }
 }
 
-// Fetch the existing source_id for a returning user (no re-seed).
-async function fetchSourceId() {
-  if (!_clerkToken) { _kfSourceId = null; return; }
-  try {
-    const resp = await fetch("/api/gedcom/source-id", {
-      headers: { "Authorization": "Bearer " + _clerkToken }
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      _kfSourceId = data.source_id ?? null;
-    }
-  } catch (e) {
-    console.warn("[kf] fetchSourceId:", e.message || e);
-  }
+function _kfCloudTreesPayload() {
+  const activeName = _kfActiveTreeName;
+  return [..._kfLoadedSources.values()].map(src => ({
+    name: src.name,
+    is_default: src.name === activeName,
+    individuals: src.individuals.map(ind => ({
+      id: ind.id,
+      name: ind.name || null,
+      sex: ind.sex || null,
+      birth_year: ind.birth_year ?? null,
+      death_year: ind.death_year ?? null,
+      famc: ind.famc ?? null,
+      events: (ind.events || []).map(e => ({ tag: e.type, year: e.year ?? null, place: e.place || null })),
+    })),
+    families: Array.from(src.families.values()).map(f => ({
+      id: f.id,
+      husb: f.husb || null,
+      wife: f.wife || null,
+      chil: f.chil || [],
+    })),
+  }));
 }
 
 document.getElementById("authBtn").addEventListener("click", async () => {
@@ -8088,20 +8410,20 @@ document.getElementById("apiKeySave").addEventListener("click", () => {
   applyChatAccess(_clerkUserTier);
 });
 
-// Upload current raw GEDCOM to cloud
+// Upload all loaded trees to cloud persistence
 document.getElementById("uploadCloud").addEventListener("click", async () => {
   if (!_clerkToken) return;
-  const raw = window._lastLoadedGedcomRaw;
-  if (!raw) { alert("No GEDCOM loaded. Open a .ged file first."); return; }
+  const trees = _kfCloudTreesPayload();
+  if (!trees.length) { alert("No GEDCOM loaded. Open a .ged file first."); return; }
   const resp = await fetch("/api/gedcom/upload", {
     method: "POST",
-    headers: { "Content-Type": "text/plain", "Authorization": "Bearer " + _clerkToken },
-    body: raw
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
+    body: JSON.stringify({ trees })
   });
   if (resp.ok) {
     const j = await resp.json();
     const d = new Date(j.expires_at * 1000).toLocaleDateString();
-    alert(`Uploaded. Expires ${d}.`);
+    alert(`Uploaded ${j.trees} tree(s). Expires ${d}.`);
   } else {
     alert("Upload failed: " + resp.status);
   }

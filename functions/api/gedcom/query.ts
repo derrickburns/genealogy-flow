@@ -1,19 +1,15 @@
 import type { Env, UserContext } from "../../_middleware";
+import { ensureGedcomMultiSourceSchema } from "./_lib";
 
-// Wrap the user's query in CTEs that scope all tables to their source_id.
-// Claude writes queries against bare table names (individuals, events, etc.)
-// and never needs to know about source_id or the ged_ prefix.
-function wrapQuery(sql: string, sourceId: number): string {
+function wrapQuery(sql: string, sourceIds: number[]): string {
   const q = sql.trim().replace(/;+$/, "");
+  const ids = sourceIds.join(",");
   return `WITH
-  individuals     AS (SELECT id,name,sex,birth_year,death_year,famc
-                        FROM ged_individuals WHERE source_id=${sourceId}),
-  events          AS (SELECT individual_id,type,year,place,lat,lon
-                        FROM ged_events WHERE source_id=${sourceId}),
-  families        AS (SELECT id,husb_id,wife_id
-                        FROM ged_families WHERE source_id=${sourceId}),
-  family_children AS (SELECT family_id,child_id
-                        FROM ged_family_children WHERE source_id=${sourceId})
+  sources         AS (SELECT id,name,loaded_at,n_individuals,n_events,n_families FROM ged_sources WHERE id IN (${ids})),
+  individuals     AS (SELECT source_id,id,name,sex,birth_year,death_year,famc FROM ged_individuals WHERE source_id IN (${ids})),
+  events          AS (SELECT source_id,individual_id,type,year,place,lat,lon FROM ged_events WHERE source_id IN (${ids})),
+  families        AS (SELECT source_id,id,husb_id,wife_id FROM ged_families WHERE source_id IN (${ids})),
+  family_children AS (SELECT source_id,family_id,child_id FROM ged_family_children WHERE source_id IN (${ids}))
 ${q}`;
 }
 
@@ -26,7 +22,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     });
   }
 
-  let body: { sql?: string };
+  let body: { sql?: string; source_ids?: number[] };
   try {
     body = await ctx.request.json();
   } catch {
@@ -43,7 +39,6 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       headers: { "Content-Type": "application/json" },
     });
   }
-
   if (!/^\s*SELECT\b/i.test(sql)) {
     return new Response(JSON.stringify({ error: "Only SELECT queries are permitted" }), {
       status: 403,
@@ -51,29 +46,31 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     });
   }
 
-  const src = await ctx.env.DB.prepare(`SELECT id FROM ged_sources WHERE user_id = ?`)
-    .bind(user.id)
-    .first<{ id: number }>();
-
-  if (!src) {
-    return new Response(
-      JSON.stringify({ rows: [], note: "No tree data available. Upload a GEDCOM and save to your account first." }),
-      { headers: { "Content-Type": "application/json" } },
-    );
+  await ensureGedcomMultiSourceSchema(ctx.env);
+  const srcRows = await ctx.env.DB.prepare(`SELECT id FROM ged_sources WHERE user_id = ? ORDER BY id`).bind(user.id).all<{ id: number }>();
+  const allowed = new Set((srcRows.results ?? []).map(r => r.id));
+  if (!allowed.size) {
+    return new Response(JSON.stringify({ rows: [], note: "No tree data available. Upload a GEDCOM and save it to your account first." }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
+  let sourceIds = Array.isArray(body.source_ids)
+    ? body.source_ids.map(Number).filter(id => Number.isFinite(id) && allowed.has(id))
+    : [...allowed];
+  if (!sourceIds.length) sourceIds = [...allowed];
+
   try {
-    const wrapped = wrapQuery(sql, src.id);
+    const wrapped = wrapQuery(sql, sourceIds);
     const result = await ctx.env.DB.prepare(wrapped).all();
     const rows = result.results ?? [];
-    return new Response(
-      JSON.stringify({ rows: rows.slice(0, 200), truncated: rows.length > 200, total: rows.length }),
-      { headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ rows: rows.slice(0, 200), truncated: rows.length > 200, total: rows.length, source_ids: sourceIds }), {
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (e) {
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };

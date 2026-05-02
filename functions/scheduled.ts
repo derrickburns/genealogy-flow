@@ -1,10 +1,12 @@
 import type { Env } from "./_middleware";
+import { deleteAllUserGedcomData, ensureGedcomMultiSourceSchema } from "./api/gedcom/_lib";
 
 export const onScheduled: ExportedHandlerScheduledHandler<Env> = async (
   _event,
   env
 ) => {
   const now = Math.floor(Date.now() / 1000);
+  await ensureGedcomMultiSourceSchema(env);
 
   // Expire anonymous sessions
   const expiredSessions = await env.DB.prepare(
@@ -29,6 +31,7 @@ export const onScheduled: ExportedHandlerScheduledHandler<Env> = async (
 
   for (const { user_id } of expiredUsers.results) {
     await env.STORAGE.delete(`gedcom/user/${user_id}`);
+    await deleteAllUserGedcomData(env, user_id);
   }
   if (expiredUsers.results.length > 0) {
     await env.DB.prepare(

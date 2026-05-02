@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS demo_sources (
 );
 
 -- Per-user GEDCOM data seeded from browser-parsed GEDCOM.
--- One source per user; queries are scoped via CTE wrappers in /api/gedcom/query.
+-- Multi-source: each user may persist multiple named trees.
 
 CREATE TABLE IF NOT EXISTS ged_sources (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,9 +55,10 @@ CREATE TABLE IF NOT EXISTS ged_sources (
   loaded_at     TEXT    NOT NULL,
   n_individuals INTEGER DEFAULT 0,
   n_events      INTEGER DEFAULT 0,
-  n_families    INTEGER DEFAULT 0
+  n_families    INTEGER DEFAULT 0,
+  is_default    INTEGER NOT NULL DEFAULT 0
 );
-CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_user ON ged_sources(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_user_name ON ged_sources(user_id, name);
 
 CREATE TABLE IF NOT EXISTS ged_individuals (
   source_id  INTEGER NOT NULL,

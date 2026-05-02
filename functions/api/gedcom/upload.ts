@@ -1,67 +1,124 @@
 import type { Env, UserContext } from "../../_middleware";
+import { deleteAllUserGedcomData, ensureGedcomMultiSourceSchema } from "./_lib";
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_TREES = 24;
+
+type EventIn = { tag: string; year?: number | null; place?: string | null };
+type IndividualIn = {
+  id: string;
+  name?: string | null;
+  sex?: string | null;
+  birth_year?: number | null;
+  death_year?: number | null;
+  famc?: string | null;
+  events?: EventIn[];
+};
+type FamilyIn = { id: string; husb?: string | null; wife?: string | null; chil?: string[] };
+type TreeIn = {
+  name: string;
+  is_default?: boolean;
+  individuals?: IndividualIn[];
+  families?: FamilyIn[];
+};
+
+// D1 hard limit: 100 bound parameters per prepared statement.
+const ROWS_PER_STMT = 14;
+const STMTS_PER_BATCH = 100;
+type Row = (string | number | null)[];
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+function buildInserts(db: D1Database, table: string, cols: string[], rows: Row[]): D1PreparedStatement[] {
+  if (!rows.length) return [];
+  return chunk(rows, ROWS_PER_STMT).map((ch) => {
+    const ph = ch.map(() => `(${cols.map(() => "?").join(",")})`).join(",");
+    return db.prepare(`INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES ${ph}`).bind(...ch.flat());
+  });
+}
+
+async function runBatches(db: D1Database, stmts: D1PreparedStatement[]): Promise<void> {
+  for (const b of chunk(stmts, STMTS_PER_BATCH)) await db.batch(b);
+}
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const user = ctx.data.user as UserContext;
-
-  const contentLength = Number(ctx.request.headers.get("Content-Length") ?? 0);
-  if (contentLength > MAX_BYTES) {
-    return new Response(JSON.stringify({ error: "File too large (max 10 MB)" }), {
-      status: 413,
+  if (user.type === "anon") {
+    return new Response(JSON.stringify({ error: "Sign in required" }), {
+      status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  let body: ArrayBuffer;
+  let body: { trees?: TreeIn[] };
   try {
-    body = await ctx.request.arrayBuffer();
+    body = await ctx.request.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Failed to read body" }), {
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  if (body.byteLength > MAX_BYTES) {
-    return new Response(JSON.stringify({ error: "File too large (max 10 MB)" }), {
+  const trees = (body.trees ?? []).filter(t => t && typeof t.name === "string" && t.name.trim());
+  if (trees.length > MAX_TREES) {
+    return new Response(JSON.stringify({ error: `Too many trees (max ${MAX_TREES})` }), {
       status: 413,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  const key =
-    user.type === "anon"
-      ? `gedcom/anon/${user.id}`
-      : `gedcom/user/${user.id}`;
+  await ensureGedcomMultiSourceSchema(ctx.env);
+  await deleteAllUserGedcomData(ctx.env, user.id);
 
-  await ctx.env.STORAGE.put(key, body, {
-    httpMetadata: { contentType: "text/plain" },
-  });
+  const db = ctx.env.DB;
+  let defaultName = trees.find(t => t.is_default)?.name ?? trees[0]?.name ?? null;
+  const loadedAt = new Date().toISOString();
 
-  const now = Math.floor(Date.now() / 1000);
-  let expiresAt: number;
-
-  if (user.type === "anon") {
-    expiresAt = now + 86400;
-    await ctx.env.DB.prepare(
-      `INSERT INTO sessions (session_id, created_at, expires_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(session_id) DO UPDATE SET expires_at = excluded.expires_at`
+  for (const tree of trees) {
+    const individuals = tree.individuals ?? [];
+    const families = tree.families ?? [];
+    const events = individuals.flatMap(ind => (ind.events ?? []).map((e) => ({
+      individual_id: ind.id,
+      type: e.tag,
+      year: e.year ?? null,
+      place: e.place ?? null,
+    })));
+    const srcResult = await db.prepare(
+      `INSERT INTO ged_sources (user_id, name, loaded_at, n_individuals, n_events, n_families, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(user.id, now, expiresAt)
+      .bind(user.id, tree.name, loadedAt, individuals.length, events.length, families.length, tree.name === defaultName ? 1 : 0)
       .run();
-  } else {
-    expiresAt = now + 7 * 86400;
-    await ctx.env.DB.prepare(
-      `UPDATE users SET gedcom_expires_at = ?, last_login = ? WHERE user_id = ?`
-    )
-      .bind(expiresAt, now, user.id)
-      .run();
+    const sourceId = srcResult.meta.last_row_id as number;
+
+    const indiRows: Row[] = individuals.map((i) => [
+      sourceId, i.id, i.name ?? null, i.sex ?? null, i.birth_year ?? null, i.death_year ?? null, i.famc ?? null,
+    ]);
+    await runBatches(db, buildInserts(db, "ged_individuals", ["source_id","id","name","sex","birth_year","death_year","famc"], indiRows));
+
+    const evtRows: Row[] = events.map((e) => [
+      sourceId, e.individual_id, e.type, e.year ?? null, e.place ?? null, null, null,
+    ]);
+    await runBatches(db, buildInserts(db, "ged_events", ["source_id","individual_id","type","year","place","lat","lon"], evtRows));
+
+    const famRows: Row[] = families.map((f) => [sourceId, f.id, f.husb ?? null, f.wife ?? null]);
+    await runBatches(db, buildInserts(db, "ged_families", ["source_id","id","husb_id","wife_id"], famRows));
+
+    const fcRows: Row[] = families.flatMap((f) => (f.chil ?? []).map((c): Row => [sourceId, f.id, c]));
+    await runBatches(db, buildInserts(db, "ged_family_children", ["source_id","family_id","child_id"], fcRows));
   }
 
-  return new Response(
-    JSON.stringify({ stored: true, expires_at: expiresAt }),
-    { headers: { "Content-Type": "application/json" } }
-  );
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + 7 * 86400;
+  await db.prepare(`UPDATE users SET gedcom_expires_at = ?, last_login = ? WHERE user_id = ?`)
+    .bind(expiresAt, now, user.id)
+    .run();
+
+  return new Response(JSON.stringify({ ok: true, trees: trees.length, expires_at: expiresAt }), {
+    headers: { "Content-Type": "application/json" },
+  });
 };
