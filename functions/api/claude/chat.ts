@@ -20,39 +20,51 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     });
   }
 
-  const client = new Anthropic({ apiKey: ctx.env.ANTHROPIC_API_KEY });
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
+  const apiKey = typeof ctx.env.ANTHROPIC_API_KEY === "string" ? ctx.env.ANTHROPIC_API_KEY.trim() : "";
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: "Anthropic API key is not configured" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const client = new Anthropic({ apiKey });
   const enc = new TextEncoder();
 
-  ctx.waitUntil((async () => {
-    try {
-      const system = Array.isArray(body.system)
-        ? body.system
-        : body.system
-          ? [{ type: "text" as const, text: String(body.system) }]
-          : undefined;
-      const stream = client.messages.stream({
-        model: body.model ?? "claude-sonnet-4-6",
-        max_tokens: body.max_tokens ?? 8192,
-        system,
-        messages: body.messages ?? [],
-      });
+  const readable = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const write = (payload: unknown) => {
+        const data = typeof payload === "string" ? payload : JSON.stringify(payload);
+        controller.enqueue(enc.encode(`data: ${data}\n\n`));
+      };
+      try {
+        const system = Array.isArray(body.system)
+          ? body.system
+          : body.system
+            ? [{ type: "text" as const, text: String(body.system) }]
+            : undefined;
+        const stream = client.messages.stream({
+          model: body.model ?? "claude-sonnet-4-6",
+          max_tokens: body.max_tokens ?? 8192,
+          system,
+          messages: body.messages ?? [],
+        });
 
-      for await (const event of stream) {
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          await writer.write(enc.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`));
+        for await (const event of stream) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            write({ text: event.delta.text });
+          }
         }
-      }
 
-      await writer.write(enc.encode("data: [DONE]\n\n"));
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      await writer.write(enc.encode(`data: ${JSON.stringify({ error: msg })}\n\n`));
-    } finally {
-      await writer.close();
-    }
-  })());
+        write("[DONE]");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        write({ error: msg });
+      } finally {
+        controller.close();
+      }
+    },
+  });
 
   return new Response(readable, {
     headers: {

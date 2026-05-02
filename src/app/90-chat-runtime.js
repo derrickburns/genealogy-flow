@@ -163,9 +163,17 @@ Audience: the user is a family-history researcher, not a GEDCOM engineer. Schema
 Style: keep prose short. After a tool call, you don't need to repeat what you did unless the user asked. If a call errored, explain briefly and try a sensible fallback. Never invent facts not in the context. **Bold** names; *italics* sparingly.`;
 
 let _chatNewSession = true;
+const CHAT_REQUEST_TIMEOUT_MS = 90000;
+
 async function detectChatProxy() {
   if (_chatProxyOk !== null) return _chatProxyOk;
-  const url = (localStorage.getItem(CHAT_PROXY_LS) || CHAT_PROXY_DEFAULT).replace(/\/+$/, "");
+  const configured = localStorage.getItem(CHAT_PROXY_LS);
+  const isLocalPage = location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.hostname === "";
+  if (!configured && !isLocalPage) {
+    _chatProxyOk = false;
+    return false;
+  }
+  const url = (configured || CHAT_PROXY_DEFAULT).replace(/\/+$/, "");
   try {
     const r = await fetch(url + "/health", { method: "GET" });
     if (r.ok) { _chatProxyOk = url; return url; }
@@ -231,72 +239,86 @@ async function callClaudeStream(userMsg, onDelta, pendingMsg = null) {
     messages,
     stream: true,
   });
-  const proxy = await detectChatProxy();
-  let resp;
-  if (proxy) {
-    const headers = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
-    if (_chatNewSession) { headers["kf-new-session"] = "1"; _chatNewSession = false; }
-    resp = await fetch(proxy + "/v1/messages", { method: "POST", headers, body: requestBody });
-  } else if (_clerkUserTier === "vip" && _clerkToken) {
-    // VIP: app API key lives on server only
-    resp = await fetch("/api/claude/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
-      body: requestBody,
-    });
-  } else {
-    // Regular users: key stored in localStorage, sent directly to Anthropic from browser
-    const apiKey = localStorage.getItem(CHAT_KEY_LS);
-    if (!apiKey) throw new Error("No Anthropic API key set. Sign in as VIP or add your key in the auth bar.");
-    resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: requestBody,
-    });
-  }
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => "");
-    throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
-  }
-  const ct = resp.headers.get("content-type") || "";
-  let full = "";
-  if (ct.includes("event-stream")) {
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let nl;
-      while ((nl = buf.indexOf("\n\n")) >= 0) {
-        const evt = buf.slice(0, nl);
-        buf = buf.slice(nl + 2);
-        const dataLine = evt.split("\n").find(l => l.startsWith("data:"));
-        if (!dataLine) continue;
-        try {
-          const chunk = _kfTextFromSsePayload(dataLine.slice(5).trim());
-          if (chunk) { full += chunk; onDelta(chunk); }
-        } catch (e) {
-          if (e instanceof SyntaxError) continue;
-          throw e;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), CHAT_REQUEST_TIMEOUT_MS);
+  try {
+    const proxy = await detectChatProxy();
+    let resp;
+    if (proxy) {
+      const headers = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
+      if (_chatNewSession) { headers["kf-new-session"] = "1"; _chatNewSession = false; }
+      resp = await fetch(proxy + "/v1/messages", { method: "POST", headers, body: requestBody, signal: controller.signal });
+    } else if (_clerkUserTier === "vip" && _clerkToken) {
+      // VIP: app API key lives on server only
+      resp = await fetch("/api/claude/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
+        body: requestBody,
+        signal: controller.signal,
+      });
+    } else {
+      // Regular users: key stored in localStorage, sent directly to Anthropic from browser
+      const apiKey = localStorage.getItem(CHAT_KEY_LS);
+      if (!apiKey) throw new Error("No Anthropic API key set. Sign in as VIP or add your key in the auth bar.");
+      resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: requestBody,
+        signal: controller.signal,
+      });
+    }
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => "");
+      throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
+    }
+    const ct = resp.headers.get("content-type") || "";
+    let full = "";
+    if (ct.includes("event-stream")) {
+      if (!resp.body) throw new Error("Claude response stream was empty.");
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n\n")) >= 0) {
+          const evt = buf.slice(0, nl);
+          buf = buf.slice(nl + 2);
+          const dataLine = evt.split("\n").find(l => l.startsWith("data:"));
+          if (!dataLine) continue;
+          try {
+            const chunk = _kfTextFromSsePayload(dataLine.slice(5).trim());
+            if (chunk) { full += chunk; onDelta(chunk); }
+          } catch (e) {
+            if (e instanceof SyntaxError) continue;
+            throw e;
+          }
         }
       }
+    } else {
+      // Non-streaming JSON response (e.g. direct Anthropic API).
+      const j = await resp.json();
+      full = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      if (full) onDelta(full);
     }
-  } else {
-    // Non-streaming JSON response (e.g. direct Anthropic API).
-    const j = await resp.json();
-    full = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-    if (full) onDelta(full);
+    const trimmed = full.trim();
+    if (!trimmed) throw new Error("Claude returned an empty response.");
+    return trimmed;
+  } catch (e) {
+    if (e?.name === "AbortError") {
+      throw new Error(`Claude did not respond within ${Math.round(CHAT_REQUEST_TIMEOUT_MS / 1000)} seconds. Try again; if it repeats, report the issue so we can inspect the server logs.`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  const trimmed = full.trim();
-  if (!trimmed) throw new Error("Claude returned an empty response.");
-  return trimmed;
 }
 
 
@@ -441,16 +463,26 @@ const MAX_TOOL_ROUNDS = 10;
 async function runChatTurn(userText) {
   let nextInput = userText;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const pending = { role: "bot", content: "" };
+    const pending = { role: "bot", content: "_thinking..._" };
     chatHistory.push(pending);
     renderChat();
     let reply;
     try {
+      let sawDelta = false;
       reply = await callClaudeStream(nextInput, delta => {
+        if (!sawDelta) {
+          pending.content = "";
+          sawDelta = true;
+        }
         pending.content += delta;
         renderChat();
       }, pending);
     } catch (e) {
+      const message = e?.message || String(e);
+      if (typeof _kfRecordClientError === "function") {
+        _kfRecordClientError({ type: "chat", message, stack: e?.stack || "" });
+      }
+      console.warn("[kf] Claude chat failed:", message);
       pending.content = `*[error]* ${e.message || e}`;
       renderChat();
       return;
@@ -459,7 +491,7 @@ async function runChatTurn(userText) {
     // Pull KFCHIP markers out of the (already stripped of KFCALL) text and
     // attach them to the message so renderChat shows clickable buttons.
     const chipParse = parseChips(stripped);
-    pending.content = chipParse.stripped;
+    pending.content = chipParse.stripped || (results.length ? "_using the data..._" : "");
     if (chipParse.chips.length) pending.chips = chipParse.chips;
     renderChat();
     if (!results.length) return;  // no tool calls -> Claude is done

@@ -24,7 +24,11 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
      ORDER BY is_default DESC, loaded_at ASC, id ASC`,
   ).bind(user.id).all<SourceRow>();
   const sources = rows.results ?? [];
-  if (!sources.length) return new Response(null, { status: 404 });
+  if (!sources.length) {
+    return new Response(JSON.stringify({ trees: [] }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const trees = [];
   for (const src of sources) {
