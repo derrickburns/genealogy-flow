@@ -204,6 +204,7 @@ let _kfSkipNextSeed = false; // autoLoadCloudGedcom path skips re-seeding (data 
 let _kfSkipNextSeedCount = 0; // suppress VIP autosave for N upcoming processFile() calls
 let _kfStartupLoadUserKey = "";
 let _kfVipCatalogAutoLoadUserKey = "";
+let _kfPublicDemoLoadPromise = null;
 const VIP_CATALOG_TREES = [
   { kind: "catalog", key: "demo", name: "DEMO", available: true, relation: "public", public: true },
   { key: "golden-rosenberg", name: "Golden-Rosenberg.ged", available: true },

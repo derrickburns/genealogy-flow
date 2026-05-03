@@ -162,6 +162,15 @@ const VIP_EMAILS = new Set([
 
 let _clerkReady = false;
 
+function _kfSyncUploadCloudVisibility() {
+  const uploadCloudBtn = document.getElementById("uploadCloud");
+  if (!uploadCloudBtn) return;
+  const signedIn = !!_clerkInstance?.user;
+  uploadCloudBtn.style.display = signedIn && !_kfIsMobileLayout() ? "inline-block" : "none";
+}
+window.addEventListener("resize", _kfSyncUploadCloudVisibility);
+window.addEventListener("orientationchange", _kfSyncUploadCloudVisibility);
+
 function _kfScheduleAuthTokenRetry() {
   if (!_clerkInstance?.user || _kfAuthTokenRetryCount >= 12) return;
   clearTimeout(_kfAuthTokenRetryTimer);
@@ -204,6 +213,7 @@ async function initClerk() {
   } catch (e) {
     console.error("Clerk init failed:", e);
     _clerkReady = false;
+    autoLoadPublicDemoTree().catch(err => console.warn("[kf] autoLoadPublicDemoTree:", err?.message || err));
   }
 }
 
@@ -224,7 +234,6 @@ async function updateAuthUI(user) {
   const emailEl = document.getElementById("authEmail");
   const btnEl = document.getElementById("authBtn");
   const apiKeyRowEl = document.getElementById("apiKeyRow");
-  const uploadCloudBtn = document.getElementById("uploadCloud");
 
   const versionEl = document.getElementById("buildVersion");
 
@@ -236,13 +245,14 @@ async function updateAuthUI(user) {
     emailEl.style.display = "none";
     btnEl.textContent = "Sign in";
     apiKeyRowEl.style.display = "flex";
-    if (uploadCloudBtn) uploadCloudBtn.style.display = "none";
+    _kfSyncUploadCloudVisibility();
     if (versionEl) versionEl.style.display = "none";
     applyChatAccess("anon");
     _kfCatalogTrees = [];
     _kfStartupLoadUserKey = "";
     _kfVipCatalogAutoLoadUserKey = "";
     refreshSources();
+    autoLoadPublicDemoTree().catch(e => console.warn("[kf] autoLoadPublicDemoTree:", e?.message || e));
     return;
   }
 
@@ -259,7 +269,7 @@ async function updateAuthUI(user) {
     emailEl.style.display = "inline";
     btnEl.textContent = "Sign out";
     apiKeyRowEl.style.display = _clerkUserTier === "vip" ? "none" : "flex";
-    if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
+    _kfSyncUploadCloudVisibility();
     if (versionEl) versionEl.style.display = "inline";
     applyChatAccess(_clerkUserTier);
     _kfRemoveRestrictedVipSources();
@@ -288,7 +298,7 @@ async function updateAuthUI(user) {
   emailEl.style.display = "inline";
   btnEl.textContent = "Sign out";
   apiKeyRowEl.style.display = _clerkUserTier === "vip" ? "none" : "flex";
-  if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
+  _kfSyncUploadCloudVisibility();
   if (versionEl) versionEl.style.display = "inline";
   applyChatAccess(_clerkUserTier);
   _kfRemoveRestrictedVipSources();

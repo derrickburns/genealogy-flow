@@ -600,6 +600,55 @@ async function loadCatalogTree(key, opts = {}) {
   return true;
 }
 
+async function autoLoadPublicDemoTree() {
+  if (!DEMO_GED_URL) return false;
+  const sourceName = _kfSourceNameFromFileName("DEMO.json");
+  const existing = _kfLoadedSources.get(sourceName);
+  if (existing) {
+    _kfSelectedSourceIds.add(existing.source_id);
+    _kfActiveTreeName = existing.name;
+    _kfRebuildSelectedVisualization({
+      preserveYear: true,
+      preferredSourceName: existing.name,
+      preferActiveRoot: true,
+      selectRoot: true,
+      centerRoot: !timelineLoaded,
+    });
+    refreshSources();
+    return true;
+  }
+  if (_kfPublicDemoLoadPromise) return _kfPublicDemoLoadPromise;
+  _kfPublicDemoLoadPromise = (async () => {
+    stats.textContent = "loading demo tree...";
+    const resp = await fetch(DEMO_GED_URL);
+    if (!resp.ok) throw new Error(resp.status + " " + resp.statusText);
+    const text = await resp.text();
+    const demoFile = new File([text], "DEMO.json", { type: "application/json" });
+    _kfSkipNextSeed = true;
+    await processFile(demoFile);
+    const loaded = _kfLoadedSources.get(sourceName);
+    if (loaded) {
+      _kfSelectedSourceIds.add(loaded.source_id);
+      _kfActiveTreeName = loaded.name;
+      _kfRebuildSelectedVisualization({
+        preserveYear: true,
+        preferredSourceName: loaded.name,
+        preferActiveRoot: true,
+        selectRoot: true,
+        centerRoot: true,
+      });
+    }
+    return true;
+  })().catch(e => {
+    _kfSkipNextSeed = false;
+    stats.textContent = "demo load failed: " + (e?.message || e);
+    return false;
+  }).finally(() => {
+    _kfPublicDemoLoadPromise = null;
+  });
+  return _kfPublicDemoLoadPromise;
+}
+
 async function loadCloudTree(sourceId, opts = {}) {
   if (!sourceId || !_clerkToken) return false;
   const r = await fetch("/api/gedcom?source_id=" + encodeURIComponent(String(sourceId)), {

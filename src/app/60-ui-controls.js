@@ -100,12 +100,13 @@ function _kfInitSplash() {
   });
 }
 
-function _kfSetDataQualityVisibility(enabled) {
+function _kfSetDataQualityVisibility(enabled, opts = {}) {
   _kfShowDataQualityConcerns = !!enabled;
   localStorage.setItem("kf-show-data-quality", _kfShowDataQualityConcerns ? "1" : "0");
   document.querySelectorAll('[data-intent="weak"]').forEach(el => {
     el.style.display = _kfShowDataQualityConcerns ? "" : "none";
   });
+  if (opts.skipRefresh) return;
   if (highlightedDwell >= 0 && typeof updatePanel === "function") updatePanel(true);
   if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
 }
@@ -115,7 +116,7 @@ function _kfInitDataQualityToggle() {
   if (!toggle) return;
   toggle.checked = !!_kfShowDataQualityConcerns;
   toggle.addEventListener("change", () => _kfSetDataQualityVisibility(toggle.checked));
-  _kfSetDataQualityVisibility(toggle.checked);
+  _kfSetDataQualityVisibility(toggle.checked, { skipRefresh: true });
 }
 
 _kfInitSplash();
@@ -1270,30 +1271,6 @@ $("pick").addEventListener("click", () => fileInp.click());
 const pick2 = $("pick2"); if (pick2) pick2.addEventListener("click", () => fileInp.click());
 fileInp.addEventListener("change", () => handleFiles(fileInp.files));
 window._kfLoadFiles = handleFiles;
-if (DEMO_GED_URL) {
-  (async () => {
-    if (_kfIsMobileLayout()) {
-      stats.textContent = "choose a tree to load";
-      refreshSources();
-      return;
-    }
-    // Clear any proxy trees from prior sessions so only the demo tree appears
-    const _p = await detectChatProxy().catch(() => null);
-    if (_p) { try { await fetch(_p + "/reset", { method: "POST" }); } catch (_) {} }
-    try {
-      stats.textContent = "loading demo tree...";
-      const resp = await fetch(DEMO_GED_URL);
-      if (!resp.ok) throw new Error(resp.status + " " + resp.statusText);
-      const text = await resp.text();
-      const demoFile = new File([text], "DEMO.json", { type: "application/json" });
-      _kfSkipNextSeed = true;
-      await processFile(demoFile);
-    } catch (e) {
-      _kfSkipNextSeed = false;
-      stats.textContent = "demo load failed: " + (e.message || e);
-    }
-  })();
-}
   let dropDragDepth = 0;
   let dropStaleTimer = 0;
   function isFileDrag(e) {
