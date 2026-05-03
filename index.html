@@ -109,6 +109,7 @@
     <div class="uirow primary">
       <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
       <button id="play" disabled aria-label="Play" title="Play">▶</button>
+      <label class="speedControl mapSpeedControl">speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
       <div class="rangeWrap" style="position:relative;">
         <canvas id="yearHist"></canvas>
         <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
@@ -126,7 +127,7 @@
   </div>
   <div id="chatPanel">
     <div id="sideTabs">
-      <button type="button" data-side-tab="person">Person</button>
+      <button type="button" data-side-tab="person">People</button>
       <button type="button" data-side-tab="cluster">Cluster</button>
       <button type="button" data-side-tab="options">Options</button>
       <button type="button" data-side-tab="trees">Trees</button>
@@ -150,29 +151,8 @@
           <select id="rootSel" style="display:none;"></select>
         </span>
       </div>
-      <div id="personEmpty">Click a marker on the map to inspect that person.</div>
-      <div id="selectedPerson" hidden></div>
-    </div>
-    <div id="clusterPane" class="sidePane">
-      <div id="clusterEmpty">Click a cluster on the map to inspect its people.</div>
-      <div id="selectedCluster" hidden></div>
-    </div>
-    <div id="optionsPane" class="sidePane">
-      <div id="optionsPaneContent">
+      <div id="peopleControls" class="peopleControls">
         <div class="optionSelectorGrid">
-          <section class="optionCard">
-            <label for="clusterModeChoice">Cluster visualization</label>
-            <select id="clusterModeChoice">
-              <option value="none">Individual markers - one dot per person</option>
-              <option value="state">Places as regions - group by state/country</option>
-              <option value="tree">Trees compared - split clusters by tree</option>
-              <option value="gender">Gender mix - show recorded sex mix</option>
-              <option value="parents">Parent knowledge - show known-parent coverage</option>
-              <option value="pie">Lineage mix - show paternal/maternal branches</option>
-              <option value="dispersion">Declutter on zoom - aggregate when zoomed out</option>
-            </select>
-            <p id="clusterModeHelp" class="optionHelp">Show each visible person as an individual marker.</p>
-          </section>
           <section class="optionCard">
             <label for="showFilterChoice">People shown</label>
             <select id="showFilterChoice">
@@ -181,6 +161,15 @@
               <option value="ancestors">Direct ancestors - parents and grandparents</option>
             </select>
             <p id="showFilterHelp" class="optionHelp">Use the selected trees without narrowing by family relationship.</p>
+          </section>
+          <section class="optionCard">
+            <label for="surnameSelect">Surname</label>
+            <span id="peopleSurnameGroup" class="chipGroup surnameControl" data-grp="surname" style="display:none;">
+              <select id="surnameSelect">
+                <option value="">all</option>
+              </select>
+            </span>
+            <p class="optionHelp">Focus the people shown by common surname in the selected trees.</p>
           </section>
           <section class="optionCard">
             <label for="sexFilterChoice">Sex filter</label>
@@ -192,7 +181,7 @@
             <p id="sexFilterHelp" class="optionHelp">Do not filter by recorded sex.</p>
           </section>
           <section class="optionCard">
-            <label for="kinLinesChoice">Kin lines</label>
+            <label for="kinLinesChoice">Relationship context</label>
             <select id="kinLinesChoice">
               <option value="0">Off - no relationship lines</option>
               <option value="3">Closest 3 - show only strongest context</option>
@@ -205,6 +194,41 @@
             <b id="kinNMainLabel" hidden>0</b>
           </section>
         </div>
+      </div>
+      <div id="personEmpty">Click a marker on the map to inspect that person.</div>
+      <div id="selectedPerson" hidden></div>
+    </div>
+    <div id="clusterPane" class="sidePane">
+      <div id="clusterControls" class="clusterControls">
+        <div class="optionSelectorGrid">
+          <section class="optionCard">
+            <label for="clusterModeChoice">How to group people</label>
+            <select id="clusterModeChoice">
+              <option value="none">Off - individual people</option>
+              <option value="state">Places - state/country regions</option>
+              <option value="tree">Trees - compare selected data sets</option>
+              <option value="pie">Lineage - paternal/maternal branches</option>
+              <option value="gender">Gender - recorded sex mix</option>
+              <option value="parents">Parent knowledge - missing parents</option>
+              <option value="dispersion">Declutter - group when zoomed out</option>
+            </select>
+            <p id="clusterModeHelp" class="optionHelp">Show each visible person as an individual marker.</p>
+          </section>
+          <section class="optionCard">
+            <label for="clusterRadiusMain">Cluster size</label>
+            <div class="clusterRadiusControl">
+              <input type="range" id="clusterRadiusMain" min="10" max="80" step="2" value="30">
+              <b id="clusterRadiusMainLabel">30</b>
+            </div>
+            <p class="optionHelp">Larger values combine nearby people into fewer clusters.</p>
+          </section>
+        </div>
+      </div>
+      <div id="clusterEmpty">Click a cluster on the map to inspect its people.</div>
+      <div id="selectedCluster" hidden></div>
+    </div>
+    <div id="optionsPane" class="sidePane">
+      <div id="optionsPaneContent">
         <div id="quickChips" class="hidden">
           <span class="chipGroup" data-grp="intent">
             <span class="chipLabel">understand:</span>
@@ -218,19 +242,9 @@
             <span class="chipLabel">overlay:</span>
             <button class="quickChip" data-overlay="treeMatches" title="Highlight likely same-person matches between two or more checked GEDCOMs. Each match draws halo rings on both endpoints and a connecting line, so you can see geographic overlap at a glance.">tree matches</button>
           </span>
-          <span class="chipGroup" data-grp="surname" style="display:none;align-items:center;gap:4px;">
-            <span class="chipLabel">surname:</span>
-            <select id="surnameSelect" style="font-size:11px;padding:2px 4px;border:1px solid #c0ccd8;border-radius:4px;background:#fff;color:#1c2433;max-width:140px;">
-              <option value="">all</option>
-            </select>
-          </span>
         </div>
         <div id="timelineControls" class="options-control-group">
-          <label class="speedControl">speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
           <label class="speedControl">migration <select id="migrationView"><option value="continuous" selected>continuous</option><option value="observations">observation pulses</option></select></label>
-        </div>
-        <div class="options-control-group">
-          <label class="checkControl"><input type="checkbox" id="dataQualityToggle"> show data quality concerns</label>
         </div>
       </div>
     </div>
@@ -242,6 +256,10 @@
       <div class="treeStatsCard">
         <div class="treeStatsHead">Current data</div>
         <div id="treeStats">No trees loaded</div>
+      </div>
+      <div class="treeStatsCard dataQualityCard">
+        <div class="treeStatsHead">Data review</div>
+        <label class="checkControl"><input type="checkbox" id="dataQualityToggle"> show data quality concerns</label>
       </div>
       <div class="treeActions">
         <button id="pick">Upload Tree</button>

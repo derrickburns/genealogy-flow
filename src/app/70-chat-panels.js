@@ -19,7 +19,7 @@ let _kfSuppressSideTabClickUntil = 0;
 function _kfUpdateMobileSheetTitle(tab) {
   if (!_mobileSheetTitleEl) return;
   _mobileSheetTitleEl.textContent =
-    tab === "person" ? "Person" :
+    tab === "person" ? "People" :
     tab === "cluster" ? "Cluster" :
     tab === "options" ? "Options" :
     tab === "trees" ? "Trees" :

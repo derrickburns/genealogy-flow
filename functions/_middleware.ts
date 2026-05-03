@@ -28,6 +28,9 @@ export interface Env {
   VIP_EMAILS?: string;
   GITHUB_TOKEN?: string;
   GITHUB_REPO?: string;
+  RESEND_API_KEY?: string;
+  INVITE_FROM_EMAIL?: string;
+  APP_ORIGIN?: string;
 }
 
 const DEFAULT_VIP_EMAILS = [

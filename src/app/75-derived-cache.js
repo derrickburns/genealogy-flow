@@ -566,7 +566,7 @@ function _kfShowYearTour(selectTab = true) {
 }
 
 function _kfOutlierReportMarkdown(limit = 8) {
-  if (!_kfShowDataQualityConcerns) return "Data quality concerns are hidden. Turn on **show data quality concerns** in Options to review weak place evidence or chronology warnings.";
+  if (!_kfShowDataQualityConcerns) return "Data quality concerns are hidden. Turn on **show data quality concerns** in Trees to review weak place evidence or chronology warnings.";
   if (!timelineLoaded || !lastIndividuals) return "Load GEDCOM data before reviewing weak evidence.";
   const y = Math.floor(curYear);
   const rows = _kfVisibleRowsForYear(y).rows;

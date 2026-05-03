@@ -24,5 +24,8 @@ VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@
 #   ANTHROPIC_API_KEY
 #   KEY_ENCRYPTION_SECRET   (32-byte hex, e.g. openssl rand -hex 32)
 #   GITHUB_TOKEN            (repo issues write permission for app issue reports)
+#   RESEND_API_KEY          (optional, sends tree-share invitation emails)
 # Optional vars:
 #   GITHUB_REPO             (defaults to derrickburns/genealogy-flow)
+#   INVITE_FROM_EMAIL       (defaults to Kindred Flow <onboarding@resend.dev>)
+#   APP_ORIGIN              (defaults to https://flow.kindredsearch.com)

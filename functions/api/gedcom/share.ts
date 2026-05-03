@@ -20,6 +20,79 @@ function validShareEmail(email: string): boolean {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
 }
 
+type ShareableTree = {
+  kind: string;
+  key: string;
+  source_id?: number;
+  tree_uuid?: string | null;
+  name: string;
+  owner_email?: string | null;
+  owner_uuid?: string | null;
+  content_hash?: string | null;
+  uploaded_at?: number | null;
+  content_changed_at?: number | null;
+  top_pci_id?: string | null;
+  top_pci_name?: string | null;
+  top_pci_score?: number | null;
+};
+
+function treeDisplayName(tree: ShareableTree | null): string {
+  return cleanTreeName(tree?.name || tree?.key || "a family tree");
+}
+
+function inviteAppUrl(env: Env): string {
+  const origin = typeof env.APP_ORIGIN === "string" && env.APP_ORIGIN.trim()
+    ? env.APP_ORIGIN.trim()
+    : "https://flow.kindredsearch.com";
+  return origin.replace(/\/+$/, "");
+}
+
+async function sendShareInviteEmail(env: Env, params: {
+  to: string;
+  ownerEmail: string;
+  treeName: string;
+}): Promise<{ sent: boolean; skipped?: string; error?: string }> {
+  const apiKey = typeof env.RESEND_API_KEY === "string" ? env.RESEND_API_KEY.trim() : "";
+  if (!apiKey) return { sent: false, skipped: "RESEND_API_KEY is not configured" };
+  const from = typeof env.INVITE_FROM_EMAIL === "string" && env.INVITE_FROM_EMAIL.trim()
+    ? env.INVITE_FROM_EMAIL.trim()
+    : "Kindred Flow <onboarding@resend.dev>";
+  const appUrl = inviteAppUrl(env);
+  const subject = `${params.ownerEmail} shared a Kindred Flow tree with you`;
+  const text = [
+    `${params.ownerEmail} shared "${params.treeName}" with you in Kindred Flow.`,
+    "",
+    "Kindred Flow maps family history through time, showing where people lived, how families moved, and how branches cluster by place, tree, and relationship.",
+    "",
+    `Open Kindred Flow and sign in with this email address to see the shared tree: ${appUrl}`,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#142033">
+      <h2 style="margin:0 0 12px">A Kindred Flow tree was shared with you</h2>
+      <p><strong>${params.ownerEmail}</strong> shared <strong>${params.treeName}</strong> with you.</p>
+      <p>Kindred Flow maps family history through time, showing where people lived, how families moved, and how branches cluster by place, tree, and relationship.</p>
+      <p><a href="${appUrl}" style="display:inline-block;background:#183b7a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700">Open Kindred Flow</a></p>
+      <p style="color:#64748b;font-size:13px">Sign in with ${params.to} to access the shared tree.</p>
+    </div>`;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from, to: params.to, subject, text, html }),
+    });
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      return { sent: false, error: `Resend ${r.status}${body ? `: ${body.slice(0, 300)}` : ""}` };
+    }
+    return { sent: true };
+  } catch (e) {
+    return { sent: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 async function ownedGedcomTrees(env: Env, user: UserContext) {
   const rows = await env.DB.prepare(`
     SELECT id, tree_uuid, name, owner_email, owner_uuid, content_hash, uploaded_at, content_changed_at,
@@ -60,6 +133,11 @@ async function ownedShareableTrees(env: Env, user: UserContext) {
       owner_email: tree.ownerEmail,
     }));
   return [...ownedCatalog, ...(await ownedGedcomTrees(env, user))];
+}
+
+async function shareableTreeByKey(env: Env, user: UserContext, kind: string, key: string): Promise<ShareableTree | null> {
+  const owned = await ownedShareableTrees(env, user);
+  return owned.find(tree => tree.kind === kind && (tree.key === key || (tree.kind === "gedcom" && tree.tree_uuid === key))) ?? null;
 }
 
 async function sharesForOwned(env: Env, owned: Array<{ kind: string; key: string; tree_uuid?: string | null }>) {
@@ -168,10 +246,21 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   } else {
     if (!email) return json({ error: "email required" }, { status: 422 });
     if (!validShareEmail(email)) return json({ error: "Enter a valid email address" }, { status: 422 });
-    await ctx.env.DB.prepare(`
+    const result = await ctx.env.DB.prepare(`
       INSERT OR IGNORE INTO tree_shares (tree_kind, tree_key, owner_email, shared_with_email, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).bind(kind, key, user.email ?? user.id, email, Math.floor(Date.now() / 1000)).run();
+    const changed = Number(result.meta?.changes ?? 0) > 0;
+    const tree = await shareableTreeByKey(ctx.env, user, kind, key);
+    const emailResult = changed
+      ? await sendShareInviteEmail(ctx.env, {
+        to: email,
+        ownerEmail: user.email ?? user.id,
+        treeName: treeDisplayName(tree),
+      })
+      : { sent: false, skipped: "share already existed" };
+    const state = await responseState(ctx.env, user);
+    return json({ ...state, invite_email: emailResult });
   }
   return json(await responseState(ctx.env, user));
 };

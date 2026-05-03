@@ -417,7 +417,7 @@ function _kfBuildSurnameTopN(n = 12) {
 }
 
 function _kfRenderSurnameChips() {
-  const grp = document.querySelector("#quickChips .chipGroup[data-grp='surname']");
+  const grp = document.querySelector(".chipGroup[data-grp='surname']");
   const sel = document.getElementById("surnameSelect");
   if (!grp || !sel) return;
   if (!_kfSurnamesTop || !_kfSurnamesTop.length) {
@@ -481,6 +481,10 @@ function _kfSyncOptionSelectors() {
   _kfSetSelectValue("clusterModeChoice", clusterMode);
   _kfSetSelectValue("showFilterChoice", curFilter);
   _kfSetSelectValue("sexFilterChoice", _kfSexFilter || "all");
+  const clusterRadiusMain = document.getElementById("clusterRadiusMain");
+  const clusterRadiusMainLabel = document.getElementById("clusterRadiusMainLabel");
+  if (clusterRadiusMain) clusterRadiusMain.value = String(clusterRadius);
+  if (clusterRadiusMainLabel) clusterRadiusMainLabel.textContent = String(clusterRadius);
   const kinValue = kinLinesN >= 20 ? 20 : kinLinesN >= 10 ? 10 : kinLinesN >= 5 ? 5 : kinLinesN >= 3 ? 3 : 0;
   _kfSetSelectValue("kinLinesChoice", kinValue);
   const clusterHelp = document.getElementById("clusterModeHelp");
@@ -536,6 +540,23 @@ document.getElementById("kinLinesChoice")?.addEventListener("change", e => {
   _kfSetKinLines(parseInt(e.target.value, 10) || 0);
   _kfRefreshViewChrome(true);
   _kfRefreshQuickChips();
+});
+
+function _kfSetClusterRadius(n) {
+  clusterRadius = parseInt(n, 10) || 30;
+  $("clusterRadius").value = clusterRadius;
+  $("clusterRadiusLabel").textContent = clusterRadius;
+  const main = document.getElementById("clusterRadiusMain");
+  const mainLabel = document.getElementById("clusterRadiusMainLabel");
+  if (main) main.value = clusterRadius;
+  if (mainLabel) mainLabel.textContent = clusterRadius;
+  fxCtx.clearRect(0, 0, W, H);
+  if (_kfDeckOverlay) updateDeckDwellLayer();
+  if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+}
+
+document.getElementById("clusterRadiusMain")?.addEventListener("input", e => {
+  _kfSetClusterRadius(e.target.value);
 });
 
 
@@ -642,9 +663,7 @@ $("clusterMode").addEventListener("change", e => {
   _kfRefreshViewChrome(true);
 });
 $("clusterRadius").addEventListener("input", e => {
-  clusterRadius = parseInt(e.target.value, 10) || 30;
-  $("clusterRadiusLabel").textContent = clusterRadius;
-  fxCtx.clearRect(0, 0, W, H);
+  _kfSetClusterRadius(e.target.value);
 });
 function _kfSetKinLines(n) {
   kinLinesN = n;
