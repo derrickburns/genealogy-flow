@@ -580,7 +580,7 @@ document.getElementById("apiKeySave").addEventListener("click", () => {
   applyChatAccess(_clerkUserTier);
 });
 
-// Upload all loaded trees to cloud persistence
+// Save all loaded trees to short-lived cloud persistence.
 document.getElementById("uploadCloud").addEventListener("click", async () => {
   if (!_clerkToken) return;
   const trees = _kfCloudTreesPayload();
@@ -593,9 +593,9 @@ document.getElementById("uploadCloud").addEventListener("click", async () => {
   if (resp.ok) {
     const j = await resp.json();
     const d = new Date(j.expires_at * 1000).toLocaleDateString();
-    alert(`Uploaded ${j.trees} tree(s). Expires ${d}.`);
+    alert(`Saved ${j.trees} tree(s) on Kindred servers free of charge until ${d}. You may delete or update this data at any time.`);
   } else {
-    alert("Upload failed: " + resp.status);
+    alert("Save failed: " + resp.status);
   }
 });
 

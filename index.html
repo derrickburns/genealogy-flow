@@ -20,7 +20,7 @@
     <h1 id="splashTitle">Kindred Flow maps family history through time.</h1>
     <p>Kindred Flow is a genealogy viewer produced by Parthenian, LLC as part of the Kindred series of products. It turns family-tree data into an interactive map and timeline so you can see where people lived, how families moved, and how branches relate across places and generations.</p>
     <p>You can load GEDCOM family-tree files, select one or more trees, animate migration over time, inspect people and clusters, ask the Kindred AI genealogist questions, and share trees with other signed-in users.</p>
-    <p class="splashMobileNote">On mobile, trees are loaded only when you choose them. To load your own family tree data and share it with friends, use the desktop app and sign in. Signing in creates an account record of the trees you own and the trees shared with you.</p>
+    <p class="splashMobileNote">On mobile, trees are loaded only when you choose them. To load your own family tree data and share it with friends, use the desktop app and sign in. Signing in creates an account record of the trees you own and the trees shared with you. You can save loaded family tree data on Kindred servers for 7 days free of charge; shared tree data is stored on Kindred servers, and you may delete or update it at any time.</p>
     <button type="button" id="splashDismiss">Enter Kindred Flow</button>
   </div>
 </div>
@@ -46,7 +46,7 @@
   <b>Kindred Flow</b>
   <span id="stats">starting...</span>
   <button id="pick">Open .ged</button>
-  <button id="uploadCloud" title="Upload all loaded trees to cloud storage" style="display:none">Upload Trees</button>
+  <button id="uploadCloud" title="Save loaded trees on Kindred servers for 7 days free of charge" style="display:none">Save Trees</button>
   <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
   <span id="rootwrap" style="display:none; margin-left:6px; position:relative;">
     <span id="rootSearchBox" style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:0 4px 0 8px; transition:border-color 0.1s, box-shadow 0.1s;">
@@ -183,7 +183,7 @@
         </div>
         <div id="sharingPanel" class="sharePanel desktopOnly" hidden>
           <div class="sharePanelHead">Tree sharing</div>
-          <div class="shareHelp">Sign in to create an account. On desktop, uploaded trees are associated with you and can be shared with friends by email.</div>
+          <div class="shareHelp">Sign in to create an account. On desktop, loaded trees can be saved on Kindred servers for 7 days free of charge, associated with your account, and shared with friends by email. Shared tree data is stored on Kindred servers; you may delete or update your shared data at any time.</div>
           <div id="sharingList"></div>
         </div>
       </div>
@@ -201,7 +201,7 @@
           <li>Use the <b>Options</b> tab to focus on blood relatives, ancestors, men, or women</li>
           <li>Click any dot to select that person and see their events in the right panel</li>
           <li>Type a name in the <b>home person</b> box to re-center the tree on someone else</li>
-          <li class="apiKeyHelp">Save your Anthropic key or sign in as VIP to unlock AI chat</li>
+          <li class="apiKeyHelp">Save your Anthropic key or sign in as VIP to unlock AI chat. Keys are NOT stored on Kindred servers; they are only used locally to communicate with your LLM.</li>
         </ul>
         <button type="button" class="apiKeyHelp" onclick="document.getElementById('apiKeyInput').focus()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Add API key</button>
         <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #c0ccd8; border-radius:5px; background:#fff; color:#2a4a8c; font:inherit; cursor:pointer;">Sign in</button>

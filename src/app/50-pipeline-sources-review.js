@@ -500,7 +500,7 @@ function renderSharePanel() {
   if (!list) return;
   const trees = _kfShareState?.trees || [];
   if (!trees.length) {
-    list.innerHTML = `<div class="shareEmpty">Sign in on desktop and upload a tree to share it with other people by email.</div>`;
+    list.innerHTML = `<div class="shareEmpty">Sign in on desktop and save a loaded tree on Kindred servers for 7 days free of charge. Saved trees can be shared with other people by email. Shared tree data is stored on Kindred servers; you may delete or update your shared data at any time.</div>`;
     return;
   }
   list.innerHTML = trees.map(tree => {
@@ -1200,6 +1200,8 @@ async function processFile(file) {
   refreshSources();
   if (_clerkToken && _clerkUserTier === "vip" && !_kfSkipNextSeed && _kfSkipNextSeedCount <= 0) {
     seedCloudDb(loadedSourceSnapshot); // VIP autosaves this tree into the server-side set
+  } else if (_clerkToken && !_kfSkipNextSeed && !_kfIsMobileLayout()) {
+    stats.textContent = `${stats.textContent}  |  Save this tree free for 7 days with Save Trees.`;
   }
   _kfSkipNextSeed = false;
   if (_kfSkipNextSeedCount > 0) _kfSkipNextSeedCount--;
