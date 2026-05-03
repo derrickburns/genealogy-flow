@@ -51,6 +51,7 @@
   canvas#fx { z-index:2; }
   #base { z-index:1; } #fx { z-index:2; }
   #yearWatermark { position:absolute; z-index:3; pointer-events:none; top:10px; left:0; right:0; text-align:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric:tabular-nums; font-weight:800; font-size:48px; line-height:1; color:rgba(20,30,55,0.18); user-select:none; letter-spacing:0.05em; }
+  .mobileContextStrip { display:none; }
   #ui {
     background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
     padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
@@ -560,6 +561,7 @@
   .year-digest-label { display:block; margin-top:2px; font-size:9px; color:#64748b; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; }
   .year-digest-list { margin:0; padding-left:15px; color:#334155; font-size:10.5px; line-height:1.35; }
   .year-digest-list li { margin:2px 0; }
+  .mobileConceptCards { display:none; }
   .year-digest-close { pointer-events:auto; border:1px solid #cbd5e1; border-radius:999px; background:#fff; color:#566480; padding:2px 7px; font:inherit; font-size:9.5px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; cursor:pointer; }
   .year-digest-close:hover { background:#eef4ff; color:#1e40af; border-color:#aabbd7; }
   .ux-section { background:#fff; border:1px solid #d6dde7; border-radius:8px; padding:8px 9px; margin:8px 0; }
@@ -616,6 +618,15 @@
     #vizTabBar { padding:3px 6px 0; }
     .vizTab { padding:7px 12px; min-height:36px; }
     #yearWatermark { top:8px; font-size:38px; }
+    .mobileContextStrip {
+      display:block; position:absolute; top:8px; left:8px; right:8px; z-index:12;
+      pointer-events:none; padding:8px 10px; border:1px solid rgba(180,197,220,0.9);
+      border-radius:14px; background:rgba(255,255,255,0.92); box-shadow:0 8px 26px rgba(15,23,42,0.13);
+      color:#102033; font-size:11px; line-height:1.3; backdrop-filter:blur(8px);
+    }
+    .mobileContextStrip[hidden] { display:none; }
+    .mobileContextStrip b { color:#0f172a; font-weight:900; }
+    .mobileContextStrip span { color:#64748b; }
     #mapLegend { display:none !important; }
 
     #authBar { position:relative; flex-wrap:nowrap; gap:5px; padding:5px 8px; font-size:10.5px; min-height:34px; box-sizing:border-box; }
@@ -727,11 +738,17 @@
     #panel[data-sheet="full"] #chatPanel .sidePane.on { display:flex; }
     #personPane, #clusterPane, #chatPane { overflow:hidden; }
     #optionsPane, #tourPane { overflow-y:auto; }
+    .mobileConceptCards { display:grid; gap:7px; margin:0 0 10px; }
+    .mobileConceptCard { border:1px solid #d6dde7; border-radius:10px; background:#fff; padding:8px 9px; }
+    .mobileConceptCard b { display:block; color:#102033; font-size:11px; line-height:1.2; }
+    .mobileConceptCard span { display:block; margin-top:2px; color:#64748b; font-size:10.5px; line-height:1.35; }
     #personPane #selectedPerson, #selectedCluster, #optionsPane, #tourPane, #chatHistory { -webkit-overflow-scrolling:touch; }
     #selectedPerson { font-size:12px; }
     #chatInput { min-height:74px; font-size:16px; }
     #chatBar button { min-height:38px; padding:7px 10px; }
-    #chatScope { font-size:11px; max-height:84px; overflow:auto; }
+    #chatScope { font-size:11px; max-height:96px; overflow:auto; }
+    .chat-scope-actions { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(170px, 82vw); overflow-x:auto; gap:7px; padding-bottom:2px; scroll-snap-type:x proximity; }
+    .chat-scope-question { min-height:38px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; }
     #welcome { width:calc(100vw - 42px); top:42%; padding:24px 20px; box-sizing:border-box; }
     .year-digest-metrics { grid-template-columns:repeat(2, 1fr); }
   }

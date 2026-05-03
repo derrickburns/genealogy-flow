@@ -1112,8 +1112,10 @@ function appendError(text) {
 function _kfChatScopeQuestions(root, selected, visible) {
   const y = Math.floor(curYear);
   const questions = [
-    `Explain what changed on the map in ${y}.`,
+    `Explain this year in plain language.`,
+    `Why are these people visible in ${y}?`,
     `Summarize the migration story for the visible people in ${y}.`,
+    `Explain the biggest place or cluster pattern in ${y}.`,
   ];
   if (_kfShowDataQualityConcerns) questions.push(`Find the weakest location evidence in the checked trees at ${y}.`);
   if (selected?.name) questions.unshift(`Why is ${selected.name} shown here in ${y}?`);

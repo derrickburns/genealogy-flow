@@ -471,7 +471,7 @@ function updateMapLegend() {
       html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Arcs appear near the destination record date; faint arcs mark gaps over ${FLOW_AMBIGUOUS_GAP_YEARS} years.</div>`;
     } else {
       html += swatch("#2a4a8c", 8, "circle", "Continuous movement");
-      html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Particles interpolate between dated records.</div>`;
+      html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Short gaps animate between records; long gaps animate only near the destination year.</div>`;
     }
   }
 
@@ -1253,6 +1253,7 @@ function tick(now) {
     updateStatusLabels(yint);
     updateMapLegend();
     _kfRefreshLoopControls();
+    if (_kfIsMobileLayout() && typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome();
   }
   // MapLibre owns the basemap and projection state — no more lerp/transform
   // dance. We just re-project dwells whenever the map moves (_baseDirty is

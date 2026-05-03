@@ -498,9 +498,20 @@ function _kfYearDigestHeaderHtml(title, sub = "") {
     `</div>`;
 }
 
+function _kfMobileConceptCardsHtml() {
+  if (typeof _kfIsMobileLayout === "function" && !_kfIsMobileLayout()) return "";
+  return `<div class="mobileConceptCards" aria-label="How to read this view">` +
+    `<div class="mobileConceptCard"><b>Time changes the map.</b><span>Markers are people alive or possibly alive in the selected year.</span></div>` +
+    `<div class="mobileConceptCard"><b>Trees define scope.</b><span>Checked trees control the map, clusters, AI, and search.</span></div>` +
+    `<div class="mobileConceptCard"><b>Movement is evidence.</b><span>Long gaps animate near the destination year so we do not imply decades of travel.</span></div>` +
+    `<div class="mobileConceptCard"><b>Clusters are shortcuts.</b><span>Tap a cluster to understand a branch before reading individual records.</span></div>` +
+    `</div>`;
+}
+
 function _kfYearTourHtml() {
   if (!timelineLoaded || !lastIndividuals) {
     return _kfYearDigestHeaderHtml("Guided tour") +
+      _kfMobileConceptCardsHtml() +
       `<ul class="year-digest-list"><li>Load one or more GEDCOM trees to enable the year tour.</li></ul>`;
   }
   const y = Math.floor(curYear);
@@ -522,6 +533,7 @@ function _kfYearTourHtml() {
   if (_kfShowDataQualityConcerns && d.weak.length) lines.push(`${d.weak.length.toLocaleString()} visible markers have weak place evidence; use "weak evidence" to review them.`);
   if (!lines.length) lines.push("This year has no notable marker changes under the current filters.");
   return _kfYearDigestHeaderHtml(`Guided tour for ${y}`, _kfViewModeLabel()) +
+    _kfMobileConceptCardsHtml() +
     `<div class="year-digest-metrics">` +
       _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
       _kfYearDigestMetricHtml(d.current.exact.toLocaleString(), "specific") +
@@ -639,12 +651,26 @@ function _kfViewModeLabel() {
   return [filter, sex, cluster].filter(Boolean).join(" | ");
 }
 
+function _kfMobileContextStripHtml(y, data, sourceCount) {
+  if (!timelineLoaded || !lastIndividuals) {
+    return `<b>Start here</b> <span>Select a tree, then scrub the year to watch family history move.</span>`;
+  }
+  const trees = sourceCount || (_kfLoadedSources?.size || 0);
+  const treeText = `${trees} ${trees === 1 ? "tree" : "trees"}`;
+  const markerText = clusterMode === "none"
+    ? `${data.count.toLocaleString()} alive/maybe alive`
+    : `${data.count.toLocaleString()} people grouped`;
+  const scope = curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
+  return `<b>${y}</b> <span>${markerText} | ${treeText} | ${scope} | last known locations</span>`;
+}
+
 function _kfRefreshViewChrome(force = false) {
   const summaryEl = $("viewSummary");
   const breadEl = $("focusBreadcrumb");
   const whyEl = $("viewWhy");
   const digestEl = $("tourPaneContent");
-  if (!summaryEl && !breadEl && !whyEl && !digestEl) return;
+  const mobileContextEl = $("mobileContextStrip");
+  if (!summaryEl && !breadEl && !whyEl && !digestEl && !mobileContextEl) return;
   const y = Math.floor(curYear);
   const data = _kfVisibleMarkerData();
   const sourceCount = (typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList().length : 0) || (_kfLoadedSources?.size || 0);
@@ -667,6 +693,10 @@ function _kfRefreshViewChrome(force = false) {
   }
   if (whyEl) whyEl.hidden = !timelineLoaded || !lastIndividuals;
   if (digestEl) _kfRenderActiveYearDigest();
+  if (mobileContextEl) {
+    mobileContextEl.hidden = false;
+    mobileContextEl.innerHTML = _kfMobileContextStripHtml(y, data, sourceCount);
+  }
   if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
 }
 
