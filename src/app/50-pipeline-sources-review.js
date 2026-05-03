@@ -488,125 +488,82 @@ async function fetchCloudTrees() {
 async function refreshSharePanel() {
   const panel = document.getElementById("sharingPanel");
   const list = document.getElementById("sharingList");
-  if (!panel || !list) return;
+  if (panel) panel.hidden = true;
+  if (list) list.innerHTML = "";
   if (!_clerkToken || _clerkUserTier === "anon") {
-    panel.hidden = true;
+    _kfShareState = { trees: [] };
     return;
   }
-  panel.hidden = false;
   try {
     const r = await fetch("/api/gedcom/share", { headers: _kfAuthHeaders() });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error || `share ${r.status}`);
     _kfShareState = { trees: Array.isArray(j?.trees) ? j.trees : [] };
   } catch (e) {
-    list.innerHTML = `<div class="shareEmpty">Sharing unavailable: ${escChat(e?.message || e)}</div>`;
-    return;
+    _kfShareState = { trees: [], error: e?.message || String(e) };
   }
   renderSharePanel();
 }
 
 function renderSharePanel() {
+  const panel = document.getElementById("sharingPanel");
   const list = document.getElementById("sharingList");
-  if (!list) return;
-  const savedTrees = _kfShareState?.trees || [];
-
-  const savedHtml = savedTrees.length ? savedTrees.map(tree => {
-    const name = _kfFamiliarTreeName(tree);
-    const shares = tree.shares || [];
-    const shareRows = shares.length
-      ? shares.map(s => `<span class="shareEmail">${escChat(s.email)} <button type="button" data-share-remove="${escChat(tree.kind)}:${escChat(tree.key)}:${escChat(s.email)}" title="Remove share">×</button></span>`).join("")
-      : `<span class="shareNone">Not shared yet</span>`;
-    const uploaded = tree.uploaded_at ? new Date(tree.uploaded_at * 1000).toLocaleString() : "unknown";
-    const changed = tree.content_changed_at ? new Date(tree.content_changed_at * 1000).toLocaleString() : "unknown";
-    const top = tree.top_pci_name ? `${tree.top_pci_name}${tree.top_pci_score != null ? ` (${Math.round(tree.top_pci_score * 100)}%)` : ""}` : "unknown";
-    return `<div class="shareTree" data-share-tree="${escChat(tree.kind)}:${escChat(tree.key)}">` +
-      `<div class="shareTreeHead"><b>${escChat(name)}</b><span>${escChat(tree.kind === "catalog" ? "server tree" : "saved tree")}</span></div>` +
-      `<div class="treeMeta">Owner: ${escChat(tree.owner_email || "")}<br>Uploaded: ${escChat(uploaded)}<br>Last content change: ${escChat(changed)}<br>Top PCI: ${escChat(top)}</div>` +
-      (tree.kind === "gedcom"
-        ? `<form class="treeRename" data-share-kind="${escChat(tree.kind)}" data-share-key="${escChat(tree.key)}">` +
-          `<input type="text" value="${escChat(name)}" aria-label="Rename tree">` +
-          `<button type="submit">Rename</button>` +
-          `</form>`
-        : "") +
-      `<div class="shareEmails">${shareRows}</div>` +
-      `<form class="shareAdd" data-share-kind="${escChat(tree.kind)}" data-share-key="${escChat(tree.key)}">` +
-      `<input type="email" placeholder="friend@example.com" aria-label="Email address to share with">` +
-      `<button type="submit">Share</button>` +
-      `</form>` +
-      `</div>`;
-  }).join("") : `<div class="shareEmpty">No saved trees yet. Save a loaded tree above before sharing.</div>`;
-
-  list.innerHTML = `<div class="treeSectionTitle">Saved on Kindred servers</div>${savedHtml}`;
-
-  list.querySelectorAll(".treeRename").forEach(form => {
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-      const input = form.querySelector("input");
-      const name = _kfSourceNameFromFileName(input?.value || "");
-      if (!name) { stats.textContent = "tree name is required"; return; }
-      await _kfUpdateTreeShare(form.dataset.shareKind, form.dataset.shareKey, "", "rename", { name });
-    });
-  });
-  list.querySelectorAll(".shareAdd").forEach(form => {
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-      const input = form.querySelector("input");
-      const email = input?.value?.trim() || "";
-      if (!email) return;
-      await _kfUpdateTreeShare(form.dataset.shareKind, form.dataset.shareKey, email, "add");
-      input.value = "";
-    });
-  });
-  list.querySelectorAll("[data-share-remove]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const [kind, key, ...emailParts] = String(btn.dataset.shareRemove || "").split(":");
-      const email = emailParts.join(":");
-      await _kfUpdateTreeShare(kind, key, email, "remove");
-    });
-  });
+  if (panel) panel.hidden = true;
+  if (list) list.innerHTML = "";
+  if (document.getElementById("sourcesList")) renderSources(_kfGetLoadedSourcesList());
 }
 
 function renderLoadedTreeNamePanel(list = _kfGetLoadedSourcesList()) {
   const panel = document.getElementById("loadedTreeNamePanel");
   if (!panel) return;
-  const loaded = (list || []).filter(s => (s.n_individuals || 0) > 0);
-  if (!loaded.length) {
-    panel.hidden = true;
-    panel.innerHTML = "";
-    return;
-  }
-  panel.hidden = false;
-  const action = _clerkToken && _clerkUserTier !== "anon" ? "Save/update" : "Rename";
-  const help = _clerkToken && _clerkUserTier !== "anon"
-    ? "Rename loaded trees here. Save/update stores the name and tree data on Kindred servers."
-    : "Rename loaded trees in this browser. Sign in to save and share them.";
-  panel.innerHTML =
-    `<div class="sharePanelHead">Loaded trees</div>` +
-    `<div class="shareHelp">${escChat(help)}</div>` +
-    loaded.map(src => {
-      const name = _kfFamiliarTreeName(src);
-      return `<form class="treeLocalRename" data-source-id="${escChat(src.id)}">` +
-        `<input type="text" value="${escChat(name)}" aria-label="Tree name" placeholder="Tree name required">` +
-        `<button type="submit">${escChat(action)}</button>` +
-        `</form>`;
-    }).join("");
-  panel.querySelectorAll(".treeLocalRename").forEach(form => {
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-      const sourceId = Number(form.dataset.sourceId || "");
-      const src = [..._kfLoadedSources.values()].find(s => s.source_id === sourceId);
-      const input = form.querySelector("input");
-      const name = _kfSourceNameFromFileName(input?.value || "");
-      if (!src || !name) { stats.textContent = "tree name is required"; return; }
-      src.common_name = name;
-      if (_clerkToken && _clerkUserTier !== "anon") {
-        await _kfSaveLoadedTreesToCloud([src]);
-        await refreshSharePanel();
-      }
-      refreshSources();
-    });
+  panel.hidden = true;
+  panel.innerHTML = "";
+}
+
+function _kfFormatTreeTimestamp(ts) {
+  return ts ? new Date(ts * 1000).toLocaleDateString() : "";
+}
+
+function _kfTreeInventoryItem(row) {
+  return row.loaded || row.share || row.remote || {};
+}
+
+function _kfMergeInventoryRow(rows, kind, rawItem) {
+  if (!rawItem) return;
+  const item = kind === "share" && rawItem.kind !== "catalog"
+    ? { ...rawItem, tree_uuid: rawItem.tree_uuid || rawItem.key || null }
+    : rawItem;
+  const existing = rows.find(row => {
+    const a = _kfTreeInventoryItem(row);
+    return _kfSameTreeForUi(a, item) ||
+      (a?.key && item?.key && a.kind === item.kind && String(a.key) === String(item.key)) ||
+      (a?.id && item?.id && String(a.id) === String(item.id));
   });
+  if (existing) existing[kind] = item;
+  else rows.push({ loaded: null, remote: null, share: null, [kind]: item });
+}
+
+function _kfBuildTreeInventory(loaded, remoteTrees) {
+  const rows = [];
+  for (const src of loaded || []) _kfMergeInventoryRow(rows, "loaded", src);
+  for (const tree of remoteTrees || []) {
+    if (tree?.available === false) continue;
+    _kfMergeInventoryRow(rows, "remote", tree);
+  }
+  for (const tree of _kfShareState?.trees || []) _kfMergeInventoryRow(rows, "share", tree);
+  rows.sort((a, b) => {
+    const av = a.loaded ? 0 : 1;
+    const bv = b.loaded ? 0 : 1;
+    if (av !== bv) return av - bv;
+    return _kfFamiliarTreeName(_kfTreeInventoryItem(a)).localeCompare(_kfFamiliarTreeName(_kfTreeInventoryItem(b)));
+  });
+  return rows;
+}
+
+function _kfInventoryShareKey(row) {
+  const share = row.share;
+  if (!share) return null;
+  return { kind: share.kind, key: share.key };
 }
 
 async function _kfUpdateTreeShare(kind, key, email, action, extra = {}) {
@@ -1114,10 +1071,10 @@ function renderSources(list) {
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
   _kfLoadedTreeCount = filtered.length;
   const remoteTrees = _kfDedupeRemoteTrees([...(_kfCatalogTrees || []), ...(_kfCloudTrees || [])]);
-  if (filtered.length === 0 && remoteTrees.length === 0) {
+  const inventory = _kfBuildTreeInventory(filtered, remoteTrees);
+  if (inventory.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
-    renderLoadedTreeNamePanel([]);
     const treeStats = document.getElementById("treeStats");
     if (treeStats) treeStats.textContent = "No trees loaded";
     _kfMaybeShowEmptyTreesModal(true);
@@ -1125,51 +1082,66 @@ function renderSources(list) {
     return;
   }
   wrap.classList.remove("hidden");
-  const remoteActions = [];
-  for (const t of remoteTrees) {
-    if (t.available === false || _kfIsTreeLoadedLike(t)) continue;
-    remoteActions.push(t);
-  }
   _kfMaybeShowEmptyTreesModal(filtered.length === 0);
   const nameCounts = new Map();
-  for (const item of [...filtered, ...remoteActions]) {
-    const key = _kfFamiliarTreeName(item).toLowerCase();
+  for (const row of inventory) {
+    const key = _kfFamiliarTreeName(_kfTreeInventoryItem(row)).toLowerCase();
     if (key) nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
   }
-  const sourceChip = s => {
-    const n = (s.n_individuals || 0).toLocaleString();
-    const label = _kfTreeLabel(s, nameCounts);
-    const selected = s.selected ? "included" : "not shown";
-    return (
-      `<label class="src treeRow${s.active ? " on" : ""}${s.selected ? "" : " excluded"}" data-id="${s.id}" title="${n} people${s.loaded_at ? ` | ${escChat(s.loaded_at)}` : ""}">` +
-      `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in queries, maps, clusters, and animations">` +
-      `<span class="sourceText"><span class="name">${escChat(label)}</span><span class="sourceMeta">${n} people | ${selected}</span></span>` +
-      `</label>`
-    );
-  };
-  const parts = [];
-  if (filtered.length) {
-    parts.push(`<div class="scopeSection loadedTrees"><span class="scopeTitle">Loaded</span>`);
-    for (const s of filtered) parts.push(sourceChip(s));
-    parts.push(`</div>`);
-  }
-  if (remoteActions.length) {
-    parts.push(`<div class="scopeSection availableTrees"><span class="scopeTitle">Available</span>`);
-    for (const t of remoteActions) {
-      const relation = t.relation ? ` (${t.relation})` : "";
-      const owner = t.owner_email ? ` Owner: ${t.owner_email}.` : "";
-      const title = `Load ${t.name || t.key}.${owner}`;
-      const label = _kfTreeLabel(t, nameCounts);
-      if (t.kind === "cloud") {
-        parts.push(`<button type="button" class="srcAction treeRow" data-cloud="${escChat(t.tree_uuid || t.key || t.source_id)}" title="${escChat(title)}"><span class="name">${escChat(label)}</span><span class="sourceMeta">Load shared tree${escChat(relation)}</span></button>`);
-      } else {
-        parts.push(`<button type="button" class="srcAction treeRow" data-catalog="${escChat(t.key)}" title="${escChat(title)}"><span class="name">${escChat(label)}</span><span class="sourceMeta">Load tree${escChat(relation)}</span></button>`);
-      }
+  const treeRow = row => {
+    const loaded = row.loaded;
+    const remote = row.remote;
+    const share = row.share;
+    const item = _kfTreeInventoryItem(row);
+    const label = _kfTreeLabel(item, nameCounts);
+    const n = loaded?.n_individuals ? `${loaded.n_individuals.toLocaleString()} people` : "";
+    const badges = [];
+    if (loaded) badges.push(loaded.selected ? "Visualized" : "Loaded");
+    else badges.push("Available");
+    if (share || remote?.relation === "owned") badges.push("Saved");
+    if (item?.relation === "public" || item?.public) badges.push("Public");
+    if (share?.shares?.length) badges.push(`Shared with ${share.shares.length}`);
+    else if (remote?.relation === "shared") badges.push("Shared with you");
+    const meta = [
+      n,
+      item.owner_email ? `Owner: ${item.owner_email}` : "",
+      item.content_changed_at ? `Changed: ${_kfFormatTreeTimestamp(item.content_changed_at)}` : "",
+      item.top_pci_name ? `Top PCI: ${item.top_pci_name}${item.top_pci_score != null ? ` (${Math.round(item.top_pci_score * 100)}%)` : ""}` : "",
+    ].filter(Boolean).join(" | ");
+    const checkbox = loaded
+      ? `<input class="sel" type="checkbox" data-sel="${loaded.id}" ${loaded.selected ? "checked" : ""} title="Include this tree in queries, maps, clusters, and animations">`
+      : `<span class="treeRowSpacer" aria-hidden="true"></span>`;
+    const nameControl = loaded
+      ? `<form class="treeLocalRename treeInlineForm" data-source-id="${escChat(loaded.id)}">` +
+        `<input type="text" value="${escChat(_kfFamiliarTreeName(loaded))}" aria-label="Tree name" placeholder="Tree name required">` +
+        `<button type="submit">${escChat(_clerkToken && _clerkUserTier !== "anon" ? "Save" : "Rename")}</button>` +
+        `</form>`
+      : `<span class="sourceText"><span class="name">${escChat(label)}</span><span class="sourceMeta">${escChat(meta || badges.join(" | "))}</span></span>`;
+    let loadAction = "";
+    if (!loaded && remote) {
+      const relation = remote.relation ? ` (${remote.relation})` : "";
+      const title = `Load ${remote.name || remote.key}${remote.owner_email ? `. Owner: ${remote.owner_email}.` : ""}`;
+      loadAction = remote.kind === "cloud"
+        ? `<button type="button" class="srcAction" data-cloud="${escChat(remote.tree_uuid || remote.key || remote.source_id)}" title="${escChat(title)}">Load${escChat(relation)}</button>`
+        : `<button type="button" class="srcAction" data-catalog="${escChat(remote.key)}" title="${escChat(title)}">Load${escChat(relation)}</button>`;
     }
-    parts.push(`</div>`);
-  }
-  inner.innerHTML = parts.join("");
-  renderLoadedTreeNamePanel(filtered);
+    const shareKey = _kfInventoryShareKey(row);
+    const shareRows = share?.shares?.length
+      ? `<div class="shareEmails">${share.shares.map(s => `<span class="shareEmail">${escChat(s.email)} <button type="button" data-share-remove="${escChat(share.kind)}:${escChat(share.key)}:${escChat(s.email)}" title="Remove share">×</button></span>`).join("")}</div>`
+      : shareKey ? `<div class="shareEmails"><span class="shareNone">Not shared yet</span></div>` : "";
+    const shareControls = shareKey
+      ? `<form class="shareAdd" data-share-kind="${escChat(shareKey.kind)}" data-share-key="${escChat(shareKey.key)}">` +
+        `<input type="email" placeholder="friend@example.com" aria-label="Email address to share with">` +
+        `<button type="submit">Share</button>` +
+        `</form>` : "";
+    return `<div class="treeInventoryRow${loaded?.selected ? " on" : ""}${loaded && !loaded.selected ? " excluded" : ""}" data-tree-row="${escChat(label)}">` +
+      `<div class="treeRowMain">${checkbox}${nameControl}${loadAction}</div>` +
+      `<div class="treeBadges">${badges.map(b => `<span>${escChat(b)}</span>`).join("")}</div>` +
+      (loaded && meta ? `<div class="treeMeta">${escChat(meta)}</div>` : "") +
+      `${shareRows}${shareControls}` +
+      `</div>`;
+  };
+  inner.innerHTML = inventory.map(treeRow).join("");
   inner.querySelectorAll(".sel[data-sel]").forEach(el => {
     el.addEventListener("change", () => {
       const id = Number(el.getAttribute("data-sel"));
@@ -1199,6 +1171,39 @@ function renderSources(list) {
       el.setAttribute("disabled", "disabled");
       try { await loadCloudTree(sourceId, { suppressAutosave: true }); }
       finally { el.removeAttribute("disabled"); refreshSources(); }
+    });
+  });
+  inner.querySelectorAll(".treeLocalRename").forEach(form => {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const sourceId = Number(form.dataset.sourceId || "");
+      const src = [..._kfLoadedSources.values()].find(s => s.source_id === sourceId);
+      const input = form.querySelector("input");
+      const name = _kfSourceNameFromFileName(input?.value || "");
+      if (!src || !name) { stats.textContent = "tree name is required"; return; }
+      src.common_name = name;
+      if (_clerkToken && _clerkUserTier !== "anon") {
+        await _kfSaveLoadedTreesToCloud([src]);
+        await refreshSharePanel();
+      }
+      refreshSources();
+    });
+  });
+  inner.querySelectorAll(".shareAdd").forEach(form => {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const input = form.querySelector("input");
+      const email = input?.value?.trim() || "";
+      if (!email) return;
+      await _kfUpdateTreeShare(form.dataset.shareKind, form.dataset.shareKey, email, "add");
+      input.value = "";
+    });
+  });
+  inner.querySelectorAll("[data-share-remove]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const [kind, key, ...emailParts] = String(btn.dataset.shareRemove || "").split(":");
+      const email = emailParts.join(":");
+      await _kfUpdateTreeShare(kind, key, email, "remove");
     });
   });
   if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();

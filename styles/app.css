@@ -503,6 +503,17 @@
   #treesPane #sourcesList { display:grid; gap:10px; overflow:visible; min-width:0; padding:0; }
   #treesPane #sourcesPanel .scopeSection { display:grid; gap:6px; min-width:0; }
   #treesPane #sourcesPanel .scopeTitle { margin:0; color:#64748b; font-size:10px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; }
+  #treesPane #sourcesPanel .treeInventoryRow { display:grid; gap:6px; min-width:0; padding:9px; border:1px solid #d6dde7; border-radius:10px; background:#fff; }
+  #treesPane #sourcesPanel .treeInventoryRow.on { border-color:#2a4a8c; box-shadow:0 0 0 1px rgba(42,74,140,0.15) inset; }
+  #treesPane #sourcesPanel .treeInventoryRow.excluded { opacity:0.72; background:#f8fafc; border-style:dashed; }
+  #treesPane #sourcesPanel .treeRowMain { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; gap:8px; min-width:0; }
+  #treesPane #sourcesPanel .treeRowSpacer { width:18px; height:18px; }
+  #treesPane #sourcesPanel .treeInlineForm { display:flex; gap:6px; min-width:0; }
+  #treesPane #sourcesPanel .treeInlineForm input { flex:1 1 auto; min-width:0; border:1px solid #cbd5e1; border-radius:7px; padding:6px 8px; font:inherit; font-size:12px; font-weight:800; color:#102033; }
+  #treesPane #sourcesPanel .treeInlineForm button,
+  #treesPane #sourcesPanel .srcAction { flex:0 0 auto; border:1px solid #c0ccd8; border-radius:8px; background:#fff; color:#1f3a78; font:inherit; font-size:11px; font-weight:800; padding:5px 9px; cursor:pointer; }
+  #treesPane #sourcesPanel .treeBadges { display:flex; flex-wrap:wrap; gap:4px; }
+  #treesPane #sourcesPanel .treeBadges span { border:1px solid #d6dde7; border-radius:999px; background:#f8fafc; color:#475569; padding:1px 6px; font-size:9.5px; font-weight:900; letter-spacing:0.04em; text-transform:uppercase; }
   #treesPane #sourcesPanel .treeRow { width:100%; box-sizing:border-box; display:grid; grid-template-columns:auto minmax(0, 1fr); align-items:center; gap:9px; margin:0; padding:8px 9px; border:1px solid #d6dde7; border-radius:10px; background:#fff; text-align:left; min-width:0; white-space:normal; }
   #treesPane #sourcesPanel .treeRow.on { border-color:#2a4a8c; box-shadow:0 0 0 1px rgba(42,74,140,0.15) inset; }
   #treesPane #sourcesPanel .treeRow.excluded { opacity:0.7; background:#f8fafc; border-style:dashed; }
@@ -596,7 +607,7 @@
   @media (max-width: 900px), (pointer: coarse) and (max-width: 980px) {
     :root { --kf-mobile-ui-h: 132px; }
     html, body { height:100dvh; overflow:hidden; }
-    #app { grid-template-rows:auto 1fr; gap:6px; padding:6px; min-height:0; }
+    #app { grid-template-rows:auto 1fr; gap:6px; padding:50px 6px 6px; min-height:0; }
     #middle { grid-template-columns:1fr; grid-template-rows:1fr; gap:0; min-height:0; }
     #middle.panel-hidden { grid-template-columns:1fr; }
     #middle.panel-hidden #panel { display:flex; }
@@ -693,16 +704,23 @@
       cursor:grab; touch-action:none;
     }
     #panel[data-sheet="open"] #mobileSheetHandle,
-    #panel[data-sheet="full"] #mobileSheetHandle { display:flex; }
+    #panel[data-sheet="full"] #mobileSheetHandle { display:flex; margin-top:44px; }
     #mobileSheetHandle:active { cursor:grabbing; }
     #mobileSheetHandle #mobileSheetTitle { display:inline; }
     #mobileSheetHandle::after { content:"Close"; color:#64748b; font-size:10px; font-weight:900; margin-left:auto; padding-right:12px; }
     #mobileSheetHandle .grabber { width:38px; height:4px; border-radius:999px; background:#b7c3d4; }
-    #chatPanel { flex:0 0 auto; height:auto; min-height:0; pointer-events:auto; background:#fff; border-top:1px solid #d6dde7; }
+    #chatPanel { flex:0 0 auto; height:0; min-height:0; pointer-events:auto; background:#fff; border-top:0; }
     #panel[data-sheet="open"] #chatPanel,
     #panel[data-sheet="full"] #chatPanel { flex:1 1 auto; height:auto; min-height:0; border-top:0; }
     #panel[data-sheet="peek"] #chatPanel .sidePane { display:none !important; }
-    #sideTabs { touch-action:none; justify-content:flex-start; }
+    #sideTabs {
+      position:fixed; top:34px; left:0; right:0; z-index:86;
+      touch-action:none; justify-content:flex-start; overflow-x:auto; overflow-y:hidden;
+      background:#fff; border-top:1px solid #d6dde7; border-bottom:1px solid #d6dde7;
+      box-shadow:0 2px 10px rgba(15,23,42,0.08);
+    }
+    #panel[data-sheet="open"] #sideTabs,
+    #panel[data-sheet="full"] #sideTabs { top:0; z-index:110; }
     #sideTabs button { min-height:44px; padding:8px 6px; font-size:10px; letter-spacing:0.04em; }
     #chatPanel .sidePane { min-height:0; }
     #panel[data-sheet="open"] #chatPanel .sidePane.on,

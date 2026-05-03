@@ -32,9 +32,10 @@ function _kfSyncMobileControlHeight() {
   if (!ui) return;
   const tabs = $("sideTabs");
   const handle = $("mobileSheetHandle");
+  const tabsHeight = _kfIsMobileLayout() ? 0 : (tabs?.getBoundingClientRect().height || 0);
   const h = Math.ceil(
     ui.getBoundingClientRect().height +
-    (tabs?.getBoundingClientRect().height || 0) +
+    tabsHeight +
     (handle?.getBoundingClientRect().height || 0),
   ) + 8;
   document.documentElement.style.setProperty("--kf-mobile-ui-h", `${Math.max(118, h)}px`);
