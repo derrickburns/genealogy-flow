@@ -436,11 +436,8 @@ function _kfRefreshBrowserViews() {
 }
 
 async function fetchCatalogTrees() {
-  if (_clerkUserTier !== "vip" || !_clerkToken) { _kfCatalogTrees = []; return []; }
   try {
-    const r = await fetch("/api/catalog/trees", {
-      headers: { "Authorization": "Bearer " + _clerkToken },
-    });
+    const r = await fetch("/api/catalog/trees", { headers: _kfAuthHeaders() });
     const j = await r.json();
     if (!r.ok) {
       const details = [j?.error ? `${r.status} ${j.error}` : `catalog ${r.status}`];
@@ -452,31 +449,131 @@ async function fetchCatalogTrees() {
       throw new Error(details.join("; "));
     }
     const fetched = j && Array.isArray(j.trees) ? j.trees : [];
-    _kfCatalogTrees = fetched.length ? fetched : _kfCatalogFallbackTrees();
+    _kfCatalogTrees = fetched.length
+      ? _kfVisibleCatalogTreesForViewer(fetched)
+      : _kfCatalogFallbackTrees();
   } catch (e) {
     console.warn("[kf] fetchCatalogTrees:", e?.message || e);
-    if (_clerkUserTier === "vip") stats.textContent = `VIP catalog unavailable: ${e?.message || e}`;
+    if (_clerkUserTier === "vip") stats.textContent = `Tree catalog unavailable: ${e?.message || e}`;
     _kfCatalogTrees = _kfCatalogFallbackTrees();
   }
   return _kfCatalogTrees;
 }
 
+async function fetchCloudTrees() {
+  if (!_clerkToken || _clerkUserTier === "anon") { _kfCloudTrees = []; return []; }
+  try {
+    const r = await fetch("/api/gedcom/sources", { headers: _kfAuthHeaders() });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j?.error || `cloud sources ${r.status}`);
+    _kfCloudTrees = Array.isArray(j?.trees) ? j.trees : [];
+  } catch (e) {
+    console.warn("[kf] fetchCloudTrees:", e?.message || e);
+    _kfCloudTrees = [];
+  }
+  return _kfCloudTrees;
+}
+
+async function refreshSharePanel() {
+  const panel = document.getElementById("sharingPanel");
+  const list = document.getElementById("sharingList");
+  if (!panel || !list) return;
+  if (_kfIsMobileLayout() || !_clerkToken || _clerkUserTier === "anon") {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  try {
+    const r = await fetch("/api/gedcom/share", { headers: _kfAuthHeaders() });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j?.error || `share ${r.status}`);
+    _kfShareState = { trees: Array.isArray(j?.trees) ? j.trees : [] };
+  } catch (e) {
+    list.innerHTML = `<div class="shareEmpty">Sharing unavailable: ${escChat(e?.message || e)}</div>`;
+    return;
+  }
+  renderSharePanel();
+}
+
+function renderSharePanel() {
+  const list = document.getElementById("sharingList");
+  if (!list) return;
+  const trees = _kfShareState?.trees || [];
+  if (!trees.length) {
+    list.innerHTML = `<div class="shareEmpty">Sign in on desktop and upload a tree to share it with other people by email.</div>`;
+    return;
+  }
+  list.innerHTML = trees.map(tree => {
+    const shares = tree.shares || [];
+    const shareRows = shares.length
+      ? shares.map(s => `<span class="shareEmail">${escChat(s.email)} <button type="button" data-share-remove="${escChat(tree.kind)}:${escChat(tree.key)}:${escChat(s.email)}" title="Remove share">×</button></span>`).join("")
+      : `<span class="shareNone">Not shared yet</span>`;
+    return `<div class="shareTree" data-share-tree="${escChat(tree.kind)}:${escChat(tree.key)}">` +
+      `<div class="shareTreeHead"><b>${escChat(tree.name)}</b><span>${escChat(tree.kind === "catalog" ? "server tree" : "your tree")}</span></div>` +
+      `<div class="shareEmails">${shareRows}</div>` +
+      `<form class="shareAdd" data-share-kind="${escChat(tree.kind)}" data-share-key="${escChat(tree.key)}">` +
+      `<input type="email" placeholder="friend@example.com" aria-label="Email address to share with">` +
+      `<button type="submit">Share</button>` +
+      `</form>` +
+      `</div>`;
+  }).join("");
+  list.querySelectorAll(".shareAdd").forEach(form => {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const input = form.querySelector("input");
+      const email = input?.value?.trim() || "";
+      if (!email) return;
+      await _kfUpdateTreeShare(form.dataset.shareKind, form.dataset.shareKey, email, "add");
+      input.value = "";
+    });
+  });
+  list.querySelectorAll("[data-share-remove]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const [kind, key, ...emailParts] = String(btn.dataset.shareRemove || "").split(":");
+      const email = emailParts.join(":");
+      await _kfUpdateTreeShare(kind, key, email, "remove");
+    });
+  });
+}
+
+async function _kfUpdateTreeShare(kind, key, email, action) {
+  if (!_clerkToken) return;
+  const r = await fetch("/api/gedcom/share", {
+    method: "POST",
+    headers: _kfJsonHeaders(),
+    body: JSON.stringify({ kind, key, email, action }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    stats.textContent = `sharing failed: ${j?.error || r.status}`;
+    return;
+  }
+  _kfShareState = { trees: Array.isArray(j?.trees) ? j.trees : [] };
+  renderSharePanel();
+  refreshSources();
+}
+
 function _kfSourceNameFromFileName(name) {
-  return String(name || "").replace(/\.(ged|gedcom)$/i, "").trim() || "untitled";
+  return String(name || "").replace(/\.(ged|gedcom|json)$/i, "").trim() || "untitled";
 }
 
 async function loadCatalogTree(key, opts = {}) {
-  if (!key || !_clerkToken) return false;
-  const r = await fetch("/api/catalog/tree?key=" + encodeURIComponent(key), {
-    headers: { "Authorization": "Bearer " + _clerkToken },
-  });
+  if (!key) return false;
+  let r;
+  if (key === "demo") {
+    r = await fetch(DEMO_GED_URL);
+  } else {
+    r = await fetch("/api/catalog/tree?key=" + encodeURIComponent(key), {
+      headers: _kfAuthHeaders(),
+    });
+  }
   if (!r.ok) {
     let detail = String(r.status);
     try {
       const err = await r.json();
       if (err?.error) detail += ` ${err.error}`;
     } catch (_) {}
-    stats.textContent = `could not load VIP tree ${key}: ${detail}`;
+    stats.textContent = `could not load tree ${key}: ${detail}`;
     return false;
   }
   const raw = await r.text();
@@ -493,6 +590,36 @@ async function loadCatalogTree(key, opts = {}) {
   const sourceName = _kfSourceNameFromFileName(name);
   if (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)) return true;
   const file = new File([text], name, { type: "text/plain" });
+  if (opts.suppressAutosave) _kfSkipNextSeed = true;
+  try {
+    await processFile(file);
+  } catch (e) {
+    if (opts.suppressAutosave) _kfSkipNextSeed = false;
+    throw e;
+  }
+  return true;
+}
+
+async function loadCloudTree(sourceId, opts = {}) {
+  if (!sourceId || !_clerkToken) return false;
+  const r = await fetch("/api/gedcom?source_id=" + encodeURIComponent(String(sourceId)), {
+    headers: _kfAuthHeaders(),
+  });
+  if (!r.ok) {
+    let detail = String(r.status);
+    try {
+      const err = await r.json();
+      if (err?.error) detail += ` ${err.error}`;
+    } catch (_) {}
+    stats.textContent = `could not load saved tree: ${detail}`;
+    return false;
+  }
+  const payload = await r.json();
+  const tree = Array.isArray(payload?.trees) ? payload.trees[0] : null;
+  if (!tree) return false;
+  const sourceName = _kfSourceNameFromFileName(tree.name || "saved");
+  if (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)) return true;
+  const file = new File([JSON.stringify(tree.data || {})], (tree.name || "saved") + ".ged", { type: "application/json" });
   if (opts.suppressAutosave) _kfSkipNextSeed = true;
   try {
     await processFile(file);
@@ -576,13 +703,37 @@ async function deleteSource(id) {
   return true;
 }
 
+function _kfRemoveRestrictedVipSources() {
+  if (_clerkUserTier !== "vip") return false;
+  const archerAllowed = _kfCatalogTrees.some(t => t && t.key === "archer");
+  const restricted = [..._kfLoadedSources.values()]
+    .filter(s => _kfIsRestrictedUnsharedSourceName(s.name) && !archerAllowed);
+  if (!restricted.length) return false;
+  for (const src of restricted) {
+    _kfLoadedSources.delete(src.name);
+    _kfTreeCache.delete(src.name);
+    _kfSelectedSourceIds.delete(src.source_id);
+    if (_kfActiveTreeName === src.name) _kfActiveTreeName = null;
+  }
+  if (!_kfActiveTreeName) {
+    const remaining = [..._kfLoadedSources.values()];
+    _kfActiveTreeName = remaining[0]?.name || null;
+  }
+  _kfCatalogTrees = _kfCatalogTrees.filter(t => !t || t.key !== "archer");
+  _kfEnsureSelectedSources();
+  buildBrowserDb();
+  if (timelineLoaded) _kfRebuildSelectedVisualization({ preserveYear: true });
+  return true;
+}
+
 function renderSources(list) {
   const wrap = document.getElementById("sourcesPanel");
   const inner = document.getElementById("sourcesList");
   if (!wrap || !inner) return;
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
   _kfLoadedTreeCount = filtered.length;
-  if (filtered.length === 0 && _kfCatalogTrees.length === 0) {
+  const remoteTrees = [...(_kfCatalogTrees || []), ...(_kfCloudTrees || [])];
+  if (filtered.length === 0 && remoteTrees.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
     if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
@@ -604,19 +755,29 @@ function renderSources(list) {
     for (const s of filtered) parts.push(sourceChip(s));
     parts.push(`</div>`);
   } else {
-    parts.push(`<div class="sourceScopeSummary">No trees loaded yet. Load a VIP library tree or drop a GEDCOM file.</div>`);
+    const msg = _kfIsMobileLayout()
+      ? "No trees loaded yet. Choose a shared tree below. To load your own family tree data, use the desktop app and sign in."
+      : "No trees loaded yet. Load a shared tree or open a GEDCOM file.";
+    parts.push(`<div class="sourceScopeSummary">${escChat(msg)}</div>`);
   }
-  const catalogActions = [];
-  for (const t of _kfCatalogTrees) {
+  const remoteActions = [];
+  for (const t of remoteTrees) {
     const sourceName = _kfSourceNameFromFileName(t.name || t.key);
     const loaded = _kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName);
     if (t.available === false || loaded) continue;
-    catalogActions.push(t);
+    remoteActions.push(t);
   }
-  if (catalogActions.length) {
-    parts.push(`<div class="scopeSection"><span class="scopeTitle">VIP library</span>`);
-    for (const t of catalogActions) {
-      parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}" title="Load this server tree">${escChat(t.name)}</button>`);
+  if (remoteActions.length) {
+    parts.push(`<div class="scopeSection"><span class="scopeTitle">Trees</span>`);
+    for (const t of remoteActions) {
+      const relation = t.relation ? ` (${t.relation})` : "";
+      const owner = t.owner_email ? ` Owner: ${t.owner_email}.` : "";
+      const title = `Load ${t.name || t.key}.${owner}`;
+      if (t.kind === "cloud") {
+        parts.push(`<button type="button" class="srcAction" data-cloud="${escChat(t.source_id || t.key)}" title="${escChat(title)}">${escChat(t.name)}${escChat(relation)}</button>`);
+      } else {
+        parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}" title="${escChat(title)}">${escChat(t.name)}${escChat(relation)}</button>`);
+      }
     }
     parts.push(`</div>`);
   }
@@ -643,12 +804,23 @@ function renderSources(list) {
       finally { el.removeAttribute("disabled"); refreshSources(); }
     });
   });
+  inner.querySelectorAll(".srcAction[data-cloud]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const sourceId = el.getAttribute("data-cloud") || "";
+      if (!sourceId) return;
+      el.setAttribute("disabled", "disabled");
+      try { await loadCloudTree(sourceId, { suppressAutosave: true }); }
+      finally { el.removeAttribute("disabled"); refreshSources(); }
+    });
+  });
   if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
 }
 
 async function refreshSources() {
-  if (_clerkUserTier === "vip") await fetchCatalogTrees();
+  await Promise.all([fetchCatalogTrees(), fetchCloudTrees()]);
+  _kfRemoveRestrictedVipSources();
   renderSources(_kfGetLoadedSourcesList());
+  refreshSharePanel();
   if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
   refreshReviewBadge();
 }
@@ -832,6 +1004,15 @@ async function processFile(file) {
   localStorage.setItem("kf_returning", "1");
   stats.textContent = `reading ${file.name}...`;
   let text = await file.text();
+  const incomingSourceName = _kfSourceNameFromFileName(file.name);
+  const archerAllowed = _kfCatalogTrees.some(t => t && t.key === "archer");
+  if (_clerkUserTier === "vip" &&
+      _kfIsRestrictedUnsharedSourceName(incomingSourceName) &&
+      !archerAllowed) {
+    stats.textContent = `${incomingSourceName} is not shared with this account`;
+    refreshSources();
+    return;
+  }
   let parsedJson = null;
   const isPublicDemoFile = DEMO_GED_URL && /^demo\.json$/i.test(file.name || "");
   if (text.trimStart().startsWith("{")) {

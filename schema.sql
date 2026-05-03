@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS demo_sources (
 CREATE TABLE IF NOT EXISTS ged_sources (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id       TEXT    NOT NULL,
+  owner_user_id TEXT,
+  owner_email   TEXT,
   name          TEXT    NOT NULL,
   loaded_at     TEXT    NOT NULL,
   n_individuals INTEGER DEFAULT 0,
@@ -59,6 +61,18 @@ CREATE TABLE IF NOT EXISTS ged_sources (
   is_default    INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_user_name ON ged_sources(user_id, name);
+
+CREATE TABLE IF NOT EXISTS tree_shares (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  tree_kind         TEXT    NOT NULL,
+  tree_key          TEXT    NOT NULL,
+  owner_email       TEXT    NOT NULL,
+  shared_with_email TEXT    NOT NULL,
+  created_at        INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS tree_shares_unique ON tree_shares(tree_kind, tree_key, shared_with_email);
+CREATE INDEX IF NOT EXISTS tree_shares_shared_with ON tree_shares(shared_with_email);
+CREATE INDEX IF NOT EXISTS tree_shares_tree ON tree_shares(tree_kind, tree_key);
 
 CREATE TABLE IF NOT EXISTS ged_individuals (
   source_id  INTEGER NOT NULL,

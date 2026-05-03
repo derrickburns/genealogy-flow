@@ -1113,8 +1113,8 @@ function _kfChatScopeQuestions(root, selected, visible) {
   const questions = [
     `Explain what changed on the map in ${y}.`,
     `Summarize the migration story for the visible people in ${y}.`,
-    `Find the weakest location evidence in the checked trees at ${y}.`,
   ];
+  if (_kfShowDataQualityConcerns) questions.push(`Find the weakest location evidence in the checked trees at ${y}.`);
   if (selected?.name) questions.unshift(`Why is ${selected.name} shown here in ${y}?`);
   else if (root?.name) questions.unshift(`What should I notice about ${root.name}'s family in ${y}?`);
   if (visible?.count > 500) questions.push(`Give me the simplest way to understand these ${visible.count} visible people.`);
@@ -1177,7 +1177,11 @@ function buildChatContext() {
   if (typeof _kfSelectedVizSourceList === "function") {
     const sources = _kfSelectedVizSourceList();
     if (sources.length) lines.push(`Selected trees: ${sources.map(s => s.name).join("; ")}.`);
+    if (sources.some(s => _kfIsPublicDemoSourceName(s.name))) {
+      lines.push("DEMO privacy note: living people have been removed or anonymized for privacy, so missing living-person details in DEMO are intentional.");
+    }
   }
+  lines.push(`Data quality concerns setting: ${_kfShowDataQualityConcerns ? "on" : "off"}. This indicates ${_kfShowDataQualityConcerns ? "interest" : "lack of current interest"} in weak evidence, chronology warnings, and data-quality visualizations.`);
   if (lastRootId) {
     const root = lastIndiById?.get(lastRootId);
     if (root) lines.push(`Root: ${root.name} (${root.birth_year ?? "?"}-${root.death_year ?? "?"}).`);

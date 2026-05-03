@@ -77,6 +77,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const db = ctx.env.DB;
   let defaultName = trees.find(t => t.is_default)?.name ?? trees[0]?.name ?? null;
   const loadedAt = new Date().toISOString();
+  const ownerEmail = user.email ?? user.id;
 
   for (const tree of trees) {
     const individuals = tree.individuals ?? [];
@@ -88,10 +89,10 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       place: e.place ?? null,
     })));
     const srcResult = await db.prepare(
-      `INSERT INTO ged_sources (user_id, name, loaded_at, n_individuals, n_events, n_families, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ged_sources (user_id, owner_user_id, owner_email, name, loaded_at, n_individuals, n_events, n_families, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(user.id, tree.name, loadedAt, individuals.length, events.length, families.length, tree.name === defaultName ? 1 : 0)
+      .bind(user.id, user.id, ownerEmail, tree.name, loadedAt, individuals.length, events.length, families.length, tree.name === defaultName ? 1 : 0)
       .run();
     const sourceId = srcResult.meta.last_row_id as number;
 

@@ -1,5 +1,5 @@
 import type { Env, UserContext } from "../../_middleware";
-import { ensureGedcomMultiSourceSchema } from "./_lib";
+import { accessibleGedSourceIds, ensureGedcomMultiSourceSchema } from "./_lib";
 
 function wrapQuery(sql: string, sourceIds: number[]): string {
   const q = sql.trim().replace(/;+$/, "");
@@ -47,8 +47,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   await ensureGedcomMultiSourceSchema(ctx.env);
-  const srcRows = await ctx.env.DB.prepare(`SELECT id FROM ged_sources WHERE user_id = ? ORDER BY id`).bind(user.id).all<{ id: number }>();
-  const allowed = new Set((srcRows.results ?? []).map(r => r.id));
+  const allowed = new Set(await accessibleGedSourceIds(ctx.env, user.id, user.email));
   if (!allowed.size) {
     return new Response(JSON.stringify({ rows: [], note: "No tree data available. Upload a GEDCOM and save it to your account first." }), {
       headers: { "Content-Type": "application/json" },

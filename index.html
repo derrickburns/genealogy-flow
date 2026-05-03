@@ -14,6 +14,16 @@
 ></script>
 </head>
 <body>
+<div id="splash" class="splash hidden" role="dialog" aria-modal="true" aria-labelledby="splashTitle">
+  <div class="splashCard">
+    <div class="splashKicker">Kindred Series</div>
+    <h1 id="splashTitle">Kindred Flow maps family history through time.</h1>
+    <p>Kindred Flow is a genealogy viewer produced by Parthenian, LLC as part of the Kindred series of products. It turns family-tree data into an interactive map and timeline so you can see where people lived, how families moved, and how branches relate across places and generations.</p>
+    <p>You can load GEDCOM family-tree files, select one or more trees, animate migration over time, inspect people and clusters, ask the Kindred AI genealogist questions, and share trees with other signed-in users.</p>
+    <p class="splashMobileNote">On mobile, trees are loaded only when you choose them. To load your own family tree data and share it with friends, use the desktop app and sign in. Signing in creates an account record of the trees you own and the trees shared with you.</p>
+    <button type="button" id="splashDismiss">Enter Kindred Flow</button>
+  </div>
+</div>
 <div id="authBar">
   <span id="authStatus" class="authTier anon">not signed in</span>
   <span id="authEmail" class="authEmail" style="display:none"></span>
@@ -167,6 +177,14 @@
         <div id="timelineControls" class="options-control-group">
           <label class="speedControl">speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
           <label class="speedControl">migration <select id="migrationView"><option value="continuous" selected>continuous</option><option value="observations">observation pulses</option></select></label>
+        </div>
+        <div class="options-control-group">
+          <label class="checkControl"><input type="checkbox" id="dataQualityToggle"> show data quality concerns</label>
+        </div>
+        <div id="sharingPanel" class="sharePanel desktopOnly" hidden>
+          <div class="sharePanelHead">Tree sharing</div>
+          <div class="shareHelp">Sign in to create an account. On desktop, uploaded trees are associated with you and can be shared with friends by email.</div>
+          <div id="sharingList"></div>
         </div>
       </div>
     </div>

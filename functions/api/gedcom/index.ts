@@ -1,5 +1,5 @@
 import type { Env, UserContext } from "../../_middleware";
-import { deleteAllUserGedcomData, ensureGedcomMultiSourceSchema } from "./_lib";
+import { accessibleGedSourceIds, deleteAllUserGedcomData, ensureGedcomMultiSourceSchema } from "./_lib";
 
 type SourceRow = {
   id: number;
@@ -9,6 +9,8 @@ type SourceRow = {
   n_individuals: number;
   n_events: number;
   n_families: number;
+  owner_email: string | null;
+  relation: string;
 };
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
@@ -18,11 +20,29 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   }
 
   await ensureGedcomMultiSourceSchema(ctx.env);
+  const allowedIds = await accessibleGedSourceIds(ctx.env, user.id, user.email);
+  if (!allowedIds.length) {
+    return new Response(JSON.stringify({ trees: [] }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const requestedId = Number(new URL(ctx.request.url).searchParams.get("source_id") || "");
+  const selectedIds = Number.isFinite(requestedId) && requestedId > 0
+    ? allowedIds.filter(id => id === requestedId)
+    : allowedIds;
+  if (requestedId && !selectedIds.length) {
+    return new Response(JSON.stringify({ error: "Tree not found or not shared with this account" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const placeholders = selectedIds.map(() => "?").join(",");
   const rows = await ctx.env.DB.prepare(
-    `SELECT id, name, is_default, loaded_at, n_individuals, n_events, n_families
-     FROM ged_sources WHERE user_id = ?
+    `SELECT id, name, is_default, loaded_at, n_individuals, n_events, n_families, owner_email,
+            CASE WHEN user_id = ? OR owner_user_id = ? THEN 'owned' ELSE 'shared' END AS relation
+     FROM ged_sources WHERE id IN (${placeholders})
      ORDER BY is_default DESC, loaded_at ASC, id ASC`,
-  ).bind(user.id).all<SourceRow>();
+  ).bind(user.id, user.id, ...selectedIds).all<SourceRow>();
   const sources = rows.results ?? [];
   if (!sources.length) {
     return new Response(JSON.stringify({ trees: [] }), {
@@ -68,6 +88,8 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       n_individuals: src.n_individuals,
       n_events: src.n_events,
       n_families: src.n_families,
+      owner_email: src.owner_email,
+      relation: src.relation,
       data: {
         individuals: (individualsRows.results ?? []).map((i) => ({
           id: i.id,

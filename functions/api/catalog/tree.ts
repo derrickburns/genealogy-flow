@@ -1,33 +1,27 @@
 import type { AuthDiagnostics, Env, UserContext } from "../../_middleware";
-
-const TREE_CATALOG = new Map([
-  ["golden-rosenberg", { name: "Golden-Rosenberg.ged", storageKey: "demo/golden-rosenberg.json" }],
-  ["gregory-henry", { name: "Gregory-Henry.ged", storageKey: "demo/gregory-henry.json" }],
-  ["archer", { name: "Archer.ged", storageKey: "demo/archer.json" }],
-]);
+import { canAccessCatalogTree, catalogTreeByKey } from "./_lib";
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const user = ctx.data.user as UserContext;
   const auth = ctx.data.auth as AuthDiagnostics | undefined;
-  if (user.type !== "vip") {
-    return new Response(JSON.stringify({
-      error: "VIP access required",
-      user: {
-        type: user.type,
-        email: user.email ?? null,
-      },
-      auth: auth ?? null,
-    }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
 
   const key = new URL(ctx.request.url).searchParams.get("key") || "";
-  const tree = TREE_CATALOG.get(key);
+  const tree = catalogTreeByKey(key);
   if (!tree) {
     return new Response(JSON.stringify({ error: "Unknown catalog tree" }), {
       status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (tree.publicDemo) {
+    return new Response(JSON.stringify({ error: "Use /api/demo for the public demo tree" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (!(await canAccessCatalogTree(ctx.env, user, tree))) {
+    return new Response(JSON.stringify({ error: "Catalog tree not shared with this account", user: { type: user.type, email: user.email ?? null }, auth: auth ?? null }), {
+      status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }

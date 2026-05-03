@@ -69,6 +69,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const { name = "My Tree", is_default = false, individuals = [], events = [], families = [] } = body;
   const db = ctx.env.DB;
   await ensureGedcomMultiSourceSchema(ctx.env);
+  const ownerEmail = user.email ?? user.id;
 
   const existing = await db.prepare(`SELECT id FROM ged_sources WHERE user_id = ? AND name = ?`)
     .bind(user.id, name)
@@ -102,10 +103,10 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   const srcResult = await db.prepare(
-    `INSERT INTO ged_sources (user_id, name, loaded_at, n_individuals, n_events, n_families, is_default)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ged_sources (user_id, owner_user_id, owner_email, name, loaded_at, n_individuals, n_events, n_families, is_default)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(user.id, name, new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0)
+    .bind(user.id, user.id, ownerEmail, name, new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0)
     .run();
   const sourceId = srcResult.meta.last_row_id as number;
 

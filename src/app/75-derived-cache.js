@@ -236,6 +236,7 @@ function _kfDwellEvidenceBadges(di) {
 }
 
 function _kfDwellEvidenceBadgesHtml(di) {
+  if (!_kfShowDataQualityConcerns) return "";
   return _kfBadgesHtml(_kfDwellEvidenceBadges(di));
 }
 
@@ -518,13 +519,13 @@ function _kfYearTourHtml() {
     const r = d.appeared[0];
     lines.push(`Newly visible example: ${_kfYearDigestPersonLabel(r)}.`);
   }
-  if (d.weak.length) lines.push(`${d.weak.length.toLocaleString()} visible markers have weak place evidence; use "weak evidence" to review them.`);
+  if (_kfShowDataQualityConcerns && d.weak.length) lines.push(`${d.weak.length.toLocaleString()} visible markers have weak place evidence; use "weak evidence" to review them.`);
   if (!lines.length) lines.push("This year has no notable marker changes under the current filters.");
   return _kfYearDigestHeaderHtml(`Guided tour for ${y}`, _kfViewModeLabel()) +
     `<div class="year-digest-metrics">` +
       _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
       _kfYearDigestMetricHtml(d.current.exact.toLocaleString(), "specific") +
-      _kfYearDigestMetricHtml(d.current.weak.toLocaleString(), "weak") +
+      (_kfShowDataQualityConcerns ? _kfYearDigestMetricHtml(d.current.weak.toLocaleString(), "weak") : "") +
       _kfYearDigestMetricHtml(d.moved.length.toLocaleString(), "move") +
     `</div>` +
     `<ul class="year-digest-list">${lines.slice(0, 6).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
@@ -553,6 +554,7 @@ function _kfShowYearTour(selectTab = true) {
 }
 
 function _kfOutlierReportMarkdown(limit = 8) {
+  if (!_kfShowDataQualityConcerns) return "Data quality concerns are hidden. Turn on **show data quality concerns** in Options to review weak place evidence or chronology warnings.";
   if (!timelineLoaded || !lastIndividuals) return "Load GEDCOM data before reviewing weak evidence.";
   const y = Math.floor(curYear);
   const rows = _kfVisibleRowsForYear(y).rows;
@@ -611,7 +613,10 @@ function _kfCurrentViewExplanationMarkdown() {
   const migrationText = migrationViz === "observations"
     ? "Migration is shown as observation pulses, so a long date range does not imply continuous travel."
     : "Migration is shown continuously between recorded location observations; switch to observation pulses when long date ranges would be misleading.";
-  return `**Why this view looks this way**\n\n- Year: **${y}**\n- Scope: **${sourceNames.length ? sourceNames.join(", ") : "all loaded trees"}**\n- Filters: **${mode}**\n- Visible people: **${data.count.toLocaleString()}**\n- Evidence: **${data.exact.toLocaleString()} specific markers**, **${data.weak.toLocaleString()} weak markers**\n\n${clusterText}\n\n${migrationText}`;
+  const evidenceLine = _kfShowDataQualityConcerns
+    ? `\n- Evidence: **${data.exact.toLocaleString()} specific markers**, **${data.weak.toLocaleString()} weak markers**`
+    : "";
+  return `**Why this view looks this way**\n\n- Year: **${y}**\n- Scope: **${sourceNames.length ? sourceNames.join(", ") : "all loaded trees"}**\n- Filters: **${mode}**\n- Visible people: **${data.count.toLocaleString()}**${evidenceLine}\n\n${clusterText}\n\n${migrationText}`;
 }
 
 function _kfExplainCurrentView() {
@@ -621,7 +626,7 @@ function _kfExplainCurrentView() {
     content: _kfCurrentViewExplanationMarkdown(),
     chips: [
       { label: "Tour this year", method: "showYearTour", args: null },
-      { label: "Review weak evidence", method: "showOutliers", args: 8 },
+      ...(_kfShowDataQualityConcerns ? [{ label: "Review weak evidence", method: "showOutliers", args: 8 }] : []),
     ],
   });
   renderChat();
@@ -701,10 +706,12 @@ function _kfClusterDigestHtml(c, rows) {
   const topPlace = Array.from(placeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
   if (topPlace) bullets.push(`Most common place label: ${topPlace[0]} (${topPlace[1]}).`);
   if (topSource) bullets.push(`Largest source: ${topSource[0].replace(/\.ged$/i, "")} (${topSource[1]}).`);
-  bullets.push(weak
-    ? `Evidence to review: ${weak} weak place markers; ${exact} city/specific markers.`
-    : `Evidence looks specific for this cluster: ${exact} city/specific markers.`);
-  if (issueCount) bullets.push(`${issueCount} ${issueCount === 1 ? "person has" : "people have"} data issues worth checking.`);
+  if (_kfShowDataQualityConcerns) {
+    bullets.push(weak
+      ? `Evidence to review: ${weak} weak place markers; ${exact} city/specific markers.`
+      : `Evidence looks specific for this cluster: ${exact} city/specific markers.`);
+    if (issueCount) bullets.push(`${issueCount} ${issueCount === 1 ? "person has" : "people have"} data issues worth checking.`);
+  }
   const html = `<div class="ux-section cluster-digest"><h4>Most useful things to know</h4><ul class="ux-list">${bullets.map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`;
   if (_kfDerivedCache.cluster.size > 200) _kfDerivedCache.cluster.clear();
   _kfDerivedCache.cluster.set(key, { ...(cached || {}), digestHtml: html });
@@ -721,7 +728,7 @@ function _kfClusterQuestionHtml(rows) {
     `Why are these people clustered in ${Math.floor(curYear)}?`,
     `Who are the closest relatives to ${focusName} in this cluster?`,
     `Which records explain this cluster's locations?`,
-    `Find data problems in this cluster.`,
+    ...(_kfShowDataQualityConcerns ? [`Find data problems in this cluster.`] : []),
   ]);
 }
 
@@ -730,7 +737,7 @@ function _kfPersonQuestionHtml(ind) {
   return _kfQuestionChipsHtml([
     `Why is ${name} shown here in ${Math.floor(curYear)}?`,
     `Summarize ${name}'s migration story.`,
-    `What evidence is weakest for ${name}?`,
+    ...(_kfShowDataQualityConcerns ? [`What evidence is weakest for ${name}?`] : []),
     `Who are ${name}'s closest relatives?`,
   ]);
 }

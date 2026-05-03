@@ -75,6 +75,52 @@ function _kfChooseAsHome(id) {
   applyRoot(id);
 }
 
+function _kfCookieValue(name) {
+  const prefix = `${name}=`;
+  return document.cookie.split(";").map(s => s.trim()).find(s => s.startsWith(prefix))?.slice(prefix.length) || "";
+}
+
+function _kfSetCookie(name, value, days = 365) {
+  const maxAge = Math.max(1, days) * 86400;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
+}
+
+function _kfInitSplash() {
+  const splash = $("splash");
+  const btn = $("splashDismiss");
+  if (!splash || !btn) return;
+  if (_kfCookieValue("kf_splash_seen") === "1") {
+    splash.classList.add("hidden");
+    return;
+  }
+  splash.classList.remove("hidden");
+  btn.addEventListener("click", () => {
+    _kfSetCookie("kf_splash_seen", "1");
+    splash.classList.add("hidden");
+  });
+}
+
+function _kfSetDataQualityVisibility(enabled) {
+  _kfShowDataQualityConcerns = !!enabled;
+  localStorage.setItem("kf-show-data-quality", _kfShowDataQualityConcerns ? "1" : "0");
+  document.querySelectorAll('[data-intent="weak"]').forEach(el => {
+    el.style.display = _kfShowDataQualityConcerns ? "" : "none";
+  });
+  if (highlightedDwell >= 0 && typeof updatePanel === "function") updatePanel(true);
+  if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+}
+
+function _kfInitDataQualityToggle() {
+  const toggle = $("dataQualityToggle");
+  if (!toggle) return;
+  toggle.checked = !!_kfShowDataQualityConcerns;
+  toggle.addEventListener("change", () => _kfSetDataQualityVisibility(toggle.checked));
+  _kfSetDataQualityVisibility(toggle.checked);
+}
+
+_kfInitSplash();
+_kfInitDataQualityToggle();
+
 // --- Person autocomplete search -----------------------------------------
 // Match-aware ranking: prefix match on full name > prefix match on any token >
 // substring match. Year suffix and event count tie-break.
@@ -1220,10 +1266,17 @@ function _kfInstallLoopAnchorDrag(which, el) {
 _kfInstallLoopAnchorDrag("begin", $("markLoopBegin"));
 _kfInstallLoopAnchorDrag("end", $("markLoopEnd"));
 _kfRefreshLoopControls();
+$("pick").addEventListener("click", () => fileInp.click());
+const pick2 = $("pick2"); if (pick2) pick2.addEventListener("click", () => fileInp.click());
+fileInp.addEventListener("change", () => handleFiles(fileInp.files));
+window._kfLoadFiles = handleFiles;
 if (DEMO_GED_URL) {
-  const _pick = $("pick"); if (_pick) _pick.style.display = "none";
-  const _pick2 = $("pick2"); if (_pick2) _pick2.style.display = "none";
   (async () => {
+    if (_kfIsMobileLayout()) {
+      stats.textContent = "choose a tree to load";
+      refreshSources();
+      return;
+    }
     // Clear any proxy trees from prior sessions so only the demo tree appears
     const _p = await detectChatProxy().catch(() => null);
     if (_p) { try { await fetch(_p + "/reset", { method: "POST" }); } catch (_) {} }
@@ -1233,16 +1286,14 @@ if (DEMO_GED_URL) {
       if (!resp.ok) throw new Error(resp.status + " " + resp.statusText);
       const text = await resp.text();
       const demoFile = new File([text], "DEMO.json", { type: "application/json" });
+      _kfSkipNextSeed = true;
       await processFile(demoFile);
     } catch (e) {
+      _kfSkipNextSeed = false;
       stats.textContent = "demo load failed: " + (e.message || e);
     }
   })();
-} else {
-  $("pick").addEventListener("click", () => fileInp.click());
-  const pick2 = $("pick2"); if (pick2) pick2.addEventListener("click", () => fileInp.click());
-  fileInp.addEventListener("change", () => handleFiles(fileInp.files));
-  window._kfLoadFiles = handleFiles;
+}
   let dropDragDepth = 0;
   let dropStaleTimer = 0;
   function isFileDrag(e) {
@@ -1285,7 +1336,6 @@ if (DEMO_GED_URL) {
   window.addEventListener("blur", hideDropOverlay);
   document.addEventListener("visibilitychange", () => { if (document.hidden) hideDropOverlay(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") hideDropOverlay(); });
-}
 
 async function bootBasemap() {
   // world/usStates topojson loaded for state cluster mode (inferStateBelongings).

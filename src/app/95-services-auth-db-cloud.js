@@ -262,6 +262,7 @@ async function updateAuthUI(user) {
     if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
     if (versionEl) versionEl.style.display = "inline";
     applyChatAccess(_clerkUserTier);
+    _kfRemoveRestrictedVipSources();
     refreshSources();
     _kfScheduleAuthTokenRetry();
     return;
@@ -290,6 +291,7 @@ async function updateAuthUI(user) {
   if (uploadCloudBtn) uploadCloudBtn.style.display = "inline-block";
   if (versionEl) versionEl.style.display = "inline";
   applyChatAccess(_clerkUserTier);
+  _kfRemoveRestrictedVipSources();
   refreshSources();
 
   const startupUserKey = user.id || email || "signed-in";
@@ -300,6 +302,11 @@ async function updateAuthUI(user) {
 }
 
 async function autoLoadStartupTrees() {
+  if (_kfIsMobileLayout()) {
+    await refreshSources();
+    autoIntroOnce();
+    return;
+  }
   await autoLoadCloudGedcom();
   if (_clerkUserTier === "vip") await autoLoadVipCatalogTrees();
   autoIntroOnce();

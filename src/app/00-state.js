@@ -205,12 +205,45 @@ let _kfSkipNextSeedCount = 0; // suppress VIP autosave for N upcoming processFil
 let _kfStartupLoadUserKey = "";
 let _kfVipCatalogAutoLoadUserKey = "";
 const VIP_CATALOG_TREES = [
+  { kind: "catalog", key: "demo", name: "DEMO", available: true, relation: "public", public: true },
   { key: "golden-rosenberg", name: "Golden-Rosenberg.ged", available: true },
   { key: "gregory-henry", name: "Gregory-Henry.ged", available: true },
-  { key: "archer", name: "Archer.ged", available: true },
 ];
+let _kfCloudTrees = [];
+let _kfShareState = { trees: [] };
+let _kfShowDataQualityConcerns = localStorage.getItem("kf-show-data-quality") === "1";
+function _kfVisibleCatalogTreesForViewer(trees) {
+  return (trees || []).map(t => ({ kind: "catalog", ...t }));
+}
 function _kfCatalogFallbackTrees() {
-  return VIP_CATALOG_TREES.map(t => ({ ...t }));
+  return _kfVisibleCatalogTreesForViewer(
+    VIP_CATALOG_TREES.filter(t => t.key === "demo" || _clerkUserTier === "vip")
+  );
+}
+function _kfCurrentAuthEmail() {
+  return _clerkInstance?.user?.primaryEmailAddress?.emailAddress ||
+    document.getElementById("authEmail")?.textContent?.trim() ||
+    "";
+}
+function _kfIsRestrictedUnsharedSourceName(name) {
+  const normalized = String(name || "").replace(/\.(ged|gedcom)$/i, "").trim().toLowerCase();
+  return normalized === "archer";
+}
+function _kfIsPublicDemoSourceName(name) {
+  const normalized = String(name || "").replace(/\.(ged|gedcom|json)$/i, "").trim().toLowerCase();
+  return normalized === "demo";
+}
+function _kfTreeLoadedByName(name) {
+  const sourceName = _kfSourceNameFromFileName(name || "");
+  return _kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName);
+}
+function _kfAuthHeaders() {
+  return _clerkToken ? { "Authorization": "Bearer " + _clerkToken } : {};
+}
+function _kfJsonHeaders() {
+  return _clerkToken
+    ? { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken }
+    : { "Content-Type": "application/json" };
 }
 let _kfBrowserDb = null;     // sql.js in-memory SQLite DB built from the loaded GEDCOM
 let _sqlJsReady = null;      // Promise — resolves when sql.js WASM is loaded
