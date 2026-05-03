@@ -1,5 +1,5 @@
 import type { Env, UserContext } from "../../_middleware";
-import { cleanTreeName, computeGedcomContentHash, ensureGedcomMultiSourceSchema, getOrCreateOwnerUuid } from "./_lib";
+import { cleanTreeName, computeGedcomContentHash, computeTopPci, ensureGedcomMultiSourceSchema, getOrCreateOwnerUuid } from "./_lib";
 
 // D1 hard limit: 100 bound parameters per prepared statement.
 const ROWS_PER_STMT = 14;
@@ -91,10 +91,10 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }));
   const contentHash = await computeGedcomContentHash(hashIndividuals, families);
   const uploadedAt = Math.floor(Date.now() / 1000);
-  const topPciScore = Number.isFinite(Number(body.top_pci_score)) ? Number(body.top_pci_score) : null;
+  const topPci = computeTopPci(hashIndividuals, families);
 
   const existing = await db.prepare(`
-    SELECT id, tree_uuid FROM ged_sources
+    SELECT id, tree_uuid, content_hash, content_changed_at FROM ged_sources
     WHERE (owner_uuid = ? AND name = ?)
        OR (user_id = ? AND name = ?)
        OR (tree_uuid = ? AND tree_uuid IS NOT NULL AND tree_uuid <> '')
@@ -102,7 +102,10 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     LIMIT 1
   `)
     .bind(ownerUuid, name, user.id, name, incomingTreeUuid, ownerUuid, name)
-    .first<{ id: number; tree_uuid: string | null }>();
+    .first<{ id: number; tree_uuid: string | null; content_hash: string | null; content_changed_at: number | null }>();
+  const contentChangedAt = !existing || existing.content_hash !== contentHash
+    ? uploadedAt
+    : existing.content_changed_at ?? uploadedAt;
 
   if (is_default) {
     await db.prepare(`UPDATE ged_sources SET is_default = 0 WHERE user_id = ?`).bind(user.id).run();
@@ -118,12 +121,12 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       db.prepare(
         `UPDATE ged_sources
          SET owner_user_id = ?, owner_uuid = ?, owner_email = ?, name = ?,
-             content_hash = ?, uploaded_at = ?, top_pci_id = ?, top_pci_name = ?, top_pci_score = ?,
+             content_hash = ?, uploaded_at = ?, content_changed_at = ?, top_pci_id = ?, top_pci_name = ?, top_pci_score = ?,
              loaded_at = ?, n_individuals = ?, n_events = ?, n_families = ?, is_default = ?
          WHERE id = ?`
       ).bind(
         user.id, ownerUuid, ownerEmail, name,
-        contentHash, uploadedAt, body.top_pci_id ?? null, body.top_pci_name ?? null, topPciScore,
+        contentHash, uploadedAt, contentChangedAt, topPci?.id ?? null, topPci?.name ?? null, topPci?.score ?? null,
         new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0, sid,
       ),
     ]);
@@ -136,17 +139,28 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     await runBatches(db, buildInserts(db, "ged_families", ["source_id","id","husb_id","wife_id"], famRows));
     const fcRows: Row[] = families.flatMap((f) => (f.chil ?? []).map((c): Row => [sid, f.id, c]));
     await runBatches(db, buildInserts(db, "ged_family_children", ["source_id","family_id","child_id"], fcRows));
-    return new Response(JSON.stringify({ ok: true, source_id: sid, tree_uuid: existing.tree_uuid, owner_uuid: ownerUuid, content_hash: contentHash, updated: true }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({
+      ok: true,
+      source_id: sid,
+      tree_uuid: existing.tree_uuid,
+      owner_uuid: ownerUuid,
+      content_hash: contentHash,
+      content_changed_at: contentChangedAt,
+      top_pci_id: topPci?.id ?? null,
+      top_pci_name: topPci?.name ?? null,
+      top_pci_score: topPci?.score ?? null,
+      updated: true,
+    }), { headers: { "Content-Type": "application/json" } });
   }
 
   const treeUuid = incomingTreeUuid || crypto.randomUUID();
   const srcResult = await db.prepare(
-    `INSERT INTO ged_sources (tree_uuid, user_id, owner_user_id, owner_uuid, owner_email, name, content_hash, uploaded_at, top_pci_id, top_pci_name, top_pci_score, loaded_at, n_individuals, n_events, n_families, is_default)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ged_sources (tree_uuid, user_id, owner_user_id, owner_uuid, owner_email, name, content_hash, uploaded_at, content_changed_at, top_pci_id, top_pci_name, top_pci_score, loaded_at, n_individuals, n_events, n_families, is_default)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       treeUuid, user.id, user.id, ownerUuid, ownerEmail, name,
-      contentHash, uploadedAt, body.top_pci_id ?? null, body.top_pci_name ?? null, topPciScore,
+      contentHash, uploadedAt, contentChangedAt, topPci?.id ?? null, topPci?.name ?? null, topPci?.score ?? null,
       new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0,
     )
     .run();
@@ -161,7 +175,18 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const fcRows: Row[] = families.flatMap((f) => (f.chil ?? []).map((c): Row => [sourceId, f.id, c]));
   await runBatches(db, buildInserts(db, "ged_family_children", ["source_id","family_id","child_id"], fcRows));
 
-  return new Response(JSON.stringify({ ok: true, source_id: sourceId, tree_uuid: treeUuid, owner_uuid: ownerUuid, content_hash: contentHash, created: true }), {
+  return new Response(JSON.stringify({
+    ok: true,
+    source_id: sourceId,
+    tree_uuid: treeUuid,
+    owner_uuid: ownerUuid,
+    content_hash: contentHash,
+    content_changed_at: contentChangedAt,
+    top_pci_id: topPci?.id ?? null,
+    top_pci_name: topPci?.name ?? null,
+    top_pci_score: topPci?.score ?? null,
+    created: true,
+  }), {
     headers: { "Content-Type": "application/json" },
   });
 };

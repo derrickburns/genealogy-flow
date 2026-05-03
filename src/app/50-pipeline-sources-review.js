@@ -396,6 +396,7 @@ function _kfGetLoadedSourcesList() {
       common_name: s.common_name || s.name,
       tree_uuid: s.tree_uuid || null,
       content_hash: s.content_hash || null,
+      content_changed_at: s.content_changed_at || null,
       owner_email: s.owner_email || null,
       owner_uuid: s.owner_uuid || null,
       relation: s.relation || null,
@@ -517,11 +518,11 @@ function renderSharePanel() {
       ? shares.map(s => `<span class="shareEmail">${escChat(s.email)} <button type="button" data-share-remove="${escChat(tree.kind)}:${escChat(tree.key)}:${escChat(s.email)}" title="Remove share">×</button></span>`).join("")
       : `<span class="shareNone">Not shared yet</span>`;
     const uploaded = tree.uploaded_at ? new Date(tree.uploaded_at * 1000).toLocaleString() : "unknown";
-    const hash = tree.content_hash ? `${tree.content_hash.slice(0, 12)}...` : "legacy";
+    const changed = tree.content_changed_at ? new Date(tree.content_changed_at * 1000).toLocaleString() : "unknown";
     const top = tree.top_pci_name ? `${tree.top_pci_name}${tree.top_pci_score != null ? ` (${Math.round(tree.top_pci_score * 100)}%)` : ""}` : "unknown";
     return `<div class="shareTree" data-share-tree="${escChat(tree.kind)}:${escChat(tree.key)}">` +
       `<div class="shareTreeHead"><b>${escChat(name)}</b><span>${escChat(tree.kind === "catalog" ? "server tree" : "saved tree")}</span></div>` +
-      `<div class="treeMeta">Owner: ${escChat(tree.owner_email || "")}<br>Uploaded: ${escChat(uploaded)}<br>Top PCI: ${escChat(top)}<br>Hash: ${escChat(hash)}</div>` +
+      `<div class="treeMeta">Owner: ${escChat(tree.owner_email || "")}<br>Uploaded: ${escChat(uploaded)}<br>Last content change: ${escChat(changed)}<br>Top PCI: ${escChat(top)}</div>` +
       (tree.kind === "gedcom"
         ? `<form class="treeRename" data-share-kind="${escChat(tree.kind)}" data-share-key="${escChat(tree.key)}">` +
           `<input type="text" value="${escChat(name)}" aria-label="Rename tree">` +
@@ -967,6 +968,7 @@ async function loadCloudTree(sourceKey, opts = {}) {
   file._kfTreeMeta = {
     tree_uuid: tree.tree_uuid || remoteMeta?.tree_uuid || null,
     content_hash: tree.content_hash || remoteMeta?.content_hash || null,
+    content_changed_at: tree.content_changed_at || remoteMeta?.content_changed_at || null,
     owner_uuid: tree.owner_uuid || remoteMeta?.owner_uuid || null,
     owner_email: tree.owner_email || remoteMeta?.owner_email || null,
     relation: tree.relation || remoteMeta?.relation || null,
@@ -1137,30 +1139,31 @@ function renderSources(list) {
   const sourceChip = s => {
     const n = (s.n_individuals || 0).toLocaleString();
     const label = _kfTreeLabel(s, nameCounts);
+    const selected = s.selected ? "included" : "not shown";
     return (
-      `<label class="src${s.active ? " on" : ""}${s.selected ? "" : " excluded"}" data-id="${s.id}" title="${n} people${s.loaded_at ? ` | ${escChat(s.loaded_at)}` : ""}">` +
+      `<label class="src treeRow${s.active ? " on" : ""}${s.selected ? "" : " excluded"}" data-id="${s.id}" title="${n} people${s.loaded_at ? ` | ${escChat(s.loaded_at)}` : ""}">` +
       `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in queries, maps, clusters, and animations">` +
-      `<span class="name">${escChat(label)}</span>` +
+      `<span class="sourceText"><span class="name">${escChat(label)}</span><span class="sourceMeta">${n} people | ${selected}</span></span>` +
       `</label>`
     );
   };
   const parts = [];
   if (filtered.length) {
-    parts.push(`<div class="scopeSection">`);
+    parts.push(`<div class="scopeSection loadedTrees"><span class="scopeTitle">Loaded</span>`);
     for (const s of filtered) parts.push(sourceChip(s));
     parts.push(`</div>`);
   }
   if (remoteActions.length) {
-    parts.push(`<div class="scopeSection"><span class="scopeTitle">Trees</span>`);
+    parts.push(`<div class="scopeSection availableTrees"><span class="scopeTitle">Available</span>`);
     for (const t of remoteActions) {
       const relation = t.relation ? ` (${t.relation})` : "";
       const owner = t.owner_email ? ` Owner: ${t.owner_email}.` : "";
       const title = `Load ${t.name || t.key}.${owner}`;
       const label = _kfTreeLabel(t, nameCounts);
       if (t.kind === "cloud") {
-        parts.push(`<button type="button" class="srcAction" data-cloud="${escChat(t.tree_uuid || t.key || t.source_id)}" title="${escChat(title)}">${escChat(label)}${escChat(relation)}</button>`);
+        parts.push(`<button type="button" class="srcAction treeRow" data-cloud="${escChat(t.tree_uuid || t.key || t.source_id)}" title="${escChat(title)}"><span class="name">${escChat(label)}</span><span class="sourceMeta">Load shared tree${escChat(relation)}</span></button>`);
       } else {
-        parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}" title="${escChat(title)}">${escChat(label)}${escChat(relation)}</button>`);
+        parts.push(`<button type="button" class="srcAction treeRow" data-catalog="${escChat(t.key)}" title="${escChat(title)}"><span class="name">${escChat(label)}</span><span class="sourceMeta">Load tree${escChat(relation)}</span></button>`);
       }
     }
     parts.push(`</div>`);
@@ -1471,6 +1474,7 @@ async function processFile(file) {
     source_id: browserSourceId,
     tree_uuid: sourceMeta.tree_uuid || null,
     content_hash: contentHash,
+    content_changed_at: sourceMeta.content_changed_at || null,
     owner_uuid: sourceMeta.owner_uuid || null,
     owner_email: sourceMeta.owner_email || null,
     relation: sourceMeta.relation || null,

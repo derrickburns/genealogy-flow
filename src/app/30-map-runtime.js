@@ -1205,6 +1205,15 @@ function pruneInvalidHighlightSelection() {
 }
 
 let last = 0;
+let _kfLastMobileDeckUpdateAt = 0;
+
+function _kfShouldUpdateDeckLayers(now) {
+  if (!_kfIsMobileLayout() || !playing) return true;
+  if (now - _kfLastMobileDeckUpdateAt < 66) return false;
+  _kfLastMobileDeckUpdateAt = now;
+  return true;
+}
+
 function tick(now) {
   const dt = last ? (now - last) / 1000 : 0;
   last = now;
@@ -1261,7 +1270,7 @@ function tick(now) {
   // Year-varying lenses re-fetch when curYear changes. Cache key inside
   // makes this a no-op for static lenses (and during the same year).
   if (_kfActiveLens) _kfFetchLensData();
-  if (_kfDwellsOnDeck && _kfDeckOverlay && timelineLoaded) updateDeckDwellLayer();
+  if (_kfDwellsOnDeck && _kfDeckOverlay && timelineLoaded && _kfShouldUpdateDeckLayers(now)) updateDeckDwellLayer();
   frame(parseFloat(trailSel.value));
   updatePanel(false);
   updateNowMarker();

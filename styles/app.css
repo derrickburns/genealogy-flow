@@ -494,12 +494,24 @@
   .optionCard select { width:100%; min-height:34px; }
   .optionHelp { margin:0; color:#64748b; font-size:11px; line-height:1.4; }
   #treesPane { overflow-y:auto; background:#f8fafc; }
-  .treeStatsCard, .treeActions { margin:10px 10px 0; padding:10px; border:1px solid #d6dde7; border-radius:10px; background:#fff; }
+  .treeSelectorCard, .treeStatsCard, .treeActions { margin:10px 10px 0; padding:10px; border:1px solid #d6dde7; border-radius:10px; background:#fff; }
   .treeStatsHead { color:#102033; font-size:10px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:4px; }
   #treeStats { color:#334155; font-size:12px; line-height:1.35; }
   .treeActions { display:flex; align-items:center; gap:8px; }
-  #treesPane #sourcesPanel { margin:10px; padding:10px; border:1px solid #d6dde7; border-radius:10px; background:#fff; }
-  #treesPane #sourcesList { flex-wrap:wrap; overflow:visible; }
+  #treesPane #sourcesPanel { display:grid; gap:8px; min-width:0; }
+  #treesPane #sourcesPanel.hidden { display:none; }
+  #treesPane #sourcesList { display:grid; gap:10px; overflow:visible; min-width:0; padding:0; }
+  #treesPane #sourcesPanel .scopeSection { display:grid; gap:6px; min-width:0; }
+  #treesPane #sourcesPanel .scopeTitle { margin:0; color:#64748b; font-size:10px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; }
+  #treesPane #sourcesPanel .treeRow { width:100%; box-sizing:border-box; display:grid; grid-template-columns:auto minmax(0, 1fr); align-items:center; gap:9px; margin:0; padding:8px 9px; border:1px solid #d6dde7; border-radius:10px; background:#fff; text-align:left; min-width:0; white-space:normal; }
+  #treesPane #sourcesPanel .treeRow.on { border-color:#2a4a8c; box-shadow:0 0 0 1px rgba(42,74,140,0.15) inset; }
+  #treesPane #sourcesPanel .treeRow.excluded { opacity:0.7; background:#f8fafc; border-style:dashed; }
+  #treesPane #sourcesPanel .treeRow .sel { width:18px; height:18px; margin:0; }
+  #treesPane #sourcesPanel .sourceText { display:grid; gap:2px; min-width:0; }
+  #treesPane #sourcesPanel .name { color:#102033; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #treesPane #sourcesPanel .sourceMeta { color:#64748b; font-size:10.5px; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #treesPane #sourcesPanel .srcAction { font:inherit; cursor:pointer; grid-template-columns:minmax(0, 1fr); }
+  #treesPane #sourcesPanel .srcAction:disabled { opacity:0.45; cursor:default; }
   #optionsPane #quickChips { display:grid; gap:8px; padding:0; font-size:12px; }
   #optionsPane #quickChips.hidden { display:none; }
   #optionsPane #quickChips .chipGroup { display:flex; flex-wrap:wrap; gap:4px; align-items:center; padding:8px; border:1px solid #e0e6ee; border-radius:8px; background:#fff; }
@@ -617,6 +629,7 @@
     #title b { display:none; }
     #stats { position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
     #pick, #pick2 { display:none !important; }
+    .treeActions { display:none !important; }
     #uploadCloud { display:none !important; }
     #rootwrap { order:18; flex:1 1 100%; margin-left:0 !important; }
     #rootSearchBox { width:100%; box-sizing:border-box; }
@@ -627,6 +640,10 @@
     #sourcesList { overflow-x:auto; padding:2px 0; }
     #sourcesPanel .src, #sourcesPanel .srcAction { min-height:32px; border-radius:999px; }
     #sourcesPanel .src .sel { width:18px; height:18px; }
+    #treesPane #sourcesPanel { order:initial; flex:0 0 auto; margin:10px 10px 0; position:static; }
+    #treesPane #sourcesList { overflow:visible; padding:0; }
+    #treesPane #sourcesPanel .src,
+    #treesPane #sourcesPanel .srcAction { min-height:46px; border-radius:10px; }
     .treeSave, .treeRename, .shareAdd { display:none !important; }
 
     #ui { position:relative; z-index:35; padding:8px; gap:6px; border-radius:16px 16px 0 0; border-left:0; border-right:0; border-top:0; box-shadow:none; pointer-events:auto; }

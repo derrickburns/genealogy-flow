@@ -235,6 +235,10 @@
       </div>
     </div>
     <div id="treesPane" class="sidePane">
+      <div id="sourcesPanel" class="treeSelectorCard hidden">
+        <div class="treeStatsHead">Trees</div>
+        <div id="sourcesList" aria-label="Loaded and available trees"></div>
+      </div>
       <div class="treeStatsCard">
         <div class="treeStatsHead">Current data</div>
         <div id="treeStats">No trees loaded</div>
@@ -242,9 +246,6 @@
       <div class="treeActions">
         <button id="pick">Upload Tree</button>
         <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
-      </div>
-      <div id="sourcesPanel" class="hidden">
-        <div id="sourcesList" aria-label="Loaded trees"></div>
       </div>
       <div id="loadedTreeNamePanel" class="loadedTreeNamePanel" hidden></div>
       <div id="sharingPanel" class="sharePanel" hidden>

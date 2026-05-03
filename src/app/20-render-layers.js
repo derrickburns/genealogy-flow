@@ -1118,6 +1118,45 @@ function refreshDeckFlowColors() {
   }
 }
 
+let _kfFlowParticlePositions = new Float32Array(0);
+let _kfFlowParticleColors = new Uint8Array(0);
+let _kfFlowDestPositions = new Float32Array(0);
+let _kfFlowDestColors = new Uint8Array(0);
+let _kfFlowDestRadii = new Float32Array(0);
+let _kfFlowDestWidths = new Float32Array(0);
+let _kfFlowArcSourcePositions = new Float32Array(0);
+let _kfFlowArcTargetPositions = new Float32Array(0);
+let _kfFlowArcSourceColors = new Uint8Array(0);
+let _kfFlowArcTargetColors = new Uint8Array(0);
+let _kfFlowArcWidths = new Float32Array(0);
+const _kfDeckDataAlwaysDirty = () => false;
+
+function _kfBufferSize(required) {
+  let n = 1;
+  while (n < required) n *= 2;
+  return n;
+}
+
+function _kfEnsureFlowParticleCapacity(points) {
+  if (_kfFlowParticlePositions.length < points * 2) _kfFlowParticlePositions = new Float32Array(_kfBufferSize(points * 2));
+  if (_kfFlowParticleColors.length < points * 4) _kfFlowParticleColors = new Uint8Array(_kfBufferSize(points * 4));
+}
+
+function _kfEnsureFlowDestCapacity(points) {
+  if (_kfFlowDestPositions.length < points * 2) _kfFlowDestPositions = new Float32Array(_kfBufferSize(points * 2));
+  if (_kfFlowDestColors.length < points * 4) _kfFlowDestColors = new Uint8Array(_kfBufferSize(points * 4));
+  if (_kfFlowDestRadii.length < points) _kfFlowDestRadii = new Float32Array(_kfBufferSize(points));
+  if (_kfFlowDestWidths.length < points) _kfFlowDestWidths = new Float32Array(_kfBufferSize(points));
+}
+
+function _kfEnsureFlowArcCapacity(arcs) {
+  if (_kfFlowArcSourcePositions.length < arcs * 2) _kfFlowArcSourcePositions = new Float32Array(_kfBufferSize(arcs * 2));
+  if (_kfFlowArcTargetPositions.length < arcs * 2) _kfFlowArcTargetPositions = new Float32Array(_kfBufferSize(arcs * 2));
+  if (_kfFlowArcSourceColors.length < arcs * 4) _kfFlowArcSourceColors = new Uint8Array(_kfBufferSize(arcs * 4));
+  if (_kfFlowArcTargetColors.length < arcs * 4) _kfFlowArcTargetColors = new Uint8Array(_kfBufferSize(arcs * 4));
+  if (_kfFlowArcWidths.length < arcs) _kfFlowArcWidths = new Float32Array(_kfBufferSize(arcs));
+}
+
 // Phase 4: pins, lineage paths, highlights, kin lines as deck.gl layers.
 // Data volumes here are small (pins ≤ 50, paths ≤ 5, highlights ≤ 50, kin
 // lines ≤ a few thousand) so we use object-array data instead of binary
@@ -1394,22 +1433,22 @@ function makeFlowLayer() {
   // Animated particle flow: each in-flight migration emits a head dot at the
   // current great-circle position plus a TRAIL of older dots at decreasing
   // opacity. The trail spacing is in t-units (fraction of trip), so a
-  // 50-year migration shows the same number of trail dots as a 5-year one
-  // — the trail represents "recent path travelled", not absolute time.
+  // Long evidence gaps animate only near the destination year so we do not
+  // imply the person was physically traveling for the entire undocumented gap.
   const F = flowFromLat.length;
   const y = curYear;
-  const positions = [];
-  const colors = [];
   const TRAIL_N = 6;     // total particles per in-flight migration (1 head + 5 tail)
   const TRAIL_STEP = 0.07; // t-spacing between successive trail particles
+  _kfEnsureFlowParticleCapacity(F * TRAIL_N);
+  let count = 0;
   for (let i = 0; i < F; i++) {
-    const fromY = flowFromY[i], toY = flowToY[i];
-    if (y <= fromY || y >= toY) continue;
+    const win = _kfFlowAnimationWindow(i);
+    if (!win || y < win.start || y > win.end) continue;
     const fs = flowSide[i];
     if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(flowIndi[i])) continue;
     if (curFilter === "blood" && !flowBlood[i]) continue;
-    const span = Math.max(1, toY - fromY);
-    const t = (y - fromY) / span;
+    const span = Math.max(0.1, win.end - win.start);
+    const t = Math.max(0, Math.min(1, (y - win.start) / span));
     const interp = d3.geoInterpolate(
       [flowFromLon[i], flowFromLat[i]],
       [flowToLon[i],   flowToLat[i]],
@@ -1417,24 +1456,30 @@ function makeFlowLayer() {
     const c = colorForFinal(fs, flowSrc[i], flowIndi[i]);
     for (let k = 0; k < TRAIL_N; k++) {
       const tk = t - k * TRAIL_STEP;
-      if (tk <= 0) break;
+      if (tk < 0) break;
       const pt = interp(tk);
       if (!pt || !Number.isFinite(pt[0])) continue;
-      positions.push(pt[0], pt[1]);
+      _kfFlowParticlePositions[count * 2] = pt[0];
+      _kfFlowParticlePositions[count * 2 + 1] = pt[1];
       // Head fully opaque, fading to ~0 at tail end.
       const alpha = Math.round(235 * (1 - k / TRAIL_N));
-      colors.push(c[0], c[1], c[2], alpha);
+      _kfFlowParticleColors[count * 4] = c[0];
+      _kfFlowParticleColors[count * 4 + 1] = c[1];
+      _kfFlowParticleColors[count * 4 + 2] = c[2];
+      _kfFlowParticleColors[count * 4 + 3] = alpha;
+      count++;
     }
   }
-  if (!positions.length) return null;
+  if (!count) return null;
   // Half the radius of landed person markers (which are 3-4px). Particles
   // are smaller so the trail reads as motion rather than a string of dots.
   return new deck.ScatterplotLayer({
     id: "kf-flow-particles",
-    data: { length: positions.length / 2, attributes: {
-      getPosition:  { value: new Float32Array(positions), size: 2 },
-      getFillColor: { value: new Uint8Array(colors),      size: 4 },
+    data: { length: count, attributes: {
+      getPosition:  { value: _kfFlowParticlePositions, size: 2 },
+      getFillColor: { value: _kfFlowParticleColors,    size: 4 },
     }},
+    dataComparator: _kfDeckDataAlwaysDirty,
     getRadius: 1.8,
     radiusUnits: "pixels",
     stroked: false,
@@ -1442,12 +1487,24 @@ function makeFlowLayer() {
   });
 }
 
-const FLOW_AMBIGUOUS_GAP_YEARS = 10;
+const FLOW_AMBIGUOUS_GAP_YEARS = 5;
 
 function _kfFlowPassesFilter(i) {
   if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(flowIndi[i])) return false;
   if (curFilter === "blood" && !flowBlood[i]) return false;
   return true;
+}
+
+const FLOW_LONG_GAP_ANIMATION_YEARS = 5;
+
+function _kfFlowAnimationWindow(i) {
+  const fromY = flowFromY[i], toY = flowToY[i];
+  if (!Number.isFinite(fromY) || !Number.isFinite(toY) || toY <= fromY) return null;
+  const gap = toY - fromY;
+  const start = gap > FLOW_LONG_GAP_ANIMATION_YEARS
+    ? toY - FLOW_LONG_GAP_ANIMATION_YEARS
+    : fromY;
+  return { start, end: toY, gap };
 }
 
 function _kfObservationPulse(i, y = curYear) {
@@ -1467,7 +1524,9 @@ function _kfObservationPulse(i, y = curYear) {
 
 function makeFlowObservationArcLayer() {
   if (!deck || !deck.ArcLayer) return null;
-  const data = [];
+  const F = flowFromLat.length;
+  _kfEnsureFlowArcCapacity(F);
+  let count = 0;
   for (let i = 0; i < flowFromLat.length; i++) {
     if (!_kfFlowPassesFilter(i)) continue;
     const pulse = _kfObservationPulse(i);
@@ -1477,23 +1536,32 @@ function makeFlowObservationArcLayer() {
     const alpha = pulse.ambiguous
       ? Math.round(38 + 78 * pulse.strength)
       : Math.round(105 + 120 * pulse.strength);
-    data.push({
-      from: [flowFromLon[i], flowFromLat[i]],
-      to: [flowToLon[i], flowToLat[i]],
-      sourceColor: [c[0], c[1], c[2], Math.round(alpha * 0.12)],
-      targetColor: [c[0], c[1], c[2], alpha],
-      width: pulse.ambiguous ? 0.9 : 1.7,
-    });
+    _kfFlowArcSourcePositions[count * 2] = flowFromLon[i];
+    _kfFlowArcSourcePositions[count * 2 + 1] = flowFromLat[i];
+    _kfFlowArcTargetPositions[count * 2] = flowToLon[i];
+    _kfFlowArcTargetPositions[count * 2 + 1] = flowToLat[i];
+    _kfFlowArcSourceColors[count * 4] = c[0];
+    _kfFlowArcSourceColors[count * 4 + 1] = c[1];
+    _kfFlowArcSourceColors[count * 4 + 2] = c[2];
+    _kfFlowArcSourceColors[count * 4 + 3] = Math.round(alpha * 0.12);
+    _kfFlowArcTargetColors[count * 4] = c[0];
+    _kfFlowArcTargetColors[count * 4 + 1] = c[1];
+    _kfFlowArcTargetColors[count * 4 + 2] = c[2];
+    _kfFlowArcTargetColors[count * 4 + 3] = alpha;
+    _kfFlowArcWidths[count] = pulse.ambiguous ? 0.9 : 1.7;
+    count++;
   }
-  if (!data.length) return null;
+  if (!count) return null;
   return new deck.ArcLayer({
     id: "kf-flow-observation-arcs",
-    data,
-    getSourcePosition: d => d.from,
-    getTargetPosition: d => d.to,
-    getSourceColor: d => d.sourceColor,
-    getTargetColor: d => d.targetColor,
-    getWidth: d => d.width,
+    data: { length: count, attributes: {
+      getSourcePosition: { value: _kfFlowArcSourcePositions, size: 2 },
+      getTargetPosition: { value: _kfFlowArcTargetPositions, size: 2 },
+      getSourceColor:    { value: _kfFlowArcSourceColors,    size: 4 },
+      getTargetColor:    { value: _kfFlowArcTargetColors,    size: 4 },
+      getWidth:          { value: _kfFlowArcWidths,          size: 1 },
+    }},
+    dataComparator: _kfDeckDataAlwaysDirty,
     widthUnits: "pixels",
     greatCircle: true,
     pickable: false,
@@ -1518,38 +1586,42 @@ function makeFlowDestLayer() {
   if (replaceMode) return null;
   const F = flowFromLat.length;
   const y = curYear;
-  const positions = [];
-  const colors = [];
-  const radii = [];
-  const widths = [];
+  _kfEnsureFlowDestCapacity(F);
+  let count = 0;
   for (let i = 0; i < F; i++) {
-    const fromY = flowFromY[i], toY = flowToY[i];
     let pulse = null;
     if (migrationViz === "observations") {
       pulse = _kfObservationPulse(i, y);
       if (!pulse) continue;
-    } else if (y <= fromY || y >= toY) {
-      continue;
+    } else {
+      const win = _kfFlowAnimationWindow(i);
+      if (!win || y < win.start || y > win.end) continue;
     }
     if (!_kfFlowPassesFilter(i)) continue;
     const c = colorForFinal(flowSide[i], flowSrc[i], flowIndi[i]);
-    positions.push(flowToLon[i], flowToLat[i]);
+    _kfFlowDestPositions[count * 2] = flowToLon[i];
+    _kfFlowDestPositions[count * 2 + 1] = flowToLat[i];
     const alpha = pulse
       ? (pulse.ambiguous ? Math.round(85 + 65 * pulse.strength) : Math.round(150 + 80 * pulse.strength))
       : 200;
-    colors.push(c[0], c[1], c[2], alpha);
-    radii.push(pulse ? (pulse.ambiguous ? 7 + 6 * pulse.strength : 5 + 5 * pulse.strength) : 5);
-    widths.push(pulse?.ambiguous ? 1 : 1.5);
+    _kfFlowDestColors[count * 4] = c[0];
+    _kfFlowDestColors[count * 4 + 1] = c[1];
+    _kfFlowDestColors[count * 4 + 2] = c[2];
+    _kfFlowDestColors[count * 4 + 3] = alpha;
+    _kfFlowDestRadii[count] = pulse ? (pulse.ambiguous ? 7 + 6 * pulse.strength : 5 + 5 * pulse.strength) : 5;
+    _kfFlowDestWidths[count] = pulse?.ambiguous ? 1 : 1.5;
+    count++;
   }
-  if (!positions.length) return null;
+  if (!count) return null;
   return new deck.ScatterplotLayer({
     id: "kf-flow-dest",
-    data: { length: positions.length / 2, attributes: {
-      getPosition:    { value: new Float32Array(positions), size: 2 },
-      getLineColor:   { value: new Uint8Array(colors),      size: 4 },
-      getRadius:      { value: new Float32Array(radii),     size: 1 },
-      getLineWidth:   { value: new Float32Array(widths),    size: 1 },
+    data: { length: count, attributes: {
+      getPosition:    { value: _kfFlowDestPositions, size: 2 },
+      getLineColor:   { value: _kfFlowDestColors,    size: 4 },
+      getRadius:      { value: _kfFlowDestRadii,     size: 1 },
+      getLineWidth:   { value: _kfFlowDestWidths,    size: 1 },
     }},
+    dataComparator: _kfDeckDataAlwaysDirty,
     radiusUnits: "pixels",
     stroked: true,
     filled: false,

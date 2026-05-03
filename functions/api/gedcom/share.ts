@@ -22,14 +22,14 @@ function validShareEmail(email: string): boolean {
 
 async function ownedGedcomTrees(env: Env, user: UserContext) {
   const rows = await env.DB.prepare(`
-    SELECT id, tree_uuid, name, owner_email, owner_uuid, content_hash, uploaded_at,
+    SELECT id, tree_uuid, name, owner_email, owner_uuid, content_hash, uploaded_at, content_changed_at,
            top_pci_id, top_pci_name, top_pci_score
     FROM ged_sources
     WHERE user_id = ? OR owner_user_id = ? OR lower(COALESCE(owner_email, '')) = ?
     ORDER BY loaded_at ASC, id ASC
   `).bind(user.id, user.id, normalizeEmail(user.email)).all<{
     id: number; tree_uuid: string | null; name: string; owner_email: string | null; owner_uuid: string | null;
-    content_hash: string | null; uploaded_at: number | null; top_pci_id: string | null; top_pci_name: string | null; top_pci_score: number | null;
+    content_hash: string | null; uploaded_at: number | null; content_changed_at: number | null; top_pci_id: string | null; top_pci_name: string | null; top_pci_score: number | null;
   }>();
   return (rows.results ?? []).map(row => ({
     kind: "gedcom",
@@ -41,6 +41,7 @@ async function ownedGedcomTrees(env: Env, user: UserContext) {
     owner_uuid: row.owner_uuid,
     content_hash: row.content_hash,
     uploaded_at: row.uploaded_at,
+    content_changed_at: row.content_changed_at,
     top_pci_id: row.top_pci_id,
     top_pci_name: row.top_pci_name,
     top_pci_score: row.top_pci_score,

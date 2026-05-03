@@ -14,6 +14,7 @@ type SourceRow = {
   owner_uuid: string | null;
   content_hash: string | null;
   uploaded_at: number | null;
+  content_changed_at: number | null;
   top_pci_id: string | null;
   top_pci_name: string | null;
   top_pci_score: number | null;
@@ -38,7 +39,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const placeholders = ids.map(() => "?").join(",");
   const rows = await ctx.env.DB.prepare(`
     SELECT id, tree_uuid, name, is_default, loaded_at, n_individuals, n_events, n_families,
-           owner_email, owner_uuid, content_hash, uploaded_at, top_pci_id, top_pci_name, top_pci_score,
+           owner_email, owner_uuid, content_hash, uploaded_at, content_changed_at, top_pci_id, top_pci_name, top_pci_score,
            CASE WHEN user_id = ? OR owner_user_id = ? OR lower(COALESCE(owner_email, '')) = ? THEN 'owned' ELSE 'shared' END AS relation
     FROM ged_sources
     WHERE id IN (${placeholders})
@@ -60,6 +61,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     owner_email: row.owner_email,
     owner_uuid: row.owner_uuid,
     uploaded_at: row.uploaded_at,
+    content_changed_at: row.content_changed_at,
     top_pci_id: row.top_pci_id,
     top_pci_name: row.top_pci_name,
     top_pci_score: row.top_pci_score,

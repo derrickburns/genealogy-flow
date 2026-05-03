@@ -12,6 +12,7 @@ type SourceHashRow = {
   owner_uuid: string | null;
   content_hash: string | null;
   uploaded_at: number | null;
+  content_changed_at: number | null;
   top_pci_id: string | null;
   top_pci_name: string | null;
   top_pci_score: number | null;
@@ -74,7 +75,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const allowedIds = new Set(await accessibleGedSourceIds(ctx.env, user.id, user.email));
   const rows = await ctx.env.DB.prepare(`
     SELECT id, tree_uuid, name, user_id, owner_user_id, owner_email, owner_uuid, content_hash,
-           uploaded_at, top_pci_id, top_pci_name, top_pci_score, is_default
+           uploaded_at, content_changed_at, top_pci_id, top_pci_name, top_pci_score, is_default
     FROM ged_sources
     WHERE content_hash = ?
     ORDER BY uploaded_at DESC, loaded_at DESC, id ASC
@@ -94,6 +95,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
         owner_email: row.owner_email,
         owner_uuid: row.owner_uuid,
         uploaded_at: row.uploaded_at,
+        content_changed_at: row.content_changed_at,
         top_pci_id: row.top_pci_id,
         top_pci_name: row.top_pci_name,
         top_pci_score: row.top_pci_score,

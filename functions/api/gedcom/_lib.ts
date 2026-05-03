@@ -54,6 +54,14 @@ export type HashFamilyIn = {
   chil?: string[];
 };
 
+const TOP_PCI_MAX_DEPTH = 6;
+
+export type TopPciResult = {
+  id: string;
+  name: string | null;
+  score: number;
+};
+
 function canonicalTreePayload(individuals: HashIndividualIn[], families: HashFamilyIn[]): string {
   const people = (individuals || []).map(ind => ({
     id: ind.id || "",
@@ -85,6 +93,74 @@ export async function computeGedcomContentHash(individuals: HashIndividualIn[], 
   const bytes = new TextEncoder().encode(canonicalTreePayload(individuals, families));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function ancestorScore(rootId: string, parentsOf: Map<string, string[]>, indiById: Map<string, HashIndividualIn>): { score: number; found: number } {
+  const root = indiById.get(rootId);
+  if (!root) return { score: 0, found: 0 };
+  const queue: Array<[string, number]> = [[rootId, 0]];
+  const visited = new Set([rootId]);
+  let total = 0;
+  let found = 0;
+  while (queue.length) {
+    const [id, gen] = queue.shift()!;
+    if (gen > TOP_PCI_MAX_DEPTH) continue;
+    const ind = indiById.get(id);
+    if (!ind) continue;
+    if (gen > 0) found++;
+    total += (ind.events?.length ?? 0) / (1 << gen);
+    const parents = parentsOf.get(id);
+    if (!parents) continue;
+    for (const pid of parents) {
+      if (pid && !visited.has(pid)) {
+        visited.add(pid);
+        queue.push([pid, gen + 1]);
+      }
+    }
+  }
+  return { score: total, found };
+}
+
+export function computeTopPci(individuals: HashIndividualIn[], families: HashFamilyIn[]): TopPciResult | null {
+  const indiById = new Map<string, HashIndividualIn>();
+  for (const ind of individuals || []) {
+    const id = String(ind.id || "");
+    if (id) indiById.set(id, ind);
+  }
+  const parentsOf = new Map<string, string[]>();
+  for (const fam of families || []) {
+    const parents = [fam.husb || fam.husb_id || "", fam.wife || fam.wife_id || ""].filter(Boolean);
+    if (!parents.length) continue;
+    for (const childId of fam.chil || []) {
+      const id = String(childId || "");
+      if (!id) continue;
+      const current = parentsOf.get(id) ?? [];
+      parentsOf.set(id, [...current, ...parents]);
+    }
+  }
+  let expected = 0;
+  for (let d = 1; d <= TOP_PCI_MAX_DEPTH; d++) expected += 1 << d;
+  let best: { ind: HashIndividualIn; score: number; pci: number } | null = null;
+  for (const ind of indiById.values()) {
+    const id = String(ind.id || "");
+    if (!id || ind.death_year != null) continue;
+    const { score, found } = ancestorScore(id, parentsOf, indiById);
+    if (score <= 0 || found < 2) continue;
+    const pci = expected > 0 ? found / expected : 0;
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && Number(ind.birth_year ?? -1) > Number(best.ind.birth_year ?? -1))
+    ) {
+      best = { ind, score, pci };
+    }
+  }
+  if (!best) return null;
+  return {
+    id: String(best.ind.id || ""),
+    name: best.ind.name ?? null,
+    score: best.pci,
+  };
 }
 
 function uuid(): string {
@@ -177,6 +253,9 @@ export async function ensureGedcomMultiSourceSchema(env: Env): Promise<void> {
   }
   if (!names.has("uploaded_at")) {
     await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN uploaded_at INTEGER`).run();
+  }
+  if (!names.has("content_changed_at")) {
+    await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN content_changed_at INTEGER`).run();
   }
   if (!names.has("top_pci_id")) {
     await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN top_pci_id TEXT`).run();

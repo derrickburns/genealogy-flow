@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS ged_sources (
   name          TEXT    NOT NULL,
   content_hash  TEXT,
   uploaded_at   INTEGER,
+  content_changed_at INTEGER,
   top_pci_id    TEXT,
   top_pci_name  TEXT,
   top_pci_score REAL,

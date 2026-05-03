@@ -402,6 +402,7 @@ async function autoLoadCloudGedcom() {
       file._kfTreeMeta = {
         tree_uuid: tree.tree_uuid || null,
         content_hash: tree.content_hash || null,
+        content_changed_at: tree.content_changed_at || null,
         owner_uuid: tree.owner_uuid || null,
         owner_email: tree.owner_email || null,
         relation: tree.relation || null,
@@ -571,6 +572,7 @@ async function seedCloudDb(source = null) {
       body: JSON.stringify({
         name: _kfSourceNameFromFileName(src?.common_name || sourceName),
         content_hash: src?.content_hash || null,
+        content_changed_at: src?.content_changed_at || null,
         top_pci_id: src?.top_pci_id || null,
         top_pci_name: src?.top_pci_name || null,
         top_pci_score: src?.top_pci_score ?? null,
@@ -585,6 +587,12 @@ async function seedCloudDb(source = null) {
       _kfSourceId = data.source_id ?? null;
       if (src && data.tree_uuid) src.tree_uuid = data.tree_uuid;
       if (src && data.content_hash) src.content_hash = data.content_hash;
+      if (src && data.content_changed_at) src.content_changed_at = data.content_changed_at;
+      if (src) {
+        src.top_pci_id = data.top_pci_id ?? src.top_pci_id ?? null;
+        src.top_pci_name = data.top_pci_name ?? src.top_pci_name ?? null;
+        src.top_pci_score = data.top_pci_score ?? src.top_pci_score ?? null;
+      }
     }
   } catch (e) {
     console.warn("[kf] seedCloudDb:", e.message || e);
@@ -600,6 +608,7 @@ function _kfCloudTreePayloadForSource(src, name, activeName = _kfActiveTreeName)
   return {
     name: _kfSourceNameFromFileName(name),
     content_hash: src.content_hash || null,
+    content_changed_at: src.content_changed_at || null,
     top_pci_id: src.top_pci_id || null,
     top_pci_name: src.top_pci_name || null,
     top_pci_score: src.top_pci_score ?? null,
@@ -672,6 +681,7 @@ async function _kfMaybePersistLoadedTreeByHash(src, sourceMeta = {}) {
     src.owner_email = existing?.owner_email || src.owner_email || null;
     src.owner_uuid = existing?.owner_uuid || src.owner_uuid || null;
     src.relation = existing?.relation || src.relation || null;
+    src.content_changed_at = existing?.content_changed_at || src.content_changed_at || null;
     src.server_source_id = existing?.source_id || null;
     refreshSources();
     return { ok: true, exists: true, tree: existing };
