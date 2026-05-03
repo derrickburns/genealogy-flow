@@ -351,12 +351,14 @@ async function updateAuthUI(user) {
 async function autoLoadStartupTrees() {
   if (_kfIsMobileLayout()) {
     await refreshSources();
+    if (!_kfHasSelectedVisualizationTree()) await autoLoadPublicDemoTree();
     _kfMaybeOpenTreesPanelForEmptySelection();
     autoIntroOnce();
     return;
   }
   await autoLoadCloudGedcom();
   await autoLoadVipCatalogTrees();
+  if (!_kfHasSelectedVisualizationTree()) await autoLoadPublicDemoTree();
   autoIntroOnce();
 }
 
