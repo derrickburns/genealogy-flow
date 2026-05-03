@@ -206,9 +206,9 @@ let _kfStartupLoadUserKey = "";
 let _kfVipCatalogAutoLoadUserKey = "";
 let _kfPublicDemoLoadPromise = null;
 const VIP_CATALOG_TREES = [
-  { kind: "catalog", key: "demo", name: "DEMO", available: true, relation: "public", public: true },
-  { key: "golden-rosenberg", name: "Golden-Rosenberg.ged", available: true },
-  { key: "gregory-henry", name: "Gregory-Henry.ged", available: true },
+  { kind: "catalog", key: "demo", tree_uuid: "8b7a6f25-2712-42a3-a487-af4844686886", name: "DEMO", available: true, relation: "public", public: true },
+  { key: "golden-rosenberg", tree_uuid: "643ee1b5-301e-45a8-9c05-73a46bce7042", name: "Golden-Rosenberg.ged", available: true },
+  { key: "gregory-henry", tree_uuid: "91122fa3-fdb7-488c-a5e8-8dee4d9e3f06", name: "Gregory-Henry.ged", available: true },
 ];
 let _kfCloudTrees = [];
 let _kfShareState = { trees: [] };

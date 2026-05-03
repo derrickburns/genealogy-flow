@@ -13,6 +13,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     return {
       kind: "catalog",
       key: tree.key,
+      tree_uuid: tree.uuid,
       name: tree.name,
       owner_email: tree.ownerEmail,
       relation: tree.relation,

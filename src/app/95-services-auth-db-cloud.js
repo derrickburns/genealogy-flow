@@ -272,6 +272,7 @@ async function updateAuthUI(user) {
     _kfSyncUploadCloudVisibility();
     if (versionEl) versionEl.style.display = "inline";
     applyChatAccess(_clerkUserTier);
+    _kfRemovePublicDemoSourcesForSignedIn();
     _kfRemoveRestrictedVipSources();
     refreshSources();
     _kfScheduleAuthTokenRetry();
@@ -301,6 +302,7 @@ async function updateAuthUI(user) {
   _kfSyncUploadCloudVisibility();
   if (versionEl) versionEl.style.display = "inline";
   applyChatAccess(_clerkUserTier);
+  _kfRemovePublicDemoSourcesForSignedIn();
   _kfRemoveRestrictedVipSources();
   refreshSources();
 
@@ -345,7 +347,8 @@ async function autoLoadCloudGedcom() {
     }
     const payload = await resp.json();
     const trees = Array.isArray(payload?.trees) ? payload.trees : [];
-    if (!trees.length) {
+    const restorableTrees = trees.filter(t => !_kfIsPublicDemoSourceName(t?.name));
+    if (!restorableTrees.length) {
       if (typeof chatHistory !== "undefined") {
         const idx = chatHistory.indexOf(restoring);
         if (idx !== -1) chatHistory.splice(idx, 1);
@@ -354,12 +357,19 @@ async function autoLoadCloudGedcom() {
       stats.textContent = "ready - open a .ged file or drag one in";
       return;
     }
-    const defaultTree = trees.find(t => t.is_default) || null;
-    const ordered = trees.slice().sort((a, b) => Number(!!a.is_default) - Number(!!b.is_default));
+    const defaultTree = restorableTrees.find(t => t.is_default) || null;
+    const ordered = restorableTrees.slice().sort((a, b) => Number(!!a.is_default) - Number(!!b.is_default));
     _kfSkipNextSeedCount = ordered.length;
     for (const tree of ordered) {
       const jsonText = JSON.stringify(tree.data || {});
       const file = new File([jsonText], (tree.name || "saved") + ".ged", { type: "text/plain" });
+      file._kfTreeMeta = {
+        tree_uuid: tree.tree_uuid || null,
+        owner_uuid: tree.owner_uuid || null,
+        owner_email: tree.owner_email || null,
+        relation: tree.relation || null,
+        common_name: _kfSourceNameFromFileName(tree.name || "saved"),
+      };
       if (window._kfLoadFiles) await window._kfLoadFiles([file]);
     }
     if (defaultTree?.name && window.kfApi?.setActiveTree) {
@@ -518,11 +528,12 @@ async function seedCloudDb(source = null) {
     const resp = await fetch("/api/gedcom/seed", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
-      body: JSON.stringify({ name: sourceName, is_default: _kfActiveTreeName === sourceName, individuals, events, families }),
+      body: JSON.stringify({ name: src?.common_name || sourceName, tree_uuid: src?.tree_uuid || null, is_default: _kfActiveTreeName === sourceName, individuals, events, families }),
     });
     if (resp.ok) {
       const data = await resp.json();
       _kfSourceId = data.source_id ?? null;
+      if (src && data.tree_uuid) src.tree_uuid = data.tree_uuid;
     }
   } catch (e) {
     console.warn("[kf] seedCloudDb:", e.message || e);
@@ -532,7 +543,8 @@ async function seedCloudDb(source = null) {
 function _kfCloudTreesPayload() {
   const activeName = _kfActiveTreeName;
   return [..._kfLoadedSources.values()].map(src => ({
-    name: src.name,
+    name: src.common_name || src.name,
+    tree_uuid: src.tree_uuid || null,
     is_default: src.name === activeName,
     individuals: src.individuals.map(ind => ({
       id: ind.id,

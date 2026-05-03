@@ -1,4 +1,5 @@
 import { createClerkClient } from "@clerk/backend";
+import { ensureUserIdentitySchema } from "./api/gedcom/_lib";
 
 export interface UserContext {
   type: "anon" | "regular" | "vip";
@@ -103,16 +104,18 @@ async function upsertAuthenticatedUser(
   email: string,
   env: Env
 ): Promise<void> {
+  await ensureUserIdentitySchema(env);
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
-    `INSERT INTO users (user_id, email, last_login, gedcom_expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO users (user_id, email, owner_uuid, last_login, gedcom_expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET
        email = excluded.email,
        last_login = excluded.last_login,
-       gedcom_expires_at = excluded.gedcom_expires_at`
+       gedcom_expires_at = excluded.gedcom_expires_at,
+       owner_uuid = COALESCE(users.owner_uuid, excluded.owner_uuid)`
   )
-    .bind(userId, email, now, now + 7 * 86400, now)
+    .bind(userId, email, crypto.randomUUID(), now, now + 7 * 86400, now)
     .run();
 }
 

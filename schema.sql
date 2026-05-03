@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS users (
   user_id           TEXT PRIMARY KEY,
+  owner_uuid        TEXT UNIQUE,
   email             TEXT NOT NULL,
   api_key           TEXT,
   last_login        INTEGER NOT NULL,
@@ -50,8 +51,10 @@ CREATE TABLE IF NOT EXISTS demo_sources (
 
 CREATE TABLE IF NOT EXISTS ged_sources (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  tree_uuid     TEXT UNIQUE,
   user_id       TEXT    NOT NULL,
   owner_user_id TEXT,
+  owner_uuid    TEXT,
   owner_email   TEXT,
   name          TEXT    NOT NULL,
   loaded_at     TEXT    NOT NULL,
@@ -61,6 +64,7 @@ CREATE TABLE IF NOT EXISTS ged_sources (
   is_default    INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_user_name ON ged_sources(user_id, name);
+CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_owner_uuid_name ON ged_sources(owner_uuid, name) WHERE owner_uuid IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS tree_shares (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,5 +1,5 @@
 import type { Env, UserContext } from "../../_middleware";
-import { deleteAllUserGedcomData, ensureGedcomMultiSourceSchema } from "./_lib";
+import { deleteAllUserGedcomData, ensureGedcomMultiSourceSchema, getOrCreateOwnerUuid } from "./_lib";
 
 const MAX_TREES = 24;
 
@@ -16,6 +16,7 @@ type IndividualIn = {
 type FamilyIn = { id: string; husb?: string | null; wife?: string | null; chil?: string[] };
 type TreeIn = {
   name: string;
+  tree_uuid?: string;
   is_default?: boolean;
   individuals?: IndividualIn[];
   families?: FamilyIn[];
@@ -78,6 +79,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   let defaultName = trees.find(t => t.is_default)?.name ?? trees[0]?.name ?? null;
   const loadedAt = new Date().toISOString();
   const ownerEmail = user.email ?? user.id;
+  const ownerUuid = await getOrCreateOwnerUuid(ctx.env, user.id, user.email);
 
   for (const tree of trees) {
     const individuals = tree.individuals ?? [];
@@ -89,10 +91,10 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       place: e.place ?? null,
     })));
     const srcResult = await db.prepare(
-      `INSERT INTO ged_sources (user_id, owner_user_id, owner_email, name, loaded_at, n_individuals, n_events, n_families, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ged_sources (tree_uuid, user_id, owner_user_id, owner_uuid, owner_email, name, loaded_at, n_individuals, n_events, n_families, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(user.id, user.id, ownerEmail, tree.name, loadedAt, individuals.length, events.length, families.length, tree.name === defaultName ? 1 : 0)
+      .bind(tree.tree_uuid || crypto.randomUUID(), user.id, user.id, ownerUuid, ownerEmail, tree.name, loadedAt, individuals.length, events.length, families.length, tree.name === defaultName ? 1 : 0)
       .run();
     const sourceId = srcResult.meta.last_row_id as number;
 

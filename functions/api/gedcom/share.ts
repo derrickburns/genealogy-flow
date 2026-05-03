@@ -1,5 +1,5 @@
 import type { Env, UserContext } from "../../_middleware";
-import { CATALOG_TREES, isCatalogOwner } from "../catalog/_lib";
+import { CATALOG_TREES, catalogTreeByShareKey, isCatalogOwner } from "../catalog/_lib";
 import { ensureGedcomMultiSourceSchema, normalizeEmail } from "./_lib";
 
 type ShareRow = {
@@ -22,16 +22,18 @@ function validShareEmail(email: string): boolean {
 
 async function ownedGedcomTrees(env: Env, user: UserContext) {
   const rows = await env.DB.prepare(`
-    SELECT id, name, owner_email
+    SELECT id, tree_uuid, name, owner_email, owner_uuid
     FROM ged_sources
     WHERE user_id = ? OR owner_user_id = ? OR lower(COALESCE(owner_email, '')) = ?
     ORDER BY loaded_at ASC, id ASC
-  `).bind(user.id, user.id, normalizeEmail(user.email)).all<{ id: number; name: string; owner_email: string | null }>();
+  `).bind(user.id, user.id, normalizeEmail(user.email)).all<{ id: number; tree_uuid: string | null; name: string; owner_email: string | null; owner_uuid: string | null }>();
   return (rows.results ?? []).map(row => ({
     kind: "gedcom",
-    key: String(row.id),
+    key: row.tree_uuid || String(row.id),
+    tree_uuid: row.tree_uuid,
     name: row.name,
     owner_email: row.owner_email ?? user.email ?? "",
+    owner_uuid: row.owner_uuid,
   }));
 }
 
@@ -40,7 +42,9 @@ async function ownedShareableTrees(env: Env, user: UserContext) {
     .filter(tree => !tree.publicDemo && isCatalogOwner(tree, user.email))
     .map(tree => ({
       kind: "catalog",
-      key: tree.key,
+      key: tree.uuid,
+      catalog_key: tree.key,
+      tree_uuid: tree.uuid,
       name: tree.name,
       owner_email: tree.ownerEmail,
     }));
@@ -83,14 +87,15 @@ async function responseState(env: Env, user: UserContext) {
 
 async function canManageTree(env: Env, user: UserContext, kind: string, key: string): Promise<boolean> {
   if (kind === "catalog") {
-    const tree = CATALOG_TREES.find(t => t.key === key);
+    const tree = catalogTreeByShareKey(key);
     return !!tree && !tree.publicDemo && isCatalogOwner(tree, user.email);
   }
   if (kind !== "gedcom") return false;
   const row = await env.DB.prepare(`
     SELECT id FROM ged_sources
-    WHERE id = ? AND (user_id = ? OR owner_user_id = ? OR lower(COALESCE(owner_email, '')) = ?)
-  `).bind(Number(key), user.id, user.id, normalizeEmail(user.email)).first<{ id: number }>();
+    WHERE (tree_uuid = ? OR id = ?)
+      AND (user_id = ? OR owner_user_id = ? OR lower(COALESCE(owner_email, '')) = ?)
+  `).bind(key, Number(key) || -1, user.id, user.id, normalizeEmail(user.email)).first<{ id: number }>();
   return !!row;
 }
 
@@ -113,11 +118,15 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     return json({ error: "Invalid JSON" }, { status: 400 });
   }
   const kind = String(body.kind || "").trim();
-  const key = String(body.key || "").trim();
+  let key = String(body.key || "").trim();
   const email = normalizeEmail(body.email);
   const action = body.action === "remove" ? "remove" : "add";
   if (!kind || !key || !email) return json({ error: "kind, key, and email required" }, { status: 422 });
   if (!validShareEmail(email)) return json({ error: "Enter a valid email address" }, { status: 422 });
+  if (kind === "catalog") {
+    const tree = catalogTreeByShareKey(key);
+    if (tree) key = tree.uuid;
+  }
   if (!(await canManageTree(ctx.env, user, kind, key))) return json({ error: "Only the tree owner can manage sharing" }, { status: 403 });
 
   if (action === "remove") {

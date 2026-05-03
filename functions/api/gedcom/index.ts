@@ -3,6 +3,7 @@ import { accessibleGedSourceIds, deleteAllUserGedcomData, ensureGedcomMultiSourc
 
 type SourceRow = {
   id: number;
+  tree_uuid: string | null;
   name: string;
   is_default: number;
   loaded_at: string;
@@ -10,6 +11,7 @@ type SourceRow = {
   n_events: number;
   n_families: number;
   owner_email: string | null;
+  owner_uuid: string | null;
   relation: string;
 };
 
@@ -26,11 +28,19 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       headers: { "Content-Type": "application/json" },
     });
   }
-  const requestedId = Number(new URL(ctx.request.url).searchParams.get("source_id") || "");
-  const selectedIds = Number.isFinite(requestedId) && requestedId > 0
-    ? allowedIds.filter(id => id === requestedId)
-    : allowedIds;
-  if (requestedId && !selectedIds.length) {
+  const url = new URL(ctx.request.url);
+  const requestedTreeUuid = url.searchParams.get("tree_uuid") || "";
+  const requestedId = Number(url.searchParams.get("source_id") || "");
+  let selectedIds = allowedIds;
+  if (requestedTreeUuid) {
+    const row = await ctx.env.DB.prepare(`SELECT id FROM ged_sources WHERE tree_uuid = ?`)
+      .bind(requestedTreeUuid)
+      .first<{ id: number }>();
+    selectedIds = row ? allowedIds.filter(id => id === row.id) : [];
+  } else if (Number.isFinite(requestedId) && requestedId > 0) {
+    selectedIds = allowedIds.filter(id => id === requestedId);
+  }
+  if ((requestedTreeUuid || requestedId) && !selectedIds.length) {
     return new Response(JSON.stringify({ error: "Tree not found or not shared with this account" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },
@@ -38,11 +48,11 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   }
   const placeholders = selectedIds.map(() => "?").join(",");
   const rows = await ctx.env.DB.prepare(
-    `SELECT id, name, is_default, loaded_at, n_individuals, n_events, n_families, owner_email,
-            CASE WHEN user_id = ? OR owner_user_id = ? THEN 'owned' ELSE 'shared' END AS relation
+    `SELECT id, tree_uuid, name, is_default, loaded_at, n_individuals, n_events, n_families, owner_email, owner_uuid,
+            CASE WHEN user_id = ? OR owner_user_id = ? OR lower(COALESCE(owner_email, '')) = ? THEN 'owned' ELSE 'shared' END AS relation
      FROM ged_sources WHERE id IN (${placeholders})
      ORDER BY is_default DESC, loaded_at ASC, id ASC`,
-  ).bind(user.id, user.id, ...selectedIds).all<SourceRow>();
+  ).bind(user.id, user.id, String(user.email || "").toLowerCase(), ...selectedIds).all<SourceRow>();
   const sources = rows.results ?? [];
   if (!sources.length) {
     return new Response(JSON.stringify({ trees: [] }), {
@@ -82,6 +92,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
 
     trees.push({
       source_id: src.id,
+      tree_uuid: src.tree_uuid,
       name: src.name,
       is_default: !!src.is_default,
       loaded_at: src.loaded_at,
@@ -89,6 +100,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       n_events: src.n_events,
       n_families: src.n_families,
       owner_email: src.owner_email,
+      owner_uuid: src.owner_uuid,
       relation: src.relation,
       data: {
         individuals: (individualsRows.results ?? []).map((i) => ({

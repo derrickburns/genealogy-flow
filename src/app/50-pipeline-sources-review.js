@@ -393,6 +393,11 @@ function _kfGetLoadedSourcesList() {
     .map(s => ({
       id: s.source_id,
       name: s.name,
+      common_name: s.common_name || s.name,
+      tree_uuid: s.tree_uuid || null,
+      owner_email: s.owner_email || null,
+      owner_uuid: s.owner_uuid || null,
+      relation: s.relation || null,
       loaded_at: s.loaded_at,
       n_individuals: s.n_individuals,
       active: s.name === _kfActiveTreeName,
@@ -466,7 +471,8 @@ async function fetchCloudTrees() {
     const r = await fetch("/api/gedcom/sources", { headers: _kfAuthHeaders() });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error || `cloud sources ${r.status}`);
-    _kfCloudTrees = Array.isArray(j?.trees) ? j.trees : [];
+    _kfCloudTrees = (Array.isArray(j?.trees) ? j.trees : [])
+      .filter(t => !_kfIsPublicDemoSourceName(t?.name));
   } catch (e) {
     console.warn("[kf] fetchCloudTrees:", e?.message || e);
     _kfCloudTrees = [];
@@ -557,8 +563,41 @@ function _kfSourceNameFromFileName(name) {
   return String(name || "").replace(/\.(ged|gedcom|json)$/i, "").trim() || "untitled";
 }
 
+function _kfLoadedSourceByTreeUuid(treeUuid) {
+  if (!treeUuid) return null;
+  return [..._kfLoadedSources.values()].find(s => s.tree_uuid === treeUuid) || null;
+}
+
+function _kfUniqueSourceName(baseName, meta = {}) {
+  const base = _kfSourceNameFromFileName(baseName);
+  const existing = _kfLoadedSources.get(base);
+  if (!existing || (meta.tree_uuid && existing.tree_uuid === meta.tree_uuid)) return base;
+  const owner = meta.owner_email ? ` (${meta.owner_email})` : " (shared)";
+  let candidate = base + owner;
+  let n = 2;
+  while (_kfLoadedSources.has(candidate)) {
+    const src = _kfLoadedSources.get(candidate);
+    if (meta.tree_uuid && src?.tree_uuid === meta.tree_uuid) return candidate;
+    candidate = `${base}${owner} ${n}`;
+    n++;
+  }
+  return candidate;
+}
+
+function _kfFamiliarTreeName(item) {
+  return _kfSourceNameFromFileName(item?.common_name || item?.tree_name || item?.name || item?.key || "");
+}
+
+function _kfTreeLabel(item, counts) {
+  const base = _kfFamiliarTreeName(item);
+  const owner = item?.owner_email || "";
+  return counts?.get(base.toLowerCase()) > 1 && owner ? `${base} · ${owner}` : base;
+}
+
 async function loadCatalogTree(key, opts = {}) {
   if (!key) return false;
+  const catalogMeta = (_kfCatalogTrees || []).find(t => t && t.key === key) || null;
+  if (catalogMeta?.tree_uuid && _kfLoadedSourceByTreeUuid(catalogMeta.tree_uuid)) return true;
   let r;
   if (key === "demo") {
     r = await fetch(DEMO_GED_URL);
@@ -578,7 +617,7 @@ async function loadCatalogTree(key, opts = {}) {
   }
   const raw = await r.text();
   let text = raw;
-  let name = r.headers.get("X-Catalog-Name") || key;
+  let name = key === "demo" ? "DEMO.json" : (r.headers.get("X-Catalog-Name") || key);
   try {
     const parsed = JSON.parse(raw);
     if (typeof parsed?.text === "string") {
@@ -588,8 +627,15 @@ async function loadCatalogTree(key, opts = {}) {
   } catch (_) {}
   if (!text) return false;
   const sourceName = _kfSourceNameFromFileName(name);
-  if (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)) return true;
+  if (catalogMeta?.tree_uuid && _kfLoadedSourceByTreeUuid(catalogMeta.tree_uuid)) return true;
+  if (!catalogMeta?.tree_uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
   const file = new File([text], name, { type: "text/plain" });
+  file._kfTreeMeta = {
+    tree_uuid: catalogMeta?.tree_uuid || null,
+    owner_email: catalogMeta?.owner_email || null,
+    relation: catalogMeta?.relation || null,
+    common_name: sourceName,
+  };
   if (opts.suppressAutosave) _kfSkipNextSeed = true;
   try {
     await processFile(file);
@@ -649,9 +695,14 @@ async function autoLoadPublicDemoTree() {
   return _kfPublicDemoLoadPromise;
 }
 
-async function loadCloudTree(sourceId, opts = {}) {
-  if (!sourceId || !_clerkToken) return false;
-  const r = await fetch("/api/gedcom?source_id=" + encodeURIComponent(String(sourceId)), {
+async function loadCloudTree(sourceKey, opts = {}) {
+  if (!sourceKey || !_clerkToken) return false;
+  const remoteMeta = (_kfCloudTrees || []).find(t => String(t.tree_uuid || t.key || t.source_id) === String(sourceKey)) || null;
+  if (remoteMeta?.tree_uuid && _kfLoadedSourceByTreeUuid(remoteMeta.tree_uuid)) return true;
+  const param = remoteMeta?.tree_uuid || !/^\d+$/.test(String(sourceKey))
+    ? "tree_uuid=" + encodeURIComponent(String(remoteMeta?.tree_uuid || sourceKey))
+    : "source_id=" + encodeURIComponent(String(sourceKey));
+  const r = await fetch("/api/gedcom?" + param, {
     headers: _kfAuthHeaders(),
   });
   if (!r.ok) {
@@ -666,9 +717,17 @@ async function loadCloudTree(sourceId, opts = {}) {
   const payload = await r.json();
   const tree = Array.isArray(payload?.trees) ? payload.trees[0] : null;
   if (!tree) return false;
+  if (tree.tree_uuid && _kfLoadedSourceByTreeUuid(tree.tree_uuid)) return true;
   const sourceName = _kfSourceNameFromFileName(tree.name || "saved");
-  if (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)) return true;
+  if (!tree.tree_uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
   const file = new File([JSON.stringify(tree.data || {})], (tree.name || "saved") + ".ged", { type: "application/json" });
+  file._kfTreeMeta = {
+    tree_uuid: tree.tree_uuid || remoteMeta?.tree_uuid || null,
+    owner_uuid: tree.owner_uuid || remoteMeta?.owner_uuid || null,
+    owner_email: tree.owner_email || remoteMeta?.owner_email || null,
+    relation: tree.relation || remoteMeta?.relation || null,
+    common_name: sourceName,
+  };
   if (opts.suppressAutosave) _kfSkipNextSeed = true;
   try {
     await processFile(file);
@@ -686,7 +745,7 @@ async function autoLoadVipCatalogTrees() {
   _kfVipCatalogAutoLoadUserKey = userKey;
   try {
     const trees = (_kfCatalogTrees.length ? _kfCatalogTrees : await fetchCatalogTrees())
-      .filter(t => t && t.available !== false);
+      .filter(t => t && t.available !== false && t.key !== "demo");
     const pending = trees.filter(t => {
       const sourceName = _kfSourceNameFromFileName(t.name || t.key);
       return !_kfTreeCache.has(sourceName) && !_kfLoadedSources.has(sourceName);
@@ -756,7 +815,7 @@ function _kfRemoveRestrictedVipSources() {
   if (_clerkUserTier !== "vip") return false;
   const archerAllowed = _kfCatalogTrees.some(t => t && t.key === "archer");
   const restricted = [..._kfLoadedSources.values()]
-    .filter(s => _kfIsRestrictedUnsharedSourceName(s.name) && !archerAllowed);
+    .filter(s => (_kfIsRestrictedUnsharedSourceName(s.common_name) || _kfIsRestrictedUnsharedSourceName(s.name)) && !archerAllowed);
   if (!restricted.length) return false;
   for (const src of restricted) {
     _kfLoadedSources.delete(src.name);
@@ -769,6 +828,27 @@ function _kfRemoveRestrictedVipSources() {
     _kfActiveTreeName = remaining[0]?.name || null;
   }
   _kfCatalogTrees = _kfCatalogTrees.filter(t => !t || t.key !== "archer");
+  _kfEnsureSelectedSources();
+  buildBrowserDb();
+  if (timelineLoaded) _kfRebuildSelectedVisualization({ preserveYear: true });
+  return true;
+}
+
+function _kfRemovePublicDemoSourcesForSignedIn() {
+  if (_clerkUserTier === "anon") return false;
+  const demoSources = [..._kfLoadedSources.values()]
+    .filter(s => _kfIsPublicDemoSourceName(s.common_name) || _kfIsPublicDemoSourceName(s.name));
+  if (!demoSources.length) return false;
+  for (const src of demoSources) {
+    _kfLoadedSources.delete(src.name);
+    _kfTreeCache.delete(src.name);
+    _kfSelectedSourceIds.delete(src.source_id);
+    if (_kfActiveTreeName === src.name) _kfActiveTreeName = null;
+  }
+  if (!_kfActiveTreeName) {
+    const remaining = [..._kfLoadedSources.values()];
+    _kfActiveTreeName = remaining[0]?.name || null;
+  }
   _kfEnsureSelectedSources();
   buildBrowserDb();
   if (timelineLoaded) _kfRebuildSelectedVisualization({ preserveYear: true });
@@ -789,12 +869,26 @@ function renderSources(list) {
     return;
   }
   wrap.classList.remove("hidden");
+  const remoteActions = [];
+  for (const t of remoteTrees) {
+    const sourceName = _kfSourceNameFromFileName(t.name || t.key);
+    const loaded = (t.tree_uuid && _kfLoadedSourceByTreeUuid(t.tree_uuid)) ||
+      (!t.tree_uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)));
+    if (t.available === false || loaded) continue;
+    remoteActions.push(t);
+  }
+  const nameCounts = new Map();
+  for (const item of [...filtered, ...remoteActions]) {
+    const key = _kfFamiliarTreeName(item).toLowerCase();
+    if (key) nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
   const sourceChip = s => {
     const n = (s.n_individuals || 0).toLocaleString();
+    const label = _kfTreeLabel(s, nameCounts);
     return (
       `<label class="src${s.active ? " on" : ""}${s.selected ? "" : " excluded"}" data-id="${s.id}" title="${n} people${s.loaded_at ? ` | ${escChat(s.loaded_at)}` : ""}">` +
       `<input class="sel" type="checkbox" data-sel="${s.id}" ${s.selected ? "checked" : ""} title="Include this tree in queries, maps, clusters, and animations">` +
-      `<span class="name">${escChat(s.name)}</span>` +
+      `<span class="name">${escChat(label)}</span>` +
       `</label>`
     );
   };
@@ -809,23 +903,17 @@ function renderSources(list) {
       : "No trees loaded yet. Load a shared tree or open a GEDCOM file.";
     parts.push(`<div class="sourceScopeSummary">${escChat(msg)}</div>`);
   }
-  const remoteActions = [];
-  for (const t of remoteTrees) {
-    const sourceName = _kfSourceNameFromFileName(t.name || t.key);
-    const loaded = _kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName);
-    if (t.available === false || loaded) continue;
-    remoteActions.push(t);
-  }
   if (remoteActions.length) {
     parts.push(`<div class="scopeSection"><span class="scopeTitle">Trees</span>`);
     for (const t of remoteActions) {
       const relation = t.relation ? ` (${t.relation})` : "";
       const owner = t.owner_email ? ` Owner: ${t.owner_email}.` : "";
       const title = `Load ${t.name || t.key}.${owner}`;
+      const label = _kfTreeLabel(t, nameCounts);
       if (t.kind === "cloud") {
-        parts.push(`<button type="button" class="srcAction" data-cloud="${escChat(t.source_id || t.key)}" title="${escChat(title)}">${escChat(t.name)}${escChat(relation)}</button>`);
+        parts.push(`<button type="button" class="srcAction" data-cloud="${escChat(t.tree_uuid || t.key || t.source_id)}" title="${escChat(title)}">${escChat(label)}${escChat(relation)}</button>`);
       } else {
-        parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}" title="${escChat(title)}">${escChat(t.name)}${escChat(relation)}</button>`);
+        parts.push(`<button type="button" class="srcAction" data-catalog="${escChat(t.key)}" title="${escChat(title)}">${escChat(label)}${escChat(relation)}</button>`);
       }
     }
     parts.push(`</div>`);
@@ -1053,7 +1141,8 @@ async function processFile(file) {
   localStorage.setItem("kf_returning", "1");
   stats.textContent = `reading ${file.name}...`;
   let text = await file.text();
-  const incomingSourceName = _kfSourceNameFromFileName(file.name);
+  const sourceMeta = file._kfTreeMeta || {};
+  const incomingSourceName = _kfSourceNameFromFileName(sourceMeta.common_name || file.name);
   const archerAllowed = _kfCatalogTrees.some(t => t && t.key === "archer");
   if (_clerkUserTier === "vip" &&
       _kfIsRestrictedUnsharedSourceName(incomingSourceName) &&
@@ -1114,7 +1203,8 @@ async function processFile(file) {
   // VIP tree after a larger one reuses stale person indices from the old tree.
   timelineLoaded = false;
   eventCities = tl.eventCities || [];
-  lastFileName = file.name.replace(/\.(ged|gedcom)$/i, "") || "genealogy";
+  const sourceNameBase = sourceMeta.common_name || file.name.replace(/\.(ged|gedcom|json)$/i, "") || "genealogy";
+  lastFileName = _kfUniqueSourceName(sourceNameBase, sourceMeta);
   // Cache the raw GEDCOM text so kfApi.setActiveTree(name) can re-activate
   // a previously-loaded tree without forcing the user to drop the file again.
   _kfActiveTreeName = lastFileName;
@@ -1127,6 +1217,11 @@ async function processFile(file) {
   const eventCount = individuals.reduce((sum, ind) => sum + ((ind.events && ind.events.length) || 0), 0);
   const loadedSourceSnapshot = {
     source_id: browserSourceId,
+    tree_uuid: sourceMeta.tree_uuid || null,
+    owner_uuid: sourceMeta.owner_uuid || null,
+    owner_email: sourceMeta.owner_email || null,
+    relation: sourceMeta.relation || null,
+    common_name: sourceMeta.common_name || _kfSourceNameFromFileName(sourceNameBase),
     name: lastFileName,
     loaded_at: new Date().toISOString(),
     n_individuals: individuals.length,
