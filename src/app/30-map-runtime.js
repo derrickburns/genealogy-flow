@@ -1268,8 +1268,15 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-playBtn.addEventListener("click", () => {
-  playing = !playing;
+function _kfSetPlayback(next, opts = {}) {
+  const wantPlaying = !!next && timelineLoaded && !playBtn.disabled;
+  if (wantPlaying) {
+    // Mobile range inputs do not reliably deliver pointerup/pointercancel after
+    // native slider interaction. If this flag stays true, tick() keeps pinning
+    // curYear to range.value and playback appears broken.
+    isDraggingSlider = false;
+  }
+  playing = wantPlaying;
   _kfSetPlayButtonLabel();
   if (playing) {
     const loop = _kfPlaybackLoopBounds();
@@ -1278,7 +1285,36 @@ playBtn.addEventListener("click", () => {
       range.value = curYear;
     }
     clearHighlight();
+  } else if (opts.clearStop) {
+    _kfPlayStopAt = null;
   }
+}
+
+let _kfPlayPointerHandledAt = 0;
+function _kfTogglePlaybackFromUser(e) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  _kfSetPlayback(!playing);
+}
+
+playBtn.addEventListener("pointerdown", e => {
+  if (_kfIsMobileLayout() || e.pointerType === "touch") {
+    e.preventDefault();
+  }
+});
+playBtn.addEventListener("pointerup", e => {
+  if (_kfIsMobileLayout() || e.pointerType === "touch") {
+    _kfPlayPointerHandledAt = Date.now();
+    _kfTogglePlaybackFromUser(e);
+  }
+});
+playBtn.addEventListener("click", e => {
+  if (Date.now() - _kfPlayPointerHandledAt < 600) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  _kfTogglePlaybackFromUser(e);
 });
 
 
@@ -1290,10 +1326,20 @@ function clearHighlight() {
   updatePanel(true);
   _kfRefreshViewChrome(true);
 }
+function _kfEndSliderDrag() {
+  isDraggingSlider = false;
+}
 range.addEventListener("input", () => { curYear = parseFloat(range.value); clearHighlight(); _kfRefreshViewChrome(true); });
 range.addEventListener("pointerdown", () => { isDraggingSlider = true; pushHistory(); });
-range.addEventListener("pointerup", () => { isDraggingSlider = false; });
-range.addEventListener("pointercancel", () => { isDraggingSlider = false; });
+range.addEventListener("pointerup", _kfEndSliderDrag);
+range.addEventListener("pointercancel", _kfEndSliderDrag);
+range.addEventListener("change", _kfEndSliderDrag);
+range.addEventListener("touchend", _kfEndSliderDrag, { passive: true });
+range.addEventListener("touchcancel", _kfEndSliderDrag, { passive: true });
+range.addEventListener("mouseup", _kfEndSliderDrag);
+range.addEventListener("blur", _kfEndSliderDrag);
+window.addEventListener("pointerup", _kfEndSliderDrag, true);
+window.addEventListener("pointercancel", _kfEndSliderDrag, true);
 $("rot").addEventListener("input", e => {
   // Rotate the map's view bearing instead of d3 projection rotation. With
   // Mercator, "rotation" means turning the compass — north no longer up.

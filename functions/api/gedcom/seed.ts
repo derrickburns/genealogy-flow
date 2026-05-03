@@ -1,5 +1,5 @@
 import type { Env, UserContext } from "../../_middleware";
-import { ensureGedcomMultiSourceSchema, getOrCreateOwnerUuid } from "./_lib";
+import { cleanTreeName, computeGedcomContentHash, ensureGedcomMultiSourceSchema, getOrCreateOwnerUuid } from "./_lib";
 
 // D1 hard limit: 100 bound parameters per prepared statement.
 const ROWS_PER_STMT = 14;
@@ -56,7 +56,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     });
   }
 
-  let body: { name?: string; tree_uuid?: string; is_default?: boolean; individuals?: IndividualIn[]; events?: EventIn[]; families?: FamilyIn[] };
+  let body: { name?: string; tree_uuid?: string; content_hash?: string; top_pci_id?: string | null; top_pci_name?: string | null; top_pci_score?: number | null; is_default?: boolean; individuals?: IndividualIn[]; events?: EventIn[]; families?: FamilyIn[] };
   try {
     body = await ctx.request.json();
   } catch {
@@ -66,22 +66,42 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     });
   }
 
-  const { name = "My Tree", is_default = false, individuals = [], events = [], families = [] } = body;
+  const { is_default = false, individuals = [], events = [], families = [] } = body;
+  const name = cleanTreeName(body.name);
+  if (!name) {
+    return new Response(JSON.stringify({ error: "Tree name is required" }), {
+      status: 422,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const db = ctx.env.DB;
   await ensureGedcomMultiSourceSchema(ctx.env);
   const ownerEmail = user.email ?? user.id;
   const ownerUuid = await getOrCreateOwnerUuid(ctx.env, user.id, user.email);
   const incomingTreeUuid = typeof body.tree_uuid === "string" && body.tree_uuid.trim() ? body.tree_uuid.trim() : "";
+  const eventsByIndividual = new Map<string, EventIn[]>();
+  for (const event of events) {
+    let arr = eventsByIndividual.get(event.individual_id);
+    if (!arr) { arr = []; eventsByIndividual.set(event.individual_id, arr); }
+    arr.push(event);
+  }
+  const hashIndividuals = individuals.map(ind => ({
+    ...ind,
+    events: eventsByIndividual.get(ind.id) ?? [],
+  }));
+  const contentHash = await computeGedcomContentHash(hashIndividuals, families);
+  const uploadedAt = Math.floor(Date.now() / 1000);
+  const topPciScore = Number.isFinite(Number(body.top_pci_score)) ? Number(body.top_pci_score) : null;
 
   const existing = await db.prepare(`
     SELECT id, tree_uuid FROM ged_sources
-    WHERE (tree_uuid = ? AND tree_uuid IS NOT NULL AND tree_uuid <> '')
-       OR (owner_uuid = ? AND name = ?)
+    WHERE (owner_uuid = ? AND name = ?)
        OR (user_id = ? AND name = ?)
-    ORDER BY CASE WHEN tree_uuid = ? THEN 0 ELSE 1 END, id ASC
+       OR (tree_uuid = ? AND tree_uuid IS NOT NULL AND tree_uuid <> '')
+    ORDER BY CASE WHEN owner_uuid = ? AND name = ? THEN 0 ELSE 1 END, id ASC
     LIMIT 1
   `)
-    .bind(incomingTreeUuid, ownerUuid, name, user.id, name, incomingTreeUuid)
+    .bind(ownerUuid, name, user.id, name, incomingTreeUuid, ownerUuid, name)
     .first<{ id: number; tree_uuid: string | null }>();
 
   if (is_default) {
@@ -97,9 +117,15 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       db.prepare(`DELETE FROM ged_individuals WHERE source_id = ?`).bind(sid),
       db.prepare(
         `UPDATE ged_sources
-         SET owner_user_id = ?, owner_uuid = ?, owner_email = ?, loaded_at = ?, n_individuals = ?, n_events = ?, n_families = ?, is_default = ?
+         SET owner_user_id = ?, owner_uuid = ?, owner_email = ?, name = ?,
+             content_hash = ?, uploaded_at = ?, top_pci_id = ?, top_pci_name = ?, top_pci_score = ?,
+             loaded_at = ?, n_individuals = ?, n_events = ?, n_families = ?, is_default = ?
          WHERE id = ?`
-      ).bind(user.id, ownerUuid, ownerEmail, new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0, sid),
+      ).bind(
+        user.id, ownerUuid, ownerEmail, name,
+        contentHash, uploadedAt, body.top_pci_id ?? null, body.top_pci_name ?? null, topPciScore,
+        new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0, sid,
+      ),
     ]);
 
     const indiRows: Row[] = individuals.map((i) => [sid, i.id, i.name ?? null, i.sex ?? null, i.birth_year ?? null, i.death_year ?? null, i.famc ?? null]);
@@ -110,15 +136,19 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     await runBatches(db, buildInserts(db, "ged_families", ["source_id","id","husb_id","wife_id"], famRows));
     const fcRows: Row[] = families.flatMap((f) => (f.chil ?? []).map((c): Row => [sid, f.id, c]));
     await runBatches(db, buildInserts(db, "ged_family_children", ["source_id","family_id","child_id"], fcRows));
-    return new Response(JSON.stringify({ ok: true, source_id: sid, tree_uuid: existing.tree_uuid, owner_uuid: ownerUuid, updated: true }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, source_id: sid, tree_uuid: existing.tree_uuid, owner_uuid: ownerUuid, content_hash: contentHash, updated: true }), { headers: { "Content-Type": "application/json" } });
   }
 
   const treeUuid = incomingTreeUuid || crypto.randomUUID();
   const srcResult = await db.prepare(
-    `INSERT INTO ged_sources (tree_uuid, user_id, owner_user_id, owner_uuid, owner_email, name, loaded_at, n_individuals, n_events, n_families, is_default)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ged_sources (tree_uuid, user_id, owner_user_id, owner_uuid, owner_email, name, content_hash, uploaded_at, top_pci_id, top_pci_name, top_pci_score, loaded_at, n_individuals, n_events, n_families, is_default)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(treeUuid, user.id, user.id, ownerUuid, ownerEmail, name, new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0)
+    .bind(
+      treeUuid, user.id, user.id, ownerUuid, ownerEmail, name,
+      contentHash, uploadedAt, body.top_pci_id ?? null, body.top_pci_name ?? null, topPciScore,
+      new Date().toISOString(), individuals.length, events.length, families.length, is_default ? 1 : 0,
+    )
     .run();
   const sourceId = srcResult.meta.last_row_id as number;
 
@@ -131,7 +161,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const fcRows: Row[] = families.flatMap((f) => (f.chil ?? []).map((c): Row => [sourceId, f.id, c]));
   await runBatches(db, buildInserts(db, "ged_family_children", ["source_id","family_id","child_id"], fcRows));
 
-  return new Response(JSON.stringify({ ok: true, source_id: sourceId, tree_uuid: treeUuid, owner_uuid: ownerUuid, created: true }), {
+  return new Response(JSON.stringify({ ok: true, source_id: sourceId, tree_uuid: treeUuid, owner_uuid: ownerUuid, content_hash: contentHash, created: true }), {
     headers: { "Content-Type": "application/json" },
   });
 };

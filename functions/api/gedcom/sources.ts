@@ -12,6 +12,11 @@ type SourceRow = {
   n_families: number;
   owner_email: string | null;
   owner_uuid: string | null;
+  content_hash: string | null;
+  uploaded_at: number | null;
+  top_pci_id: string | null;
+  top_pci_name: string | null;
+  top_pci_score: number | null;
   relation: string;
 };
 
@@ -32,7 +37,8 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   }
   const placeholders = ids.map(() => "?").join(",");
   const rows = await ctx.env.DB.prepare(`
-    SELECT id, tree_uuid, name, is_default, loaded_at, n_individuals, n_events, n_families, owner_email, owner_uuid,
+    SELECT id, tree_uuid, name, is_default, loaded_at, n_individuals, n_events, n_families,
+           owner_email, owner_uuid, content_hash, uploaded_at, top_pci_id, top_pci_name, top_pci_score,
            CASE WHEN user_id = ? OR owner_user_id = ? OR lower(COALESCE(owner_email, '')) = ? THEN 'owned' ELSE 'shared' END AS relation
     FROM ged_sources
     WHERE id IN (${placeholders})
@@ -41,8 +47,9 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
 
   const trees = (rows.results ?? []).map(row => ({
     kind: "cloud",
-    key: row.tree_uuid || String(row.id),
+    key: String(row.id),
     tree_uuid: row.tree_uuid,
+    content_hash: row.content_hash,
     source_id: row.id,
     name: row.name,
     is_default: !!row.is_default,
@@ -52,6 +59,10 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     n_families: row.n_families,
     owner_email: row.owner_email,
     owner_uuid: row.owner_uuid,
+    uploaded_at: row.uploaded_at,
+    top_pci_id: row.top_pci_id,
+    top_pci_name: row.top_pci_name,
+    top_pci_score: row.top_pci_score,
     relation: row.relation,
     available: true,
   }));

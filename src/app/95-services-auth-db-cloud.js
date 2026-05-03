@@ -165,11 +165,41 @@ let _clerkReady = false;
 function _kfSyncUploadCloudVisibility() {
   const uploadCloudBtn = document.getElementById("uploadCloud");
   if (!uploadCloudBtn) return;
-  const signedIn = !!_clerkInstance?.user;
-  uploadCloudBtn.style.display = signedIn && !_kfIsMobileLayout() ? "inline-block" : "none";
+  uploadCloudBtn.style.display = "none";
 }
 window.addEventListener("resize", _kfSyncUploadCloudVisibility);
 window.addEventListener("orientationchange", _kfSyncUploadCloudVisibility);
+
+function _kfSetAccountMenuOpen(open) {
+  const menu = document.getElementById("accountMenu");
+  const btn = document.getElementById("accountBtn");
+  if (!menu || !btn) return;
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function _kfUpdateAccountChrome() {
+  const btn = document.getElementById("accountBtn");
+  const icon = document.getElementById("accountIcon");
+  const label = document.getElementById("accountLabel");
+  if (!btn || !icon || !label) return;
+  const signedIn = !!_clerkInstance?.user;
+  const email = _kfCurrentAuthEmail();
+  btn.classList.toggle("signedIn", signedIn);
+  icon.textContent = "";
+  label.textContent = signedIn ? (email || "Account") : "Sign in";
+  btn.title = signedIn ? "Account" : "Sign in";
+}
+
+function _kfHasSelectedVisualizationTree() {
+  if (!_kfLoadedSources || !_kfSelectedSourceIds) return false;
+  return [..._kfLoadedSources.values()].some(src => _kfSelectedSourceIds.has(src.source_id));
+}
+
+function _kfMaybeOpenTreesPanelForEmptySelection() {
+  if (!_kfIsMobileLayout() || _kfHasSelectedVisualizationTree()) return;
+  if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
+}
 
 function _kfScheduleAuthTokenRetry() {
   if (!_clerkInstance?.user || _kfAuthTokenRetryCount >= 12) return;
@@ -253,6 +283,7 @@ async function updateAuthUI(user) {
     _kfVipCatalogAutoLoadUserKey = "";
     refreshSources();
     autoLoadPublicDemoTree().catch(e => console.warn("[kf] autoLoadPublicDemoTree:", e?.message || e));
+    _kfUpdateAccountChrome();
     return;
   }
 
@@ -276,6 +307,8 @@ async function updateAuthUI(user) {
     _kfRemoveRestrictedVipSources();
     refreshSources();
     _kfScheduleAuthTokenRetry();
+    _kfUpdateAccountChrome();
+    _kfMaybeOpenTreesPanelForEmptySelection();
     return;
   }
 
@@ -305,6 +338,8 @@ async function updateAuthUI(user) {
   _kfRemovePublicDemoSourcesForSignedIn();
   _kfRemoveRestrictedVipSources();
   refreshSources();
+  _kfUpdateAccountChrome();
+  _kfMaybeOpenTreesPanelForEmptySelection();
 
   const startupUserKey = user.id || email || "signed-in";
   if (_kfStartupLoadUserKey !== startupUserKey) {
@@ -316,11 +351,12 @@ async function updateAuthUI(user) {
 async function autoLoadStartupTrees() {
   if (_kfIsMobileLayout()) {
     await refreshSources();
+    _kfMaybeOpenTreesPanelForEmptySelection();
     autoIntroOnce();
     return;
   }
   await autoLoadCloudGedcom();
-  if (_clerkUserTier === "vip") await autoLoadVipCatalogTrees();
+  await autoLoadVipCatalogTrees();
   autoIntroOnce();
 }
 
@@ -365,9 +401,13 @@ async function autoLoadCloudGedcom() {
       const file = new File([jsonText], (tree.name || "saved") + ".ged", { type: "text/plain" });
       file._kfTreeMeta = {
         tree_uuid: tree.tree_uuid || null,
+        content_hash: tree.content_hash || null,
         owner_uuid: tree.owner_uuid || null,
         owner_email: tree.owner_email || null,
         relation: tree.relation || null,
+        top_pci_id: tree.top_pci_id || null,
+        top_pci_name: tree.top_pci_name || null,
+        top_pci_score: tree.top_pci_score ?? null,
         common_name: _kfSourceNameFromFileName(tree.name || "saved"),
       };
       if (window._kfLoadFiles) await window._kfLoadFiles([file]);
@@ -528,12 +568,23 @@ async function seedCloudDb(source = null) {
     const resp = await fetch("/api/gedcom/seed", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
-      body: JSON.stringify({ name: src?.common_name || sourceName, tree_uuid: src?.tree_uuid || null, is_default: _kfActiveTreeName === sourceName, individuals, events, families }),
+      body: JSON.stringify({
+        name: _kfSourceNameFromFileName(src?.common_name || sourceName),
+        content_hash: src?.content_hash || null,
+        top_pci_id: src?.top_pci_id || null,
+        top_pci_name: src?.top_pci_name || null,
+        top_pci_score: src?.top_pci_score ?? null,
+        is_default: _kfActiveTreeName === sourceName,
+        individuals,
+        events,
+        families,
+      }),
     });
     if (resp.ok) {
       const data = await resp.json();
       _kfSourceId = data.source_id ?? null;
       if (src && data.tree_uuid) src.tree_uuid = data.tree_uuid;
+      if (src && data.content_hash) src.content_hash = data.content_hash;
     }
   } catch (e) {
     console.warn("[kf] seedCloudDb:", e.message || e);
@@ -542,9 +593,16 @@ async function seedCloudDb(source = null) {
 
 function _kfCloudTreesPayload() {
   const activeName = _kfActiveTreeName;
-  return [..._kfLoadedSources.values()].map(src => ({
-    name: src.common_name || src.name,
-    tree_uuid: src.tree_uuid || null,
+  return [..._kfLoadedSources.values()].map(src => _kfCloudTreePayloadForSource(src, _kfSourceNameFromFileName(src.common_name || src.name), activeName));
+}
+
+function _kfCloudTreePayloadForSource(src, name, activeName = _kfActiveTreeName) {
+  return {
+    name: _kfSourceNameFromFileName(name),
+    content_hash: src.content_hash || null,
+    top_pci_id: src.top_pci_id || null,
+    top_pci_name: src.top_pci_name || null,
+    top_pci_score: src.top_pci_score ?? null,
     is_default: src.name === activeName,
     individuals: src.individuals.map(ind => ({
       id: ind.id,
@@ -561,7 +619,114 @@ function _kfCloudTreesPayload() {
       wife: f.wife || null,
       chil: f.chil || [],
     })),
-  }));
+  };
+}
+
+function _kfDefaultTreeBaseName() {
+  const email = _kfCurrentAuthEmail();
+  const local = String(email || "family").split("@")[0].trim() || "family";
+  return `${local}'s Tree`;
+}
+
+function _kfNextDefaultTreeName(hash) {
+  const base = _kfDefaultTreeBaseName();
+  const used = new Map();
+  for (const tree of [...(_kfCloudTrees || []), ...(_kfShareState?.trees || [])]) {
+    const name = String(tree?.name || "").trim();
+    if (!name) continue;
+    used.set(name.toLowerCase(), String(tree?.content_hash || ""));
+  }
+  let candidate = base;
+  let n = 2;
+  while (used.has(candidate.toLowerCase()) && used.get(candidate.toLowerCase()) !== hash) {
+    candidate = `${base} ${n++}`;
+  }
+  return candidate;
+}
+
+async function _kfLookupServerTreeByHash(hash) {
+  if (!_clerkToken || !hash) return null;
+  const resp = await fetch("/api/gedcom/hash?hash=" + encodeURIComponent(hash), {
+    headers: _kfAuthHeaders(),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data?.error || `hash lookup ${resp.status}`);
+  return data;
+}
+
+function _kfSourceCameFromServer(sourceMeta) {
+  return !!(
+    sourceMeta?.tree_uuid ||
+    sourceMeta?.owner_email ||
+    sourceMeta?.owner_uuid ||
+    sourceMeta?.relation
+  );
+}
+
+async function _kfMaybePersistLoadedTreeByHash(src, sourceMeta = {}) {
+  if (!_clerkToken || !src?.content_hash || _kfIsMobileLayout() || _kfSourceCameFromServer(sourceMeta)) return null;
+  const lookup = await _kfLookupServerTreeByHash(src.content_hash);
+  if (lookup?.exists && Array.isArray(lookup.trees) && lookup.trees.length) {
+    const existing = lookup.trees.find(t => t.kind === "cloud") || lookup.trees[0];
+    if (existing?.name) src.common_name = _kfSourceNameFromFileName(existing.name);
+    src.owner_email = existing?.owner_email || src.owner_email || null;
+    src.owner_uuid = existing?.owner_uuid || src.owner_uuid || null;
+    src.relation = existing?.relation || src.relation || null;
+    src.server_source_id = existing?.source_id || null;
+    refreshSources();
+    return { ok: true, exists: true, tree: existing };
+  }
+  const name = _kfNextDefaultTreeName(src.content_hash);
+  src.common_name = name;
+  const result = await _kfSaveLoadedTreesToCloud([src], { skipPrompt: true });
+  refreshSources();
+  return result;
+}
+
+async function _kfSaveLoadedTreesToCloud(sources = null, opts = {}) {
+  if (!_clerkToken) return null;
+  const rawTrees = sources
+    ? sources.map(src => _kfCloudTreePayloadForSource(src, _kfSourceNameFromFileName(src.common_name || src.name)))
+    : _kfCloudTreesPayload();
+  const trees = _kfRequireNamesForUpload(rawTrees, opts);
+  if (!trees) return null;
+  if (!trees.length) { alert("No GEDCOM loaded. Open a .ged file first."); return null; }
+  const resp = await fetch("/api/gedcom/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
+    body: JSON.stringify({ trees })
+  });
+  if (!resp.ok) {
+    const j = await resp.json().catch(() => ({}));
+    throw new Error(j?.error || `Save failed: ${resp.status}`);
+  }
+  const result = await resp.json();
+  await refreshSources();
+  return result;
+}
+
+function _kfRequireNamesForUpload(trees, opts = {}) {
+  const named = [];
+  for (const tree of trees) {
+    let name = _kfSourceNameFromFileName(tree.name || "");
+    if (!name || name === "untitled" || name === "saved") {
+      name = opts.skipPrompt
+        ? _kfNextDefaultTreeName(tree.content_hash || "")
+        : prompt("Name this tree before saving it to Kindred servers:", name && name !== "untitled" ? name : "") || "";
+      name = _kfSourceNameFromFileName(name);
+    }
+    if (!name) {
+      alert("Tree save cancelled. Every uploaded tree must have a name.");
+      return null;
+    }
+    named.push({ ...tree, name });
+    const src = [..._kfLoadedSources.values()].find(s =>
+      _kfSourceNameFromFileName(s.common_name || s.name) === _kfSourceNameFromFileName(tree.name) ||
+      _kfSourceNameFromFileName(s.name) === _kfSourceNameFromFileName(tree.name)
+    );
+    if (src) src.common_name = name;
+  }
+  return named;
 }
 
 document.getElementById("authBtn").addEventListener("click", async () => {
@@ -570,10 +735,29 @@ document.getElementById("authBtn").addEventListener("click", async () => {
     return;
   }
   if (_clerkInstance.user) {
+    _kfSetAccountMenuOpen(false);
     await _clerkInstance.signOut();
   } else {
     _clerkInstance.redirectToSignIn({ redirectUrl: window.location.href });
   }
+});
+
+document.getElementById("accountBtn")?.addEventListener("click", () => {
+  if (!_clerkInstance?.user) {
+    document.getElementById("authBtn")?.click();
+    return;
+  }
+  const menu = document.getElementById("accountMenu");
+  _kfSetAccountMenuOpen(!!menu?.hidden);
+});
+document.addEventListener("click", e => {
+  const menu = document.getElementById("accountMenu");
+  const btn = document.getElementById("accountBtn");
+  if (!menu || menu.hidden || btn?.contains(e.target) || menu.contains(e.target)) return;
+  _kfSetAccountMenuOpen(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") _kfSetAccountMenuOpen(false);
 });
 
 // Save Anthropic API key to localStorage (stays in browser, never sent to server)
@@ -592,22 +776,14 @@ document.getElementById("apiKeySave").addEventListener("click", () => {
   applyChatAccess(_clerkUserTier);
 });
 
-// Save all loaded trees to short-lived cloud persistence.
-document.getElementById("uploadCloud").addEventListener("click", async () => {
-  if (!_clerkToken) return;
-  const trees = _kfCloudTreesPayload();
-  if (!trees.length) { alert("No GEDCOM loaded. Open a .ged file first."); return; }
-  const resp = await fetch("/api/gedcom/upload", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
-    body: JSON.stringify({ trees })
-  });
-  if (resp.ok) {
-    const j = await resp.json();
+document.getElementById("uploadCloud")?.addEventListener("click", async () => {
+  try {
+    const j = await _kfSaveLoadedTreesToCloud();
+    if (!j) return;
     const d = new Date(j.expires_at * 1000).toLocaleDateString();
     alert(`Saved ${j.trees} tree(s) on Kindred servers free of charge until ${d}. You may delete or update this data at any time.`);
-  } else {
-    alert("Save failed: " + resp.status);
+  } catch (e) {
+    alert(e?.message || "Save failed");
   }
 });
 

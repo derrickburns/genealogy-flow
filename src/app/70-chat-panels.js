@@ -22,6 +22,7 @@ function _kfUpdateMobileSheetTitle(tab) {
     tab === "person" ? "Person" :
     tab === "cluster" ? "Cluster" :
     tab === "options" ? "Options" :
+    tab === "trees" ? "Trees" :
     tab === "tour" ? "Tour" :
     "AI";
 }
@@ -48,7 +49,7 @@ function _kfSetMobileSheetState(state) {
     _mobileSheetHandleEl.setAttribute("aria-expanded", next !== "peek" ? "true" : "false");
     _mobileSheetHandleEl.setAttribute(
       "aria-label",
-      next === "peek" ? "Open details panel" : next === "open" ? "Expand details panel" : "Collapse details panel",
+      next === "peek" ? "Open details panel" : "Close details panel",
     );
   }
   requestAnimationFrame(() => { resize(); renderMigBar(); });
@@ -66,11 +67,11 @@ function _kfDemoteMobileSheet() {
 
 function _kfBumpMobileSheetForTab(tab) {
   if (!_kfIsMobileLayout()) return;
-  _kfSetMobileSheetState(tab === "chat" ? "full" : "open");
+  _kfSetMobileSheetState("open");
 }
 
 function _kfSetSideTab(tab) {
-  const next = tab === "person" || tab === "cluster" || tab === "options" || tab === "tour" ? tab : "chat";
+  const next = tab === "person" || tab === "cluster" || tab === "options" || tab === "trees" || tab === "tour" ? tab : "chat";
   if (next === "tour" && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
   document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
     btn.classList.toggle("on", btn.dataset.sideTab === next);
@@ -134,7 +135,6 @@ function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
       if (ignoreTap) return;
       const cur = $("panel")?.dataset.sheet || "peek";
       if (cur === "peek") _kfSetMobileSheetState("open");
-      else if (cur === "open") _kfSetMobileSheetState("full");
       else _kfSetMobileSheetState("peek");
     } else if (dy < -45) {
       _kfPromoteMobileSheet();

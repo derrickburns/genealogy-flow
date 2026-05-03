@@ -668,8 +668,16 @@ window.kfApi = {
     updatePanel(true);
     return { ok: true, year: Math.floor(y) };
   },
-  play() { if (!playing) playBtn.click(); return { ok: true, playing: true }; },
-  pause() { if (playing) playBtn.click(); return { ok: true, playing: false }; },
+  play() {
+    if (typeof _kfSetPlayback === "function") _kfSetPlayback(true);
+    else if (!playing) playBtn.click();
+    return { ok: true, playing: true };
+  },
+  pause() {
+    if (typeof _kfSetPlayback === "function") _kfSetPlayback(false, { clearStop: true });
+    else if (playing) playBtn.click();
+    return { ok: true, playing: false };
+  },
   setRoot(query) {
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
@@ -1134,7 +1142,8 @@ window.kfApi = {
     curYear = yA;
     range.value = yA;
     _kfPlayStopAt = yB;
-    if (!playing) playBtn.click();
+    if (typeof _kfSetPlayback === "function") _kfSetPlayback(true);
+    else if (!playing) playBtn.click();
     return { ok: true, from: yA, to: yB, secPerYear: parseFloat(speedSel.value) };
   },
 

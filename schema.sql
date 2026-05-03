@@ -57,6 +57,11 @@ CREATE TABLE IF NOT EXISTS ged_sources (
   owner_uuid    TEXT,
   owner_email   TEXT,
   name          TEXT    NOT NULL,
+  content_hash  TEXT,
+  uploaded_at   INTEGER,
+  top_pci_id    TEXT,
+  top_pci_name  TEXT,
+  top_pci_score REAL,
   loaded_at     TEXT    NOT NULL,
   n_individuals INTEGER DEFAULT 0,
   n_events      INTEGER DEFAULT 0,
@@ -65,6 +70,7 @@ CREATE TABLE IF NOT EXISTS ged_sources (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_user_name ON ged_sources(user_id, name);
 CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_owner_uuid_name ON ged_sources(owner_uuid, name) WHERE owner_uuid IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ged_sources_content_hash ON ged_sources(content_hash);
 
 CREATE TABLE IF NOT EXISTS tree_shares (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,16 +1,90 @@
 import type { Env } from "../../_middleware";
 
-const INITIAL_ARCHER_SHARED_WITH = [
-  "derrickrburns@gmail.com",
+const INITIAL_SHARED_CATALOG_EMAILS = [
+  "mayasylvia.burns@gmail.com",
+  "jamil.burns@gmail.com",
   "ginagregoryburns@gmail.com",
+];
+
+const INITIAL_ARCHER_EXTRA_SHARED_WITH = [
   "f.d.gregory@att.net",
 ];
+
+const INITIAL_SHARED_CATALOG_KEYS = ["golden-rosenberg", "gregory-henry", "archer"];
 
 export const DEFAULT_TREE_OWNER_EMAIL = "derrickrburns@gmail.com";
 export const CATALOG_ARCHER_TREE_UUID = "14d2dad8-3582-49c2-b439-99aa30d4370b";
 
 export function normalizeEmail(email: string | undefined | null): string {
   return String(email || "").trim().toLowerCase();
+}
+
+export function cleanTreeName(name: string | undefined | null): string {
+  const cleaned = String(name || "")
+    .trim()
+    .replace(/\.(ged|gedcom|json)(?=\s*(?:$|\(|\u00b7))/ig, "")
+    .replace(/(\.(ged|gedcom|json))+$/i, "")
+    .trim();
+  return cleaned;
+}
+
+export type HashEventIn = {
+  type?: string | null;
+  tag?: string | null;
+  year?: number | null;
+  place?: string | null;
+};
+
+export type HashIndividualIn = {
+  id?: string | null;
+  name?: string | null;
+  sex?: string | null;
+  birth_year?: number | null;
+  death_year?: number | null;
+  famc?: string | null;
+  events?: HashEventIn[];
+};
+
+export type HashFamilyIn = {
+  id?: string | null;
+  husb?: string | null;
+  husb_id?: string | null;
+  wife?: string | null;
+  wife_id?: string | null;
+  chil?: string[];
+};
+
+function canonicalTreePayload(individuals: HashIndividualIn[], families: HashFamilyIn[]): string {
+  const people = (individuals || []).map(ind => ({
+    id: ind.id || "",
+    name: ind.name || "",
+    sex: ind.sex || "",
+    birth_year: ind.birth_year ?? null,
+    death_year: ind.death_year ?? null,
+    famc: ind.famc || "",
+    events: (ind.events || []).map(e => ({
+      type: e.type || e.tag || "",
+      year: e.year ?? null,
+      place: e.place || "",
+    })).sort((a, b) =>
+      String(a.type).localeCompare(String(b.type)) ||
+      Number(a.year ?? -999999) - Number(b.year ?? -999999) ||
+      String(a.place).localeCompare(String(b.place))
+    ),
+  })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const fams = (families || []).map(f => ({
+    id: f.id || "",
+    husb: f.husb || f.husb_id || "",
+    wife: f.wife || f.wife_id || "",
+    chil: (f.chil || []).slice().sort(),
+  })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return JSON.stringify({ individuals: people, families: fams });
+}
+
+export async function computeGedcomContentHash(individuals: HashIndividualIn[], families: HashFamilyIn[]): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalTreePayload(individuals, families));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 function uuid(): string {
@@ -98,6 +172,21 @@ export async function ensureGedcomMultiSourceSchema(env: Env): Promise<void> {
   if (!names.has("tree_uuid")) {
     await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN tree_uuid TEXT`).run();
   }
+  if (!names.has("content_hash")) {
+    await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN content_hash TEXT`).run();
+  }
+  if (!names.has("uploaded_at")) {
+    await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN uploaded_at INTEGER`).run();
+  }
+  if (!names.has("top_pci_id")) {
+    await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN top_pci_id TEXT`).run();
+  }
+  if (!names.has("top_pci_name")) {
+    await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN top_pci_name TEXT`).run();
+  }
+  if (!names.has("top_pci_score")) {
+    await env.DB.prepare(`ALTER TABLE ged_sources ADD COLUMN top_pci_score REAL`).run();
+  }
   await env.DB.batch([
     env.DB.prepare(`UPDATE ged_sources SET owner_user_id = user_id WHERE owner_user_id IS NULL OR owner_user_id = ''`),
     env.DB.prepare(`
@@ -134,6 +223,7 @@ export async function ensureGedcomMultiSourceSchema(env: Env): Promise<void> {
     env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_tree_uuid ON ged_sources(tree_uuid) WHERE tree_uuid IS NOT NULL`),
     env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_owner_uuid_name ON ged_sources(owner_uuid, name) WHERE owner_uuid IS NOT NULL`),
     env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS ged_sources_user_name ON ged_sources(user_id, name)`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS ged_sources_content_hash ON ged_sources(content_hash)`),
   ]);
 
   await env.DB.prepare(`
@@ -144,18 +234,26 @@ export async function ensureGedcomMultiSourceSchema(env: Env): Promise<void> {
     WHERE s.tree_uuid IS NOT NULL AND s.tree_uuid <> ''
   `).run();
 
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO tree_shares (tree_kind, tree_key, owner_email, shared_with_email, created_at)
+    SELECT 'gedcom', CAST(s.id AS TEXT), sh.owner_email, sh.shared_with_email, sh.created_at
+    FROM tree_shares sh
+    JOIN ged_sources s ON sh.tree_kind = 'gedcom' AND sh.tree_key = s.tree_uuid
+    WHERE s.tree_uuid IS NOT NULL AND s.tree_uuid <> ''
+  `).run();
+
   const now = Math.floor(Date.now() / 1000);
-  await env.DB.batch(INITIAL_ARCHER_SHARED_WITH.map(email =>
-    env.DB.prepare(`
-      INSERT OR IGNORE INTO tree_shares (tree_kind, tree_key, owner_email, shared_with_email, created_at)
-      VALUES ('catalog', 'archer', ?, ?, ?)
-    `).bind(DEFAULT_TREE_OWNER_EMAIL, normalizeEmail(email), now)
-  ));
-  await env.DB.batch(INITIAL_ARCHER_SHARED_WITH.map(email =>
+  const catalogShares = INITIAL_SHARED_CATALOG_KEYS.flatMap(key => {
+    const emails = key === "archer"
+      ? [...INITIAL_SHARED_CATALOG_EMAILS, ...INITIAL_ARCHER_EXTRA_SHARED_WITH]
+      : INITIAL_SHARED_CATALOG_EMAILS;
+    return emails.map(email => ({ treeKey: key, email }));
+  });
+  await env.DB.batch(catalogShares.map(share =>
     env.DB.prepare(`
       INSERT OR IGNORE INTO tree_shares (tree_kind, tree_key, owner_email, shared_with_email, created_at)
       VALUES ('catalog', ?, ?, ?, ?)
-    `).bind(CATALOG_ARCHER_TREE_UUID, DEFAULT_TREE_OWNER_EMAIL, normalizeEmail(email), now)
+    `).bind(share.treeKey, DEFAULT_TREE_OWNER_EMAIL, normalizeEmail(share.email), now)
   ));
 }
 

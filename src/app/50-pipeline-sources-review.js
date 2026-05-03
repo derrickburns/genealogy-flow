@@ -395,9 +395,13 @@ function _kfGetLoadedSourcesList() {
       name: s.name,
       common_name: s.common_name || s.name,
       tree_uuid: s.tree_uuid || null,
+      content_hash: s.content_hash || null,
       owner_email: s.owner_email || null,
       owner_uuid: s.owner_uuid || null,
       relation: s.relation || null,
+      top_pci_id: s.top_pci_id || null,
+      top_pci_name: s.top_pci_name || null,
+      top_pci_score: s.top_pci_score ?? null,
       loaded_at: s.loaded_at,
       n_individuals: s.n_individuals,
       active: s.name === _kfActiveTreeName,
@@ -472,7 +476,7 @@ async function fetchCloudTrees() {
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error || `cloud sources ${r.status}`);
     _kfCloudTrees = (Array.isArray(j?.trees) ? j.trees : [])
-      .filter(t => !_kfIsPublicDemoSourceName(t?.name));
+      .filter(t => _kfCanonicalTreeName(t?.name) !== "demo");
   } catch (e) {
     console.warn("[kf] fetchCloudTrees:", e?.message || e);
     _kfCloudTrees = [];
@@ -484,7 +488,7 @@ async function refreshSharePanel() {
   const panel = document.getElementById("sharingPanel");
   const list = document.getElementById("sharingList");
   if (!panel || !list) return;
-  if (_kfIsMobileLayout() || !_clerkToken || _clerkUserTier === "anon") {
+  if (!_clerkToken || _clerkUserTier === "anon") {
     panel.hidden = true;
     return;
   }
@@ -504,25 +508,45 @@ async function refreshSharePanel() {
 function renderSharePanel() {
   const list = document.getElementById("sharingList");
   if (!list) return;
-  const trees = _kfShareState?.trees || [];
-  if (!trees.length) {
-    list.innerHTML = `<div class="shareEmpty">Sign in on desktop and save a loaded tree on Kindred servers for 7 days free of charge. Saved trees can be shared with other people by email. Shared tree data is stored on Kindred servers; you may delete or update your shared data at any time.</div>`;
-    return;
-  }
-  list.innerHTML = trees.map(tree => {
+  const savedTrees = _kfShareState?.trees || [];
+
+  const savedHtml = savedTrees.length ? savedTrees.map(tree => {
+    const name = _kfFamiliarTreeName(tree);
     const shares = tree.shares || [];
     const shareRows = shares.length
       ? shares.map(s => `<span class="shareEmail">${escChat(s.email)} <button type="button" data-share-remove="${escChat(tree.kind)}:${escChat(tree.key)}:${escChat(s.email)}" title="Remove share">×</button></span>`).join("")
       : `<span class="shareNone">Not shared yet</span>`;
+    const uploaded = tree.uploaded_at ? new Date(tree.uploaded_at * 1000).toLocaleString() : "unknown";
+    const hash = tree.content_hash ? `${tree.content_hash.slice(0, 12)}...` : "legacy";
+    const top = tree.top_pci_name ? `${tree.top_pci_name}${tree.top_pci_score != null ? ` (${Math.round(tree.top_pci_score * 100)}%)` : ""}` : "unknown";
     return `<div class="shareTree" data-share-tree="${escChat(tree.kind)}:${escChat(tree.key)}">` +
-      `<div class="shareTreeHead"><b>${escChat(tree.name)}</b><span>${escChat(tree.kind === "catalog" ? "server tree" : "your tree")}</span></div>` +
+      `<div class="shareTreeHead"><b>${escChat(name)}</b><span>${escChat(tree.kind === "catalog" ? "server tree" : "saved tree")}</span></div>` +
+      `<div class="treeMeta">Owner: ${escChat(tree.owner_email || "")}<br>Uploaded: ${escChat(uploaded)}<br>Top PCI: ${escChat(top)}<br>Hash: ${escChat(hash)}</div>` +
+      (tree.kind === "gedcom"
+        ? `<form class="treeRename" data-share-kind="${escChat(tree.kind)}" data-share-key="${escChat(tree.key)}">` +
+          `<input type="text" value="${escChat(name)}" aria-label="Rename tree">` +
+          `<button type="submit">Rename</button>` +
+          `</form>`
+        : "") +
       `<div class="shareEmails">${shareRows}</div>` +
       `<form class="shareAdd" data-share-kind="${escChat(tree.kind)}" data-share-key="${escChat(tree.key)}">` +
       `<input type="email" placeholder="friend@example.com" aria-label="Email address to share with">` +
       `<button type="submit">Share</button>` +
       `</form>` +
       `</div>`;
-  }).join("");
+  }).join("") : `<div class="shareEmpty">No saved trees yet. Save a loaded tree above before sharing.</div>`;
+
+  list.innerHTML = `<div class="treeSectionTitle">Saved on Kindred servers</div>${savedHtml}`;
+
+  list.querySelectorAll(".treeRename").forEach(form => {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const input = form.querySelector("input");
+      const name = _kfSourceNameFromFileName(input?.value || "");
+      if (!name) { stats.textContent = "tree name is required"; return; }
+      await _kfUpdateTreeShare(form.dataset.shareKind, form.dataset.shareKey, "", "rename", { name });
+    });
+  });
   list.querySelectorAll(".shareAdd").forEach(form => {
     form.addEventListener("submit", async e => {
       e.preventDefault();
@@ -542,12 +566,54 @@ function renderSharePanel() {
   });
 }
 
-async function _kfUpdateTreeShare(kind, key, email, action) {
+function renderLoadedTreeNamePanel(list = _kfGetLoadedSourcesList()) {
+  const panel = document.getElementById("loadedTreeNamePanel");
+  if (!panel) return;
+  const loaded = (list || []).filter(s => (s.n_individuals || 0) > 0);
+  if (!loaded.length) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  const action = _clerkToken && _clerkUserTier !== "anon" ? "Save/update" : "Rename";
+  const help = _clerkToken && _clerkUserTier !== "anon"
+    ? "Rename loaded trees here. Save/update stores the name and tree data on Kindred servers."
+    : "Rename loaded trees in this browser. Sign in to save and share them.";
+  panel.innerHTML =
+    `<div class="sharePanelHead">Loaded trees</div>` +
+    `<div class="shareHelp">${escChat(help)}</div>` +
+    loaded.map(src => {
+      const name = _kfFamiliarTreeName(src);
+      return `<form class="treeLocalRename" data-source-id="${escChat(src.id)}">` +
+        `<input type="text" value="${escChat(name)}" aria-label="Tree name" placeholder="Tree name required">` +
+        `<button type="submit">${escChat(action)}</button>` +
+        `</form>`;
+    }).join("");
+  panel.querySelectorAll(".treeLocalRename").forEach(form => {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const sourceId = Number(form.dataset.sourceId || "");
+      const src = [..._kfLoadedSources.values()].find(s => s.source_id === sourceId);
+      const input = form.querySelector("input");
+      const name = _kfSourceNameFromFileName(input?.value || "");
+      if (!src || !name) { stats.textContent = "tree name is required"; return; }
+      src.common_name = name;
+      if (_clerkToken && _clerkUserTier !== "anon") {
+        await _kfSaveLoadedTreesToCloud([src]);
+        await refreshSharePanel();
+      }
+      refreshSources();
+    });
+  });
+}
+
+async function _kfUpdateTreeShare(kind, key, email, action, extra = {}) {
   if (!_clerkToken) return;
   const r = await fetch("/api/gedcom/share", {
     method: "POST",
     headers: _kfJsonHeaders(),
-    body: JSON.stringify({ kind, key, email, action }),
+    body: JSON.stringify({ kind, key, email, action, ...extra }),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -560,7 +626,11 @@ async function _kfUpdateTreeShare(kind, key, email, action) {
 }
 
 function _kfSourceNameFromFileName(name) {
-  return String(name || "").replace(/\.(ged|gedcom|json)$/i, "").trim() || "untitled";
+  return String(name || "")
+    .trim()
+    .replace(/\.(ged|gedcom|json)(?=\s*(?:$|\(|\u00b7))/ig, "")
+    .replace(/(\.(ged|gedcom|json))+$/i, "")
+    .trim() || "untitled";
 }
 
 function _kfLoadedSourceByTreeUuid(treeUuid) {
@@ -570,6 +640,9 @@ function _kfLoadedSourceByTreeUuid(treeUuid) {
 
 function _kfUniqueSourceName(baseName, meta = {}) {
   const base = _kfSourceNameFromFileName(baseName);
+  const equivalent = [..._kfLoadedSources.values()]
+    .find(src => _kfSameTreeForUi(src, { ...meta, name: base, common_name: meta.common_name || base }));
+  if (equivalent) return equivalent.name;
   const existing = _kfLoadedSources.get(base);
   if (!existing || (meta.tree_uuid && existing.tree_uuid === meta.tree_uuid)) return base;
   const owner = meta.owner_email ? ` (${meta.owner_email})` : " (shared)";
@@ -594,17 +667,64 @@ function _kfTreeLabel(item, counts) {
   return counts?.get(base.toLowerCase()) > 1 && owner ? `${base} · ${owner}` : base;
 }
 
+function _kfCanonicalTreePayload(individuals, families) {
+  const people = (individuals || []).map(ind => ({
+    id: ind.id || "",
+    name: ind.name || "",
+    sex: ind.sex || "",
+    birth_year: ind.birth_year ?? null,
+    death_year: ind.death_year ?? null,
+    famc: ind.famc || "",
+    events: (ind.events || []).map(e => ({
+      type: e.type || e.tag || "",
+      year: e.year ?? null,
+      place: e.place || "",
+    })).sort((a, b) =>
+      String(a.type).localeCompare(String(b.type)) ||
+      Number(a.year ?? -999999) - Number(b.year ?? -999999) ||
+      String(a.place).localeCompare(String(b.place))
+    ),
+  })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const fams = Array.from((families instanceof Map ? families.values() : families) || []).map(f => ({
+    id: f.id || "",
+    husb: f.husb || "",
+    wife: f.wife || "",
+    chil: (f.chil || []).slice().sort(),
+  })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return JSON.stringify({ individuals: people, families: fams });
+}
+
+async function _kfHashText(text) {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function _kfTreeContentHash(individuals, families) {
+  return _kfHashText(_kfCanonicalTreePayload(individuals, families));
+}
+
+function _kfCanonicalTreeName(name) {
+  return _kfSourceNameFromFileName(name)
+    .replace(/\s+\((shared|owned|public|vip|[^)@\s]+@[^)]+)\)(?:\s+\d+)?$/i, "")
+    .trim()
+    .toLowerCase();
+}
+
 function _kfKnownServerTreeName(name) {
   return new Set(["archer", "demo", "golden-rosenberg", "gregory-henry"])
-    .has(String(name || "").trim().toLowerCase());
+    .has(_kfCanonicalTreeName(name));
 }
 
 function _kfSameTreeForUi(a, b) {
+  const ah = String(a?.content_hash || "").trim();
+  const bh = String(b?.content_hash || "").trim();
+  if (ah && bh && ah === bh) return true;
   const au = String(a?.tree_uuid || "").trim();
   const bu = String(b?.tree_uuid || "").trim();
   if (au && bu && au === bu) return true;
-  const an = _kfFamiliarTreeName(a).toLowerCase();
-  const bn = _kfFamiliarTreeName(b).toLowerCase();
+  const an = _kfCanonicalTreeName(_kfFamiliarTreeName(a));
+  const bn = _kfCanonicalTreeName(_kfFamiliarTreeName(b));
   if (!an || an !== bn) return false;
   if (_kfKnownServerTreeName(an)) return true;
   const ao = String(a?.owner_email || "").trim().toLowerCase();
@@ -612,12 +732,41 @@ function _kfSameTreeForUi(a, b) {
   return !!ao && ao === bo;
 }
 
+function _kfIsCatalogDuplicateTree(item) {
+  if (item?.kind === "catalog") return false;
+  const name = _kfCanonicalTreeName(item?.common_name || item?.tree_name || item?.name || item?.key || "");
+  return !!name && _kfKnownServerTreeName(name) &&
+    (_kfCatalogTrees || []).some(t => t?.kind === "catalog" && _kfCanonicalTreeName(t.name || t.key) === name);
+}
+
 function _kfIsTreeLoadedLike(item) {
+  const hash = item?.content_hash;
+  if (hash && [..._kfLoadedSources.values()].some(src => src.content_hash === hash)) return true;
   const uuid = item?.tree_uuid;
   if (uuid && _kfLoadedSourceByTreeUuid(uuid)) return true;
   const sourceName = _kfSourceNameFromFileName(item?.name || item?.key || "");
   if (!uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
   return [..._kfLoadedSources.values()].some(src => _kfSameTreeForUi(src, item));
+}
+
+function _kfRemoteTreePriority(t) {
+  let score = 0;
+  if (t?.kind === "catalog") score -= 1000;
+  if (t?.relation === "owned") score -= 100;
+  if (t?.relation === "shared") score -= 50;
+  if (t?.is_default) score -= 10;
+  return score;
+}
+
+function _kfDedupeRemoteTrees(trees) {
+  const out = [];
+  for (const tree of trees || []) {
+    if (!tree || _kfIsCatalogDuplicateTree(tree)) continue;
+    const idx = out.findIndex(existing => _kfSameTreeForUi(existing, tree));
+    if (idx === -1) out.push(tree);
+    else if (_kfRemoteTreePriority(tree) < _kfRemoteTreePriority(out[idx])) out[idx] = tree;
+  }
+  return out;
 }
 
 function _kfPreferredLoadedSource(a, b) {
@@ -691,7 +840,7 @@ function _kfMaybeShowEmptyTreesModal(show) {
 async function loadCatalogTree(key, opts = {}) {
   if (!key) return false;
   const catalogMeta = (_kfCatalogTrees || []).find(t => t && t.key === key) || null;
-  if (catalogMeta?.tree_uuid && _kfLoadedSourceByTreeUuid(catalogMeta.tree_uuid)) return true;
+  if (catalogMeta && _kfIsTreeLoadedLike(catalogMeta)) return true;
   let r;
   if (key === "demo") {
     r = await fetch(DEMO_GED_URL);
@@ -721,7 +870,7 @@ async function loadCatalogTree(key, opts = {}) {
   } catch (_) {}
   if (!text) return false;
   const sourceName = _kfSourceNameFromFileName(name);
-  if (catalogMeta?.tree_uuid && _kfLoadedSourceByTreeUuid(catalogMeta.tree_uuid)) return true;
+  if (catalogMeta && _kfIsTreeLoadedLike(catalogMeta)) return true;
   if (!catalogMeta?.tree_uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
   const file = new File([text], name, { type: "text/plain" });
   file._kfTreeMeta = {
@@ -792,7 +941,7 @@ async function autoLoadPublicDemoTree() {
 async function loadCloudTree(sourceKey, opts = {}) {
   if (!sourceKey || !_clerkToken) return false;
   const remoteMeta = (_kfCloudTrees || []).find(t => String(t.tree_uuid || t.key || t.source_id) === String(sourceKey)) || null;
-  if (remoteMeta?.tree_uuid && _kfLoadedSourceByTreeUuid(remoteMeta.tree_uuid)) return true;
+  if (remoteMeta && _kfIsTreeLoadedLike(remoteMeta)) return true;
   const param = remoteMeta?.tree_uuid || !/^\d+$/.test(String(sourceKey))
     ? "tree_uuid=" + encodeURIComponent(String(remoteMeta?.tree_uuid || sourceKey))
     : "source_id=" + encodeURIComponent(String(sourceKey));
@@ -811,15 +960,19 @@ async function loadCloudTree(sourceKey, opts = {}) {
   const payload = await r.json();
   const tree = Array.isArray(payload?.trees) ? payload.trees[0] : null;
   if (!tree) return false;
-  if (tree.tree_uuid && _kfLoadedSourceByTreeUuid(tree.tree_uuid)) return true;
+  if (_kfIsTreeLoadedLike(tree)) return true;
   const sourceName = _kfSourceNameFromFileName(tree.name || "saved");
   if (!tree.tree_uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
   const file = new File([JSON.stringify(tree.data || {})], (tree.name || "saved") + ".ged", { type: "application/json" });
   file._kfTreeMeta = {
     tree_uuid: tree.tree_uuid || remoteMeta?.tree_uuid || null,
+    content_hash: tree.content_hash || remoteMeta?.content_hash || null,
     owner_uuid: tree.owner_uuid || remoteMeta?.owner_uuid || null,
     owner_email: tree.owner_email || remoteMeta?.owner_email || null,
     relation: tree.relation || remoteMeta?.relation || null,
+    top_pci_id: tree.top_pci_id || remoteMeta?.top_pci_id || null,
+    top_pci_name: tree.top_pci_name || remoteMeta?.top_pci_name || null,
+    top_pci_score: tree.top_pci_score ?? remoteMeta?.top_pci_score ?? null,
     common_name: sourceName,
   };
   if (opts.suppressAutosave) _kfSkipNextSeed = true;
@@ -833,7 +986,7 @@ async function loadCloudTree(sourceKey, opts = {}) {
 }
 
 async function autoLoadVipCatalogTrees() {
-  if (_clerkUserTier !== "vip" || !_clerkToken) return;
+  if (!_clerkToken) return;
   const userKey = _kfStartupLoadUserKey || _clerkToken;
   if (_kfVipCatalogAutoLoadUserKey === userKey) return;
   _kfVipCatalogAutoLoadUserKey = userKey;
@@ -841,19 +994,18 @@ async function autoLoadVipCatalogTrees() {
     const trees = (_kfCatalogTrees.length ? _kfCatalogTrees : await fetchCatalogTrees())
       .filter(t => t && t.available !== false && t.key !== "demo");
     const pending = trees.filter(t => {
-      const sourceName = _kfSourceNameFromFileName(t.name || t.key);
-      return !_kfTreeCache.has(sourceName) && !_kfLoadedSources.has(sourceName);
+      return !_kfIsTreeLoadedLike(t);
     });
     if (!pending.length) {
       refreshSources();
       _kfRefreshStatsSummary();
       return;
     }
-    stats.textContent = `loading ${pending.length} VIP tree${pending.length === 1 ? "" : "s"}...`;
+    stats.textContent = `loading ${pending.length} shared tree${pending.length === 1 ? "" : "s"}...`;
     let loaded = 0;
     let failed = 0;
     for (const tree of pending) {
-      stats.textContent = `loading VIP tree ${tree.name || tree.key}...`;
+      stats.textContent = `loading shared tree ${tree.name || tree.key}...`;
       try {
         if (await loadCatalogTree(tree.key, { suppressAutosave: true })) loaded++;
         else failed++;
@@ -863,7 +1015,7 @@ async function autoLoadVipCatalogTrees() {
       }
     }
     refreshSources();
-    _kfRefreshStatsSummary(failed ? { suffix: `${failed} VIP failed` } : {});
+    _kfRefreshStatsSummary(failed ? { suffix: `${failed} shared failed` } : {});
   } catch (e) {
     _kfVipCatalogAutoLoadUserKey = "";
     console.warn("[kf] autoLoadVipCatalogTrees:", e?.message || e);
@@ -886,7 +1038,10 @@ function _kfRefreshStatsSummary(opts = {}) {
     `${minYear}-${maxYear}`,
   ];
   if (opts.suffix) parts.push(opts.suffix);
-  stats.textContent = parts.join("  |  ");
+  const summary = parts.join("  |  ");
+  stats.textContent = summary;
+  const treeStats = document.getElementById("treeStats");
+  if (treeStats) treeStats.textContent = summary;
 }
 
 async function deleteSource(id) {
@@ -956,10 +1111,13 @@ function renderSources(list) {
   if (_kfPruneDuplicateLoadedSources()) list = _kfGetLoadedSourcesList();
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
   _kfLoadedTreeCount = filtered.length;
-  const remoteTrees = [...(_kfCatalogTrees || []), ...(_kfCloudTrees || [])];
+  const remoteTrees = _kfDedupeRemoteTrees([...(_kfCatalogTrees || []), ...(_kfCloudTrees || [])]);
   if (filtered.length === 0 && remoteTrees.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
+    renderLoadedTreeNamePanel([]);
+    const treeStats = document.getElementById("treeStats");
+    if (treeStats) treeStats.textContent = "No trees loaded";
     _kfMaybeShowEmptyTreesModal(true);
     if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
     return;
@@ -1008,6 +1166,7 @@ function renderSources(list) {
     parts.push(`</div>`);
   }
   inner.innerHTML = parts.join("");
+  renderLoadedTreeNamePanel(filtered);
   inner.querySelectorAll(".sel[data-sel]").forEach(el => {
     el.addEventListener("change", () => {
       const id = Number(el.getAttribute("data-sel"));
@@ -1289,7 +1448,7 @@ async function processFile(file) {
   const tl = buildTimeline(individuals, geocoder, parentsOf);
   lastTimeline = tl;
   // A newly parsed tree needs fresh typed arrays. Otherwise loading a smaller
-  // VIP tree after a larger one reuses stale person indices from the old tree.
+  // Another tree after a larger one reuses stale person indices from the old tree.
   timelineLoaded = false;
   eventCities = tl.eventCities || [];
   const sourceNameBase = sourceMeta.common_name || file.name.replace(/\.(ged|gedcom|json)$/i, "") || "genealogy";
@@ -1304,12 +1463,20 @@ async function processFile(file) {
     _kfSourceIdByName.set(lastFileName, browserSourceId);
   }
   const eventCount = individuals.reduce((sum, ind) => sum + ((ind.events && ind.events.length) || 0), 0);
+  const candidates = rankRootCandidates(individuals, isParent, parentsOf, indiById);
+  const rootId = candidates[0]?.ind.id ?? individuals[0]?.id ?? null;
+  const topPci = candidates[0] || null;
+  const contentHash = sourceMeta.content_hash || await _kfTreeContentHash(individuals, families);
   const loadedSourceSnapshot = {
     source_id: browserSourceId,
     tree_uuid: sourceMeta.tree_uuid || null,
+    content_hash: contentHash,
     owner_uuid: sourceMeta.owner_uuid || null,
     owner_email: sourceMeta.owner_email || null,
     relation: sourceMeta.relation || null,
+    top_pci_id: topPci?.ind?.id || null,
+    top_pci_name: topPci?.ind?.name || null,
+    top_pci_score: topPci?.pci ?? null,
     common_name: sourceMeta.common_name || _kfSourceNameFromFileName(sourceNameBase),
     name: lastFileName,
     loaded_at: new Date().toISOString(),
@@ -1323,9 +1490,7 @@ async function processFile(file) {
   _kfSelectedSourceIds.add(browserSourceId);
   _kfTreeColorIdx = _kfTreeColorFromName(lastFileName);
 
-  const candidates = rankRootCandidates(individuals, isParent, parentsOf, indiById);
   populateRootSelect(candidates);
-  const rootId = candidates[0]?.ind.id ?? individuals[0]?.id ?? null;
   if (rootId) _kfPreferredRootBySourceName.set(lastFileName, rootId);
   // Highest-PCI person is the *initial* home person and remains discoverable
   // as the "top PCI" suggestion. Picking someone else from search reassigns
@@ -1382,10 +1547,9 @@ async function processFile(file) {
   requestAnimationFrame(() => { if (!playing) playBtn.click(); });
   buildBrowserDb(); // build in-memory SQLite for kfApi.sql() — all users
   refreshSources();
-  if (_clerkToken && _clerkUserTier === "vip" && !_kfSkipNextSeed && _kfSkipNextSeedCount <= 0) {
-    seedCloudDb(loadedSourceSnapshot); // VIP autosaves this tree into the server-side set
-  } else if (_clerkToken && !_kfSkipNextSeed && !_kfIsMobileLayout()) {
-    stats.textContent = `${stats.textContent}  |  Save this tree free for 7 days with Save Trees.`;
+  if (_clerkToken && !_kfSkipNextSeed && _kfSkipNextSeedCount <= 0) {
+    _kfMaybePersistLoadedTreeByHash(loadedSourceSnapshot, sourceMeta)
+      .catch(e => console.warn("[kf] persist loaded tree:", e?.message || e));
   }
   _kfSkipNextSeed = false;
   if (_kfSkipNextSeedCount > 0) _kfSkipNextSeedCount--;

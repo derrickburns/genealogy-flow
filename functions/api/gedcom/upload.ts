@@ -1,5 +1,5 @@
 import type { Env, UserContext } from "../../_middleware";
-import { deleteAllUserGedcomData, ensureGedcomMultiSourceSchema, getOrCreateOwnerUuid } from "./_lib";
+import { cleanTreeName, computeGedcomContentHash, ensureGedcomMultiSourceSchema, getOrCreateOwnerUuid } from "./_lib";
 
 const MAX_TREES = 24;
 
@@ -17,6 +17,10 @@ type FamilyIn = { id: string; husb?: string | null; wife?: string | null; chil?:
 type TreeIn = {
   name: string;
   tree_uuid?: string;
+  content_hash?: string;
+  top_pci_id?: string | null;
+  top_pci_name?: string | null;
+  top_pci_score?: number | null;
   is_default?: boolean;
   individuals?: IndividualIn[];
   families?: FamilyIn[];
@@ -73,15 +77,23 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   await ensureGedcomMultiSourceSchema(ctx.env);
-  await deleteAllUserGedcomData(ctx.env, user.id);
 
   const db = ctx.env.DB;
-  let defaultName = trees.find(t => t.is_default)?.name ?? trees[0]?.name ?? null;
+  let defaultName = cleanTreeName(trees.find(t => t.is_default)?.name ?? trees[0]?.name ?? null);
   const loadedAt = new Date().toISOString();
+  const uploadedAt = Math.floor(Date.now() / 1000);
   const ownerEmail = user.email ?? user.id;
   const ownerUuid = await getOrCreateOwnerUuid(ctx.env, user.id, user.email);
+  const saved: Array<{ source_id: number; name: string; content_hash: string | null; updated: boolean }> = [];
 
   for (const tree of trees) {
+    const treeName = cleanTreeName(tree.name);
+    if (!treeName) {
+      return new Response(JSON.stringify({ error: "Every uploaded tree must have a name" }), {
+        status: 422,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     const individuals = tree.individuals ?? [];
     const families = tree.families ?? [];
     const events = individuals.flatMap(ind => (ind.events ?? []).map((e) => ({
@@ -90,13 +102,51 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       year: e.year ?? null,
       place: e.place ?? null,
     })));
-    const srcResult = await db.prepare(
-      `INSERT INTO ged_sources (tree_uuid, user_id, owner_user_id, owner_uuid, owner_email, name, loaded_at, n_individuals, n_events, n_families, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(tree.tree_uuid || crypto.randomUUID(), user.id, user.id, ownerUuid, ownerEmail, tree.name, loadedAt, individuals.length, events.length, families.length, tree.name === defaultName ? 1 : 0)
-      .run();
-    const sourceId = srcResult.meta.last_row_id as number;
+    const contentHash = await computeGedcomContentHash(individuals, families);
+    const topPciScore = Number.isFinite(Number(tree.top_pci_score)) ? Number(tree.top_pci_score) : null;
+    const existing = await db.prepare(`
+      SELECT id FROM ged_sources
+      WHERE (owner_uuid = ? AND name = ?) OR (user_id = ? AND name = ?)
+      ORDER BY id ASC
+      LIMIT 1
+    `).bind(ownerUuid, treeName, user.id, treeName).first<{ id: number }>();
+
+    let sourceId: number;
+    let updated = false;
+    if (existing) {
+      sourceId = existing.id;
+      updated = true;
+      await db.batch([
+        db.prepare(`DELETE FROM ged_family_children WHERE source_id = ?`).bind(sourceId),
+        db.prepare(`DELETE FROM ged_families WHERE source_id = ?`).bind(sourceId),
+        db.prepare(`DELETE FROM ged_events WHERE source_id = ?`).bind(sourceId),
+        db.prepare(`DELETE FROM ged_individuals WHERE source_id = ?`).bind(sourceId),
+        db.prepare(`
+          UPDATE ged_sources
+          SET user_id = ?, owner_user_id = ?, owner_uuid = ?, owner_email = ?, name = ?,
+              content_hash = ?, uploaded_at = ?, top_pci_id = ?, top_pci_name = ?, top_pci_score = ?,
+              loaded_at = ?, n_individuals = ?, n_events = ?, n_families = ?, is_default = ?
+          WHERE id = ?
+        `).bind(
+          user.id, user.id, ownerUuid, ownerEmail, treeName,
+          contentHash, uploadedAt, tree.top_pci_id ?? null, tree.top_pci_name ?? null, topPciScore,
+          loadedAt, individuals.length, events.length, families.length, treeName === defaultName ? 1 : 0,
+          sourceId,
+        ),
+      ]);
+    } else {
+      const srcResult = await db.prepare(
+        `INSERT INTO ged_sources (tree_uuid, user_id, owner_user_id, owner_uuid, owner_email, name, content_hash, uploaded_at, top_pci_id, top_pci_name, top_pci_score, loaded_at, n_individuals, n_events, n_families, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(
+          tree.tree_uuid || crypto.randomUUID(), user.id, user.id, ownerUuid, ownerEmail, treeName,
+          contentHash, uploadedAt, tree.top_pci_id ?? null, tree.top_pci_name ?? null, topPciScore,
+          loadedAt, individuals.length, events.length, families.length, treeName === defaultName ? 1 : 0,
+        )
+        .run();
+      sourceId = srcResult.meta.last_row_id as number;
+    }
 
     const indiRows: Row[] = individuals.map((i) => [
       sourceId, i.id, i.name ?? null, i.sex ?? null, i.birth_year ?? null, i.death_year ?? null, i.famc ?? null,
@@ -113,6 +163,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
 
     const fcRows: Row[] = families.flatMap((f) => (f.chil ?? []).map((c): Row => [sourceId, f.id, c]));
     await runBatches(db, buildInserts(db, "ged_family_children", ["source_id","family_id","child_id"], fcRows));
+    saved.push({ source_id: sourceId, name: treeName, content_hash: contentHash, updated });
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -121,7 +172,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     .bind(expiresAt, now, user.id)
     .run();
 
-  return new Response(JSON.stringify({ ok: true, trees: trees.length, expires_at: expiresAt }), {
+  return new Response(JSON.stringify({ ok: true, trees: trees.length, saved, expires_at: expiresAt }), {
     headers: { "Content-Type": "application/json" },
   });
 };

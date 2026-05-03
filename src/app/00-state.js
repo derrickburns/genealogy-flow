@@ -19,7 +19,7 @@ function _kfSetPlayButtonLabel() {
   playBtn.setAttribute("title", playing ? "Pause" : "Play");
 }
 // Demo mode: set to a URL of a .ged file to preload it and hide every upload
-// path (Open .ged button, Choose GEDCOM button, drag-drop). Empty disables.
+// path (Upload Tree button, drag-drop). Empty disables.
 const DEMO_GED_URL = "/api/demo";
 let _chatProxyOk = null; // hoisted early; detectChatProxy() is called before its declaration site
 const _kfClientErrors = [];
@@ -207,8 +207,6 @@ let _kfVipCatalogAutoLoadUserKey = "";
 let _kfPublicDemoLoadPromise = null;
 const VIP_CATALOG_TREES = [
   { kind: "catalog", key: "demo", tree_uuid: "8b7a6f25-2712-42a3-a487-af4844686886", name: "DEMO", available: true, relation: "public", public: true },
-  { key: "golden-rosenberg", tree_uuid: "643ee1b5-301e-45a8-9c05-73a46bce7042", name: "Golden-Rosenberg.ged", available: true },
-  { key: "gregory-henry", tree_uuid: "91122fa3-fdb7-488c-a5e8-8dee4d9e3f06", name: "Gregory-Henry.ged", available: true },
 ];
 let _kfCloudTrees = [];
 let _kfShareState = { trees: [] };
@@ -218,7 +216,7 @@ function _kfVisibleCatalogTreesForViewer(trees) {
 }
 function _kfCatalogFallbackTrees() {
   return _kfVisibleCatalogTreesForViewer(
-    VIP_CATALOG_TREES.filter(t => t.key === "demo" || _clerkUserTier === "vip")
+    VIP_CATALOG_TREES
   );
 }
 function _kfCurrentAuthEmail() {
@@ -227,11 +225,11 @@ function _kfCurrentAuthEmail() {
     "";
 }
 function _kfIsRestrictedUnsharedSourceName(name) {
-  const normalized = String(name || "").replace(/\.(ged|gedcom)$/i, "").trim().toLowerCase();
+  const normalized = String(name || "").replace(/(\.(ged|gedcom|json))+$/i, "").trim().toLowerCase();
   return normalized === "archer";
 }
 function _kfIsPublicDemoSourceName(name) {
-  const normalized = String(name || "").replace(/\.(ged|gedcom|json)$/i, "").trim().toLowerCase();
+  const normalized = String(name || "").replace(/(\.(ged|gedcom|json))+$/i, "").trim().toLowerCase();
   return normalized === "demo";
 }
 function _kfTreeLoadedByName(name) {

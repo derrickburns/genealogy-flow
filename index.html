@@ -31,43 +31,45 @@
     <button type="button" id="emptyTreesDismiss">OK</button>
   </div>
 </div>
-<div id="authBar">
-  <span id="authStatus" class="authTier anon">not signed in</span>
-  <span id="authEmail" class="authEmail" style="display:none"></span>
-  <div id="sourcesPanel" class="hidden">
-    <div id="sourcesList" aria-label="Loaded trees"></div>
+<div id="uploadPolicyModal" class="uploadPolicyModal hidden" role="dialog" aria-modal="true" aria-labelledby="uploadPolicyTitle">
+  <div class="uploadPolicyCard">
+    <h2 id="uploadPolicyTitle">Before you upload a tree</h2>
+    <p>Kindred Flow loads your family tree into browser memory so you can explore it on the map and timeline.</p>
+    <p>If you are signed in and save the tree, Kindred stores a server copy for 7 days free of charge. Saved trees are associated with your account and can be updated by uploading a tree with the same name.</p>
+    <p>On desktop, the Trees panel lets you name saved trees and share them with specific people by email. Shared data is stored on Kindred servers while it is available to those people.</p>
+    <div class="uploadPolicyActions">
+      <button type="button" id="uploadPolicyCancel">Cancel</button>
+      <button type="button" id="uploadPolicyContinue">Upload Tree</button>
+    </div>
   </div>
-  <span id="apiKeyRow">
-    <label for="apiKeyInput">Anthropic key:</label>
-    <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
-    <button id="apiKeySave">Save</button>
-    <span id="apiKeyStatus" class="apiKeyStatus"></span>
-  </span>
+</div>
+<div id="authBar">
+  <div class="topBrand">Kindred Flow</div>
   <span class="authSpacer"></span>
-  <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">__COMMIT_SHA__</span>
-  <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
-  <button id="authBtn">Sign in</button>
+  <button id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false" title="Account">
+    <span id="accountIcon" aria-hidden="true"></span>
+    <span id="accountLabel">Sign in</span>
+  </button>
+  <div id="accountMenu" hidden role="menu" aria-label="Account">
+    <div class="accountMenuHead">Account</div>
+    <div class="accountIdentity">
+      <span id="authStatus" class="authTier anon">not signed in</span>
+      <span id="authEmail" class="authEmail" style="display:none"></span>
+    </div>
+    <span id="apiKeyRow">
+      <label for="apiKeyInput">Anthropic key:</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
+      <button id="apiKeySave">Save</button>
+      <span id="apiKeyStatus" class="apiKeyStatus"></span>
+    </span>
+    <span id="buildVersion" style="display:none;font-size:10px;color:#94a3b8;font-family:monospace;">__COMMIT_SHA__</span>
+    <button id="reportIssue" title="Create a GitHub issue with app state and a snapshot">Report issue</button>
+    <button id="authBtn">Sign in</button>
+  </div>
 </div>
 <div id="app">
-<div id="title">
-  <b>Kindred Flow</b>
+<div id="title" class="statusOnly">
   <span id="stats">starting...</span>
-  <button id="pick">Open .ged</button>
-  <button id="uploadCloud" title="Save loaded trees on Kindred servers for 7 days free of charge" style="display:none">Save Trees</button>
-  <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
-  <span id="rootwrap" style="display:none; margin-left:6px; position:relative;">
-    <span id="rootSearchBox" style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:0 4px 0 8px; transition:border-color 0.1s, box-shadow 0.1s;">
-      <span aria-hidden="true" style="font-size:13px; line-height:1; opacity:0.65;" title="Home person: the tree is centered on this person. Their paternal line appears blue and maternal line red. Type to search and pick someone else.">&#127968;</span>
-      <input id="rootSearch" type="search" autocomplete="off" spellcheck="false" placeholder="loading..."
-             title="Home person: the tree is centered on this person. Their paternal line appears blue and maternal line red. Type to search and pick someone else."
-             style="border:none; outline:none; background:transparent; font:inherit; padding:4px 0; width:260px;">
-      <span id="rootPciTag" style="display:none; font-size:10px; color:#7a8aa0; padding:0 2px; white-space:nowrap;"></span>
-      <button id="resetHomeBtn" type="button" title="Reset home to highest-PCI person" tabindex="-1"
-              style="display:none; background:none; border:none; cursor:pointer; color:#9aa6bc; font-size:14px; line-height:1; padding:2px 5px; border-radius:3px;">&#8634;</button>
-    </span>
-    <div id="rootSuggest" style="display:none; position:absolute; top:100%; left:0; min-width:340px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; margin-top:3px; max-height:340px; overflow-y:auto; z-index:9999; box-shadow:0 4px 14px rgba(0,0,0,0.12);"></div>
-    <select id="rootSel" style="display:none;"></select>
-  </span>
   <span id="hiddenControls">
     <select id="filt"><option value="all" selected>all people</option><option value="blood">blood relatives only</option><option value="ancestors">ancestors only</option></select>
     <input type="range" id="rot" min="-180" max="180" step="1" value="0">
@@ -127,10 +129,27 @@
       <button type="button" data-side-tab="person">Person</button>
       <button type="button" data-side-tab="cluster">Cluster</button>
       <button type="button" data-side-tab="options">Options</button>
+      <button type="button" data-side-tab="trees">Trees</button>
       <button type="button" data-side-tab="tour">Tour</button>
       <button type="button" class="on" data-side-tab="chat">AI</button>
     </div>
     <div id="personPane" class="sidePane">
+      <div id="homePersonBlock" class="homePersonBlock">
+        <div class="homePersonHead">Home person</div>
+        <span id="rootwrap" style="display:none; position:relative;">
+          <span id="rootSearchBox" style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; padding:0 4px 0 8px; transition:border-color 0.1s, box-shadow 0.1s;">
+            <span aria-hidden="true" style="font-size:13px; line-height:1; opacity:0.65;" title="Home person: the tree is centered on this person. Their paternal line appears blue and maternal line red. Type to search and pick someone else.">&#127968;</span>
+            <input id="rootSearch" type="search" autocomplete="off" spellcheck="false" placeholder="loading..."
+                   title="Home person: the tree is centered on this person. Their paternal line appears blue and maternal line red. Type to search and pick someone else."
+                   style="border:none; outline:none; background:transparent; font:inherit; padding:4px 0; width:260px;">
+            <span id="rootPciTag" style="display:none; font-size:10px; color:#7a8aa0; padding:0 2px; white-space:nowrap;"></span>
+            <button id="resetHomeBtn" type="button" title="Reset home to highest-PCI person" tabindex="-1"
+                    style="display:none; background:none; border:none; cursor:pointer; color:#9aa6bc; font-size:14px; line-height:1; padding:2px 5px; border-radius:3px;">&#8634;</button>
+          </span>
+          <div id="rootSuggest" style="display:none; position:absolute; top:100%; left:0; min-width:340px; background:#fff; border:1px solid #c0ccd8; border-radius:4px; margin-top:3px; max-height:340px; overflow-y:auto; z-index:9999; box-shadow:0 4px 14px rgba(0,0,0,0.12);"></div>
+          <select id="rootSel" style="display:none;"></select>
+        </span>
+      </div>
       <div id="personEmpty">Click a marker on the map to inspect that person.</div>
       <div id="selectedPerson" hidden></div>
     </div>
@@ -140,6 +159,52 @@
     </div>
     <div id="optionsPane" class="sidePane">
       <div id="optionsPaneContent">
+        <div class="optionSelectorGrid">
+          <section class="optionCard">
+            <label for="clusterModeChoice">Cluster visualization</label>
+            <select id="clusterModeChoice">
+              <option value="none">Individual markers - one dot per person</option>
+              <option value="state">Places as regions - group by state/country</option>
+              <option value="tree">Trees compared - split clusters by tree</option>
+              <option value="gender">Gender mix - show recorded sex mix</option>
+              <option value="parents">Parent knowledge - show known-parent coverage</option>
+              <option value="pie">Lineage mix - show paternal/maternal branches</option>
+              <option value="dispersion">Declutter on zoom - aggregate when zoomed out</option>
+            </select>
+            <p id="clusterModeHelp" class="optionHelp">Show each visible person as an individual marker.</p>
+          </section>
+          <section class="optionCard">
+            <label for="showFilterChoice">People shown</label>
+            <select id="showFilterChoice">
+              <option value="all">Everyone - no relationship filter</option>
+              <option value="blood">Blood relatives - direct biological kin</option>
+              <option value="ancestors">Direct ancestors - parents and grandparents</option>
+            </select>
+            <p id="showFilterHelp" class="optionHelp">Use the selected trees without narrowing by family relationship.</p>
+          </section>
+          <section class="optionCard">
+            <label for="sexFilterChoice">Sex filter</label>
+            <select id="sexFilterChoice">
+              <option value="all">All people - no sex filter</option>
+              <option value="M">Men only - recorded male</option>
+              <option value="F">Women only - recorded female</option>
+            </select>
+            <p id="sexFilterHelp" class="optionHelp">Do not filter by recorded sex.</p>
+          </section>
+          <section class="optionCard">
+            <label for="kinLinesChoice">Kin lines</label>
+            <select id="kinLinesChoice">
+              <option value="0">Off - no relationship lines</option>
+              <option value="3">Closest 3 - show only strongest context</option>
+              <option value="5">Closest 5 - balanced context</option>
+              <option value="10">Closest 10 - broader family context</option>
+              <option value="20">Closest 20 - dense relationship context</option>
+            </select>
+            <p id="kinLinesHelp" class="optionHelp">Hide relationship lines so the map stays clean.</p>
+            <input type="range" id="kinNMain" min="0" max="20" step="1" value="0" hidden>
+            <b id="kinNMainLabel" hidden>0</b>
+          </section>
+        </div>
         <div id="quickChips" class="hidden">
           <span class="chipGroup" data-grp="intent">
             <span class="chipLabel">understand:</span>
@@ -149,30 +214,9 @@
             <button class="quickChip intent" data-intent="weak" title="List the visible records most likely to need review.">weak evidence</button>
             <button class="quickChip intent" data-intent="relation" title="Show nearby kinship lines for the visible people.">relationships</button>
           </span>
-          <span class="chipGroup" data-grp="cluster">
-            <span class="chipLabel">cluster:</span>
-            <button class="quickChip" data-cluster="none" title="No clustering. Show every person as an individual dot.">none</button>
-            <button class="quickChip" data-cluster="state" title="Group people by US state. Each state gets a count and a color.">state</button>
-            <button class="quickChip" data-cluster="gender" title="Group nearby people into clusters and show the male/female breakdown as a pie.">gender</button>
-            <button class="quickChip" data-cluster="parents" title="Group nearby people and show how many have 0, 1, or 2 known biological parents.">parents</button>
-            <button class="quickChip" data-cluster="pie" title="Group nearby people and break each cluster down by ancestral lineage (mother's vs father's side).">lineage</button>
-            <button class="quickChip" data-cluster="tree" title="Group nearby people and show which loaded GEDCOM file each came from.">tree</button>
-          </span>
-          <span class="chipGroup" data-grp="filter">
-            <span class="chipLabel">filter:</span>
-            <button class="quickChip" data-filter="show:blood" title="Show only direct blood relatives of the root person (skip in-laws and adoptive ties).">blood only</button>
-            <button class="quickChip" data-filter="show:ancestors" title="Show only direct ancestors of the root person (parents, grandparents, etc.).">ancestors</button>
-            <button class="quickChip tinted" data-filter="sex:M" style="--c:rgb(40,100,220);" title="Show only men. Click again to clear.">men</button>
-            <button class="quickChip tinted" data-filter="sex:F" style="--c:rgb(220,60,90);" title="Show only women. Click again to clear.">women</button>
-          </span>
           <span class="chipGroup" data-grp="overlay">
             <span class="chipLabel">overlay:</span>
             <button class="quickChip" data-overlay="treeMatches" title="Highlight likely same-person matches between two or more checked GEDCOMs. Each match draws halo rings on both endpoints and a connecting line, so you can see geographic overlap at a glance.">tree matches</button>
-          </span>
-          <span class="chipGroup" style="align-items:center; gap:4px;">
-            <span class="chipLabel">kin lines:</span>
-            <input type="range" id="kinNMain" min="0" max="20" step="1" value="0" style="width:72px; vertical-align:middle;">
-            <b id="kinNMainLabel" style="font-size:11px; min-width:14px; text-align:left; color:#566480;">0</b>
           </span>
           <span class="chipGroup" data-grp="surname" style="display:none;align-items:center;gap:4px;">
             <span class="chipLabel">surname:</span>
@@ -188,11 +232,25 @@
         <div class="options-control-group">
           <label class="checkControl"><input type="checkbox" id="dataQualityToggle"> show data quality concerns</label>
         </div>
-        <div id="sharingPanel" class="sharePanel desktopOnly" hidden>
-          <div class="sharePanelHead">Tree sharing</div>
-          <div class="shareHelp">Sign in to create an account. On desktop, loaded trees can be saved on Kindred servers for 7 days free of charge, associated with your account, and shared with friends by email. Shared tree data is stored on Kindred servers; you may delete or update your shared data at any time.</div>
-          <div id="sharingList"></div>
-        </div>
+      </div>
+    </div>
+    <div id="treesPane" class="sidePane">
+      <div class="treeStatsCard">
+        <div class="treeStatsHead">Current data</div>
+        <div id="treeStats">No trees loaded</div>
+      </div>
+      <div class="treeActions">
+        <button id="pick">Upload Tree</button>
+        <input type="file" id="fileinp" accept=".ged,.gedcom,.GED,.json" multiple>
+      </div>
+      <div id="sourcesPanel" class="hidden">
+        <div id="sourcesList" aria-label="Loaded trees"></div>
+      </div>
+      <div id="loadedTreeNamePanel" class="loadedTreeNamePanel" hidden></div>
+      <div id="sharingPanel" class="sharePanel" hidden>
+        <div class="sharePanelHead">Trees</div>
+        <div class="shareHelp">Name loaded trees before saving them. Saved tree records are owned by your account, keyed by your tree name, and updated when you save a new version with the same name. Distinct trees are identified by content hash.</div>
+        <div id="sharingList"></div>
       </div>
     </div>
     <div id="tourPane" class="sidePane">
