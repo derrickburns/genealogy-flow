@@ -594,6 +594,100 @@ function _kfTreeLabel(item, counts) {
   return counts?.get(base.toLowerCase()) > 1 && owner ? `${base} · ${owner}` : base;
 }
 
+function _kfKnownServerTreeName(name) {
+  return new Set(["archer", "demo", "golden-rosenberg", "gregory-henry"])
+    .has(String(name || "").trim().toLowerCase());
+}
+
+function _kfSameTreeForUi(a, b) {
+  const au = String(a?.tree_uuid || "").trim();
+  const bu = String(b?.tree_uuid || "").trim();
+  if (au && bu && au === bu) return true;
+  const an = _kfFamiliarTreeName(a).toLowerCase();
+  const bn = _kfFamiliarTreeName(b).toLowerCase();
+  if (!an || an !== bn) return false;
+  if (_kfKnownServerTreeName(an)) return true;
+  const ao = String(a?.owner_email || "").trim().toLowerCase();
+  const bo = String(b?.owner_email || "").trim().toLowerCase();
+  return !!ao && ao === bo;
+}
+
+function _kfIsTreeLoadedLike(item) {
+  const uuid = item?.tree_uuid;
+  if (uuid && _kfLoadedSourceByTreeUuid(uuid)) return true;
+  const sourceName = _kfSourceNameFromFileName(item?.name || item?.key || "");
+  if (!uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
+  return [..._kfLoadedSources.values()].some(src => _kfSameTreeForUi(src, item));
+}
+
+function _kfPreferredLoadedSource(a, b) {
+  if (!!a.tree_uuid !== !!b.tree_uuid) return a.tree_uuid ? a : b;
+  if (!!a.owner_email !== !!b.owner_email) return a.owner_email ? a : b;
+  if (_kfActiveTreeName === a.name) return a;
+  if (_kfActiveTreeName === b.name) return b;
+  if (_kfSelectedSourceIds.has(a.source_id) !== _kfSelectedSourceIds.has(b.source_id)) {
+    return _kfSelectedSourceIds.has(a.source_id) ? a : b;
+  }
+  return String(a.name || "").length <= String(b.name || "").length ? a : b;
+}
+
+function _kfPruneDuplicateLoadedSources() {
+  const sources = [..._kfLoadedSources.values()];
+  let changed = false;
+  for (let i = 0; i < sources.length; i++) {
+    const a = sources[i];
+    if (!_kfLoadedSources.has(a.name)) continue;
+    for (let j = i + 1; j < sources.length; j++) {
+      const b = sources[j];
+      if (!_kfLoadedSources.has(b.name) || !_kfSameTreeForUi(a, b)) continue;
+      const keep = _kfPreferredLoadedSource(a, b);
+      const drop = keep === a ? b : a;
+      if (_kfSelectedSourceIds.has(drop.source_id)) _kfSelectedSourceIds.add(keep.source_id);
+      _kfSelectedSourceIds.delete(drop.source_id);
+      if (_kfActiveTreeName === drop.name) _kfActiveTreeName = keep.name;
+      _kfLoadedSources.delete(drop.name);
+      _kfTreeCache.delete(drop.name);
+      changed = true;
+    }
+  }
+  if (changed) {
+    _kfEnsureSelectedSources();
+    buildBrowserDb();
+    if (timelineLoaded) _kfRebuildSelectedVisualization({ preserveYear: true });
+  }
+  return changed;
+}
+
+let _kfEmptyTreesModalBound = false;
+function _kfBindEmptyTreesModal() {
+  if (_kfEmptyTreesModalBound) return;
+  _kfEmptyTreesModalBound = true;
+  const modal = document.getElementById("emptyTreesModal");
+  const dismiss = document.getElementById("emptyTreesDismiss");
+  if (!modal || !dismiss) return;
+  const close = () => {
+    sessionStorage.setItem("kf-empty-trees-dismissed", "1");
+    modal.classList.add("hidden");
+  };
+  dismiss.addEventListener("click", close);
+  modal.addEventListener("click", e => { if (e.target === modal) close(); });
+}
+
+function _kfMaybeShowEmptyTreesModal(show) {
+  const modal = document.getElementById("emptyTreesModal");
+  const body = document.getElementById("emptyTreesBody");
+  if (!modal || !body) return;
+  _kfBindEmptyTreesModal();
+  if (!show || sessionStorage.getItem("kf-empty-trees-dismissed") === "1") {
+    modal.classList.add("hidden");
+    return;
+  }
+  body.textContent = _kfIsMobileLayout()
+    ? "Choose a shared tree below. To load your own family tree data, use the desktop app and sign in."
+    : "Load a shared tree or open a GEDCOM file to start exploring.";
+  modal.classList.remove("hidden");
+}
+
 async function loadCatalogTree(key, opts = {}) {
   if (!key) return false;
   const catalogMeta = (_kfCatalogTrees || []).find(t => t && t.key === key) || null;
@@ -859,24 +953,24 @@ function renderSources(list) {
   const wrap = document.getElementById("sourcesPanel");
   const inner = document.getElementById("sourcesList");
   if (!wrap || !inner) return;
+  if (_kfPruneDuplicateLoadedSources()) list = _kfGetLoadedSourcesList();
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
   _kfLoadedTreeCount = filtered.length;
   const remoteTrees = [...(_kfCatalogTrees || []), ...(_kfCloudTrees || [])];
   if (filtered.length === 0 && remoteTrees.length === 0) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
+    _kfMaybeShowEmptyTreesModal(true);
     if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
     return;
   }
   wrap.classList.remove("hidden");
   const remoteActions = [];
   for (const t of remoteTrees) {
-    const sourceName = _kfSourceNameFromFileName(t.name || t.key);
-    const loaded = (t.tree_uuid && _kfLoadedSourceByTreeUuid(t.tree_uuid)) ||
-      (!t.tree_uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName)));
-    if (t.available === false || loaded) continue;
+    if (t.available === false || _kfIsTreeLoadedLike(t)) continue;
     remoteActions.push(t);
   }
+  _kfMaybeShowEmptyTreesModal(filtered.length === 0);
   const nameCounts = new Map();
   for (const item of [...filtered, ...remoteActions]) {
     const key = _kfFamiliarTreeName(item).toLowerCase();
@@ -897,11 +991,6 @@ function renderSources(list) {
     parts.push(`<div class="scopeSection">`);
     for (const s of filtered) parts.push(sourceChip(s));
     parts.push(`</div>`);
-  } else {
-    const msg = _kfIsMobileLayout()
-      ? "No trees loaded yet. Choose a shared tree below. To load your own family tree data, use the desktop app and sign in."
-      : "No trees loaded yet. Load a shared tree or open a GEDCOM file.";
-    parts.push(`<div class="sourceScopeSummary">${escChat(msg)}</div>`);
   }
   if (remoteActions.length) {
     parts.push(`<div class="scopeSection"><span class="scopeTitle">Trees</span>`);
