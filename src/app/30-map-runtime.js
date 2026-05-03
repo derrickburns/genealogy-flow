@@ -55,7 +55,7 @@ function _kfPickClusterAt(x, y) {
       highlightedDwell = -1;
       highlightInferredYear = -1;
       highlightInferredSrcYear = -1;
-      if (playing) { playing = false; playBtn.textContent = "Play"; }
+      if (playing) { playing = false; _kfSetPlayButtonLabel(); }
       _kfShowClusterCard(cluster, { selectedId: selectedFocusId, focusId: selectedFocusId || lastRootId });
       fxCtx.clearRect(0, 0, W, H);
       applyExpansion();
@@ -88,7 +88,7 @@ function _kfPickClusterAt(x, y) {
     highlightedDwell = bestI;
     highlightInferredYear = -1;
     highlightInferredSrcYear = -1;
-    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    if (playing) { playing = false; _kfSetPlayButtonLabel(); }
     _kfShowPersonCard(bestI);
   }
   fxCtx.clearRect(0, 0, W, H);
@@ -1219,7 +1219,7 @@ function tick(now) {
       if (_kfPlayStopAt != null && curYear >= _kfPlayStopAt) {
         curYear = _kfPlayStopAt;
         playing = false;
-        playBtn.textContent = "Play";
+        _kfSetPlayButtonLabel();
         _kfPlayStopAt = null;
       } else if (_kfPlayStopAt == null) {
         const loop = _kfPlaybackLoopBounds();
@@ -1270,7 +1270,7 @@ function tick(now) {
 
 playBtn.addEventListener("click", () => {
   playing = !playing;
-  playBtn.textContent = playing ? "Pause" : "Play";
+  _kfSetPlayButtonLabel();
   if (playing) {
     const loop = _kfPlaybackLoopBounds();
     if (_kfPlayStopAt == null && loop.active && (curYear < loop.begin || curYear > loop.end)) {

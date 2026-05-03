@@ -694,7 +694,7 @@ function jumpToPersonYear(indId, year) {
   }
   curYear = year;
   range.value = curYear;
-  if (playing) { playing = false; playBtn.textContent = "Play"; }
+  if (playing) { playing = false; _kfSetPlayButtonLabel(); }
   fxCtx.clearRect(0, 0, W, H);
   if (highlightedDwell >= 0) {
     applyExpansion();
@@ -864,7 +864,7 @@ panelList.addEventListener("click", e => {
     highlightInferredSrcYear = -1;
     curYear = dwellY[di];
     range.value = curYear;
-    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    if (playing) { playing = false; _kfSetPlayButtonLabel(); }
     fxCtx.clearRect(0, 0, W, H);
     applyExpansion();
     return;
@@ -886,7 +886,7 @@ panelList.addEventListener("click", e => {
     highlightInferredSrcYear = basedOn;
     curYear = inferredYear >= 0 ? inferredYear : dwellY[i];
     range.value = curYear;
-    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    if (playing) { playing = false; _kfSetPlayButtonLabel(); }
   }
   fxCtx.clearRect(0, 0, W, H);
   applyExpansion();

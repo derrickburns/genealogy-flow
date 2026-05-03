@@ -72,11 +72,6 @@
 <div id="vizArea">
 <div id="vizTabBar" hidden></div>
 <div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div>
-<div id="viewChrome">
-  <div id="viewSummary">Load GEDCOM data to begin.</div>
-  <button id="viewWhy" type="button" hidden>why this view?</button>
-  <div id="focusBreadcrumb" hidden></div>
-</div>
 <div id="mapLegend" class="hidden" style="position:absolute;bottom:28px;left:10px;z-index:10;background:rgba(255,255,255,0.88);border:1px solid #c0ccd8;border-radius:7px;padding:7px 10px;font-size:11px;color:#566480;line-height:1.7;pointer-events:none;min-width:150px;"></div>
 <div id="vizPane">
   <div id="vizPaneHeader">
@@ -94,7 +89,7 @@
   <div id="ui">
     <div class="uirow primary">
       <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
-      <button id="play" disabled>Play</button>
+      <button id="play" disabled aria-label="Play" title="Play">▶</button>
       <div class="rangeWrap" style="position:relative;">
         <canvas id="yearHist"></canvas>
         <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
@@ -183,7 +178,7 @@
         <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">How to use Kindred Flow</div>
         <ul style="text-align:left; font-size:12px; color:#566480; line-height:1.7; margin:0 0 12px 0; padding-left:18px;">
           <li>The map shows each person as a moving dot over their lifetime</li>
-          <li>Press <b>Play</b> to animate births, deaths &amp; migrations through time</li>
+          <li>Press the play icon to animate births, deaths &amp; migrations through time</li>
           <li>Use the <b>Options</b> tab to group by lineage, gender, or geography</li>
           <li>Use the <b>Options</b> tab to focus on blood relatives, ancestors, men, or women</li>
           <li>Click any dot to select that person and see their events in the right panel</li>

@@ -12,6 +12,12 @@ const speedSel = $("speed"), trailSel = $("trail"), stats = $("stats");
 const migrationViewSel = $("migrationView");
 const dropEl = $("drop"), welcome = $("welcome"), fileInp = $("fileinp");
 const rootwrap = $("rootwrap");
+function _kfSetPlayButtonLabel() {
+  if (!playBtn) return;
+  playBtn.textContent = playing ? "\u275a\u275a" : "\u25b6";
+  playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+  playBtn.setAttribute("title", playing ? "Pause" : "Play");
+}
 // Demo mode: set to a URL of a .ged file to preload it and hide every upload
 // path (Open .ged button, Choose GEDCOM button, drag-drop). Empty disables.
 const DEMO_GED_URL = "/api/demo";

@@ -664,7 +664,7 @@ window.kfApi = {
     pushHistory();
     curYear = y;
     range.value = y;
-    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    if (playing) { playing = false; _kfSetPlayButtonLabel(); }
     updatePanel(true);
     return { ok: true, year: Math.floor(y) };
   },
@@ -688,7 +688,7 @@ window.kfApi = {
     highlightInferredSrcYear = -1;
     curYear = dwellY[di];
     range.value = curYear;
-    if (playing) { playing = false; playBtn.textContent = "Play"; }
+    if (playing) { playing = false; _kfSetPlayButtonLabel(); }
     updatePanel(true);
     return { ok: true, person: { id: ind.id, name: ind.name }, dwellYear: dwellY[di] };
   },

@@ -14,6 +14,7 @@ const _clusterEmptyEl = $("clusterEmpty");
 const _mobileSheetHandleEl = $("mobileSheetHandle");
 const _mobileSheetTabsEl = $("sideTabs");
 const _mobileSheetTitleEl = $("mobileSheetTitle");
+let _kfSuppressSideTabClickUntil = 0;
 
 function _kfUpdateMobileSheetTitle(tab) {
   if (!_mobileSheetTitleEl) return;
@@ -29,7 +30,12 @@ function _kfSyncMobileControlHeight() {
   const ui = $("ui");
   if (!ui) return;
   const tabs = $("sideTabs");
-  const h = Math.ceil(ui.getBoundingClientRect().height + (tabs?.getBoundingClientRect().height || 0)) + 8;
+  const handle = $("mobileSheetHandle");
+  const h = Math.ceil(
+    ui.getBoundingClientRect().height +
+    (tabs?.getBoundingClientRect().height || 0) +
+    (handle?.getBoundingClientRect().height || 0),
+  ) + 8;
   document.documentElement.style.setProperty("--kf-mobile-ui-h", `${Math.max(118, h)}px`);
 }
 
@@ -76,7 +82,14 @@ function _kfSetSideTab(tab) {
   _kfBumpMobileSheetForTab(next);
 }
 document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
-  btn.addEventListener("click", () => _kfSetSideTab(btn.dataset.sideTab));
+  btn.addEventListener("click", e => {
+    if (Date.now() < _kfSuppressSideTabClickUntil) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    _kfSetSideTab(btn.dataset.sideTab);
+  });
 });
 _kfUpdateMobileSheetTitle("chat");
 _kfSetMobileSheetState("peek");
@@ -95,6 +108,7 @@ function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
   let drag = null;
   handleEl.addEventListener("pointerdown", e => {
     if (!_kfIsMobileLayout()) return;
+    if (opts.ignoreDragSelector && e.target.closest(opts.ignoreDragSelector)) return;
     drag = {
       y: e.clientY,
       moved: false,
@@ -104,7 +118,10 @@ function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
   });
   handleEl.addEventListener("pointermove", e => {
     if (!drag) return;
-    if (Math.abs(e.clientY - drag.y) > 8) drag.moved = true;
+    if (Math.abs(e.clientY - drag.y) > 8) {
+      drag.moved = true;
+      e.preventDefault();
+    }
   });
   handleEl.addEventListener("pointerup", e => {
     if (!drag) return;
@@ -112,6 +129,7 @@ function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
     const moved = drag.moved;
     const ignoreTap = drag.ignoreTap;
     drag = null;
+    if (moved) _kfSuppressSideTabClickUntil = Date.now() + 350;
     if (!moved) {
       if (ignoreTap) return;
       const cur = $("panel")?.dataset.sheet || "peek";
@@ -140,6 +158,7 @@ function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
 }
 _kfInstallMobileSheetHandle(_mobileSheetHandleEl);
 _kfInstallMobileSheetHandle(_mobileSheetTabsEl, { ignoreTapSelector: "[data-side-tab]" });
+_kfInstallMobileSheetHandle($("ui"), { ignoreDragSelector: "button,input,select,textarea,.rangeMark" });
 
 const EVENT_LABEL = {
   BIRT: "Born",
@@ -532,7 +551,7 @@ function _kfShowClusterCard(c, opts = {}) {
       highlightedDwell = di;
       highlightInferredYear = -1;
       highlightInferredSrcYear = -1;
-      if (playing) { playing = false; playBtn.textContent = "Play"; }
+      if (playing) { playing = false; _kfSetPlayButtonLabel(); }
       _kfShowPersonCard(di);
       fxCtx.clearRect(0, 0, W, H);
       applyExpansion();
