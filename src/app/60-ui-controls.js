@@ -1134,14 +1134,31 @@ window._kfLoadFiles = handleFiles;
   document.addEventListener("visibilitychange", () => { if (document.hidden) hideDropOverlay(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") hideDropOverlay(); });
 
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`status ${r.status}`);
+  return r.json();
+}
+
+async function fetchWorldTopology() {
+  try {
+    return await fetchJson("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json");
+  } catch (e) {
+    console.warn("high-detail world topology fetch failed; falling back to 50m", e);
+    return fetchJson("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json");
+  }
+}
+
 async function bootBasemap() {
-  // world/usStates topojson loaded for state cluster mode (inferStateBelongings).
+  // World land/country topology is used for land-aware marker placement;
+  // usStates supports state cluster mode and US jitter bounds.
   stats.textContent = "loading basemap...";
   const [w, us] = await Promise.all([
-    fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(r => r.json()),
-    fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(r => r.json()).catch(() => null),
+    fetchWorldTopology(),
+    fetchJson("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").catch(() => null),
   ]);
   world = w; usStates = us;
+  _kfResetJitterIndexes();
   resize();
   stats.textContent = "ready";
   // Welcome screen stays hidden until auth resolves:

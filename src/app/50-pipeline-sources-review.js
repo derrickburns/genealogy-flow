@@ -1,6 +1,8 @@
 // ---------- Pipeline ----------
 let _kfJitterCountryByCode = null;
 let _kfJitterStateByAbbr = null;
+let _kfJitterLandFeatures = null;
+let _kfJitterLandGrid = null;
 let _kfJitterCache = new Map();
 
 function _kfJitterSlug(value) {
@@ -32,6 +34,91 @@ function _kfFeatureBounds(feature) {
 
 function _kfBoundsContains(bounds, lon, lat) {
   return !bounds || (lon >= bounds[0] && lon <= bounds[2] && lat >= bounds[1] && lat <= bounds[3]);
+}
+
+function _kfJitterFeatureContains(entry, lat, lon) {
+  return !!entry && _kfBoundsContains(entry.bounds, lon, lat) && d3.geoContains(entry.feature, [lon, lat]);
+}
+
+function _kfJitterFeatureEntries(feature) {
+  const entries = [];
+  function addGeometry(geometry, properties = null) {
+    if (!geometry) return;
+    if (geometry.type === "GeometryCollection") {
+      for (const g of geometry.geometries || []) addGeometry(g, properties);
+      return;
+    }
+    if (geometry.type === "MultiPolygon") {
+      for (const coordinates of geometry.coordinates || []) {
+        addGeometry({ type: "Polygon", coordinates }, properties);
+      }
+      return;
+    }
+    if (geometry.type !== "Polygon") return;
+    const f = { type: "Feature", properties, geometry };
+    const bounds = _kfFeatureBounds(f);
+    if (bounds) entries.push({ feature: f, bounds });
+  }
+  if (feature?.type === "FeatureCollection") {
+    for (const f of feature.features || []) entries.push(..._kfJitterFeatureEntries(f));
+  } else if (feature?.type === "Feature") {
+    addGeometry(feature.geometry, feature.properties || null);
+  } else {
+    addGeometry(feature);
+  }
+  return entries;
+}
+
+function _kfJitterLandGridKey(lon, lat) {
+  const size = 5;
+  const x = Math.max(0, Math.min(71, Math.floor((lon + 180) / size)));
+  const y = Math.max(0, Math.min(35, Math.floor((lat + 90) / size)));
+  return `${x}|${y}`;
+}
+
+function _kfBuildJitterLandGrid(entries) {
+  const grid = new Map();
+  const size = 5;
+  for (const entry of entries) {
+    const b = entry.bounds;
+    const minX = Math.max(0, Math.min(71, Math.floor((b[0] + 180) / size)));
+    const maxX = Math.max(0, Math.min(71, Math.floor((b[2] + 180) / size)));
+    const minY = Math.max(0, Math.min(35, Math.floor((b[1] + 90) / size)));
+    const maxY = Math.max(0, Math.min(35, Math.floor((b[3] + 90) / size)));
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        const key = `${x}|${y}`;
+        let list = grid.get(key);
+        if (!list) { list = []; grid.set(key, list); }
+        list.push(entry);
+      }
+    }
+  }
+  return grid;
+}
+
+function _kfResetJitterIndexes() {
+  _kfJitterCountryByCode = null;
+  _kfJitterStateByAbbr = null;
+  _kfJitterLandFeatures = null;
+  _kfJitterLandGrid = null;
+  _kfJitterCache = new Map();
+}
+
+function _kfEnsureJitterLandIndex() {
+  if (_kfJitterLandFeatures) return _kfJitterLandFeatures;
+  _kfJitterLandFeatures = [];
+  if (!world || !topojson || !world.objects?.land) return _kfJitterLandFeatures;
+  const fc = topojson.feature(world, world.objects.land);
+  _kfJitterLandFeatures = _kfJitterFeatureEntries(fc);
+  _kfJitterLandGrid = _kfBuildJitterLandGrid(_kfJitterLandFeatures);
+  return _kfJitterLandFeatures;
+}
+
+function _kfJitterLandEntriesForPoint(lat, lon) {
+  const land = _kfEnsureJitterLandIndex();
+  if (!land.length) return land;
+  return _kfJitterLandGrid?.get(_kfJitterLandGridKey(lon, lat)) || [];
 }
 
 function _kfEnsureJitterCountryIndex() {
@@ -88,7 +175,7 @@ function _kfHash32(value) {
 
 function _kfJitterRadius(level) {
   // Scale jitter to geocode precision so city-level points don't drift into
-  // the ocean. City ~1 km, county ~10 km, state ~30 km.
+  // the ocean. City ~1 km, county ~10 km, state ~30 km, country wider.
   if (level === "city") return 0.02;
   if (level === "county") return 0.15;
   if (level === "admin1") return 0.4;
@@ -97,14 +184,12 @@ function _kfJitterRadius(level) {
 
 function _kfJitterCandidateAllowed(lat, lon, g) {
   if (!g) return true;
+  const land = _kfJitterLandEntriesForPoint(lat, lon);
+  if (_kfJitterLandFeatures?.length && !land.some(entry => _kfJitterFeatureContains(entry, lat, lon))) return false;
   const state = g.cc === "US" && g.st ? _kfEnsureJitterStateIndex().get(g.st) : null;
-  if (state) {
-    return _kfBoundsContains(state.bounds, lon, lat) && d3.geoContains(state.feature, [lon, lat]);
-  }
+  if (state && !_kfJitterFeatureContains(state, lat, lon)) return false;
   const country = g.cc ? _kfEnsureJitterCountryIndex().get(g.cc) : null;
-  if (country) {
-    return _kfBoundsContains(country.bounds, lon, lat) && d3.geoContains(country.feature, [lon, lat]);
-  }
+  if (country && !_kfJitterFeatureContains(country, lat, lon)) return false;
   return true;
 }
 
