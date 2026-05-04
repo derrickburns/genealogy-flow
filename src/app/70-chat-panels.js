@@ -1404,6 +1404,12 @@ function _kfRecordAiArtifact(input = {}) {
   return artifact;
 }
 
+function _kfClearChatArtifacts() {
+  chatArtifacts.length = 0;
+  _kfChatArtifactSeq = 0;
+  _kfRenderChatArtifacts();
+}
+
 function _kfRenderChatEvidence() {
   if (!chatEvidenceEl || !chatEvidenceBodyEl) return;
   const evidence = chatHistory.filter(m => m.kind === "tool" || m.kind === "action");

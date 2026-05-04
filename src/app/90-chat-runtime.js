@@ -1129,6 +1129,7 @@ function autoIntroOnce() {
 }
 $("chatClear").addEventListener("click", async () => {
   chatHistory.length = 0;
+  if (typeof _kfClearChatArtifacts === "function") _kfClearChatArtifacts();
   if (typeof _kfActiveChatTurnKey !== "undefined") _kfActiveChatTurnKey = "";
   _chatNewSession = true;
   renderChat();
