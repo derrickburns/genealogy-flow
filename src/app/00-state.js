@@ -67,6 +67,11 @@ let _kfDeckOverlay = null;
 let _kfDwellPositions = null;
 let _kfDwellColors = null;
 let _kfDwellRadii = null;
+let _kfDwellHaloPositions = null;
+let _kfDwellHaloFillColors = null;
+let _kfDwellHaloLineColors = null;
+let _kfDwellHaloRadii = null;
+let _kfDwellHaloWidths = null;
 let _kfDwellYears = null;
 let _kfDwellsOnDeck = false;
 // Phase 3: flow arcs on deck.gl ArcLayer. Same binary-attribute pattern.
@@ -151,12 +156,36 @@ function _kfGeoMarkerRadiusPx(code) {
   return 22;
 }
 
+function _kfGeoCenterMarkerRadiusPx(code) {
+  return Number(code) === GEO_LEVEL_CITY ? 4 : 3.4;
+}
+
 function _kfGeoMarkerAlpha(code) {
   const n = Number(code);
   if (n === GEO_LEVEL_CITY) return 220;
-  if (n === GEO_LEVEL_COUNTY) return 138;
-  if (n === GEO_LEVEL_ADMIN1) return 92;
-  return 70;
+  if (n === GEO_LEVEL_COUNTY) return 212;
+  if (n === GEO_LEVEL_ADMIN1) return 198;
+  return 186;
+}
+
+function _kfGeoHaloFillAlpha(code) {
+  const n = Number(code);
+  if (n === GEO_LEVEL_COUNTY) return 34;
+  if (n === GEO_LEVEL_ADMIN1) return 24;
+  if (n === GEO_LEVEL_COUNTRY) return 18;
+  return 0;
+}
+
+function _kfGeoHaloLineAlpha(code) {
+  const n = Number(code);
+  if (n === GEO_LEVEL_COUNTY) return 132;
+  if (n === GEO_LEVEL_ADMIN1) return 104;
+  if (n === GEO_LEVEL_COUNTRY) return 88;
+  return 0;
+}
+
+function _kfGeoHaloLineWidthPx(code) {
+  return Number(code) === GEO_LEVEL_COUNTRY ? 1.5 : 1.2;
 }
 
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellLevel, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;

@@ -410,6 +410,8 @@ function updateMapLegend() {
       s = `<span style="display:inline-block;width:${size}px;height:${size}px;border:1.5px solid ${color};margin-right:6px;vertical-align:middle;"></span>`;
     } else if (shape === "arc") {
       s = `<span style="display:inline-block;width:${size+4}px;height:${Math.ceil(size/2)+2}px;border-top:2px solid ${color};border-radius:50% 50% 0 0;margin-right:5px;vertical-align:middle;"></span>`;
+    } else if (shape === "halo") {
+      s = `<span style="position:relative;display:inline-block;width:${size}px;height:${size}px;border-radius:50%;border:1.5px solid ${color};background:rgba(42,74,140,0.08);margin-right:5px;vertical-align:middle;box-sizing:border-box;"><span style="position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:${color};border:1px solid rgba(255,255,255,0.9);transform:translate(-50%,-50%);box-sizing:border-box;"></span></span>`;
     } else {
       s = `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:${color};margin-right:5px;vertical-align:middle;"></span>`;
     }
@@ -489,9 +491,9 @@ function updateMapLegend() {
     }
     html += hdr("Place precision");
     html += swatch("rgba(42,74,140,0.86)", 8, "circle", "City point");
-    html += swatch("rgba(42,74,140,0.54)", 16, "circle", "County/region area");
-    html += swatch("rgba(42,74,140,0.36)", 24, "circle", "State/country area");
-    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Large translucent circles mean approximate locations, not exact cities.</div>`;
+    html += swatch("rgba(42,74,140,0.62)", 16, "halo", "County/region halo");
+    html += swatch("rgba(42,74,140,0.48)", 24, "halo", "State/country halo");
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Hollow halos mark approximate locations; the center dot is only a centroid.</div>`;
   }
 
   if (flowFromY && flowFromY.length && clusterMode === "none" && !_kfActiveLens) {
@@ -547,23 +549,46 @@ function drawShape(ctx, x, y, r, ps) {
   }
 }
 
+function strokeShape(ctx, x, y, r, ps) {
+  if (ps === 2) {
+    ctx.strokeRect(x - r, y - r, r * 2, r * 2);
+  } else if (ps === 1) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r, y);
+    ctx.closePath();
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 function drawPrecisionMarker(ctx, x, y, level, rgb, parentStatus = 0, opacityScale = 1) {
-  const alpha = Math.max(0.05, Math.min(1, (_kfGeoMarkerAlpha(level) / 255) * opacityScale));
   if (_kfGeoIsImprecise(level)) {
     const r = _kfGeoMarkerRadiusPx(level);
-    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha.toFixed(3)})`;
+    const fillAlpha = Math.max(0.02, Math.min(1, (_kfGeoHaloFillAlpha(level) / 255) * opacityScale));
+    const lineAlpha = Math.max(0.08, Math.min(1, (_kfGeoHaloLineAlpha(level) / 255) * opacityScale));
+    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${fillAlpha.toFixed(3)})`;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.min(0.75, alpha + 0.16).toFixed(3)})`;
-    ctx.lineWidth = level === GEO_LEVEL_COUNTRY ? 1.4 : 1;
+    ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${lineAlpha.toFixed(3)})`;
+    ctx.lineWidth = _kfGeoHaloLineWidthPx(level);
     ctx.beginPath();
-    ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.stroke();
-    return;
   }
+  const alpha = Math.max(0.05, Math.min(1, (_kfGeoMarkerAlpha(level) / 255) * opacityScale));
+  const centerR = _kfGeoCenterMarkerRadiusPx(level);
   ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.min(0.95, alpha).toFixed(3)})`;
-  drawShape(ctx, x, y, 4.2, parentStatus);
+  drawShape(ctx, x, y, centerR, parentStatus);
+  ctx.strokeStyle = "rgba(255,255,255,0.9)";
+  ctx.lineWidth = 1;
+  strokeShape(ctx, x, y, centerR, parentStatus);
 }
 
 function lowerBound(arr, order, target) {

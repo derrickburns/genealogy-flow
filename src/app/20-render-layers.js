@@ -8,6 +8,7 @@ let _kfPersonIndi = null;     // Int32Array — maps marker index → lastIndivi
 let _kfPersonDwell = null;    // Int32Array — maps marker index → dwell index used for position
 let _kfPersonsCacheYear = -Infinity;
 let _kfDwellCount = 0;
+let _kfDwellHaloCount = 0;
 // ---------- Lens (Claude-defined cluster queries) ----------
 //
 // A "lens" is a saved SQL query Claude (or the user) can register. The query
@@ -948,8 +949,9 @@ function buildDeckDwellData() {
   // varies with curYear.
   if (!lastIndividuals || !lastIndividuals.length) {
     _kfDwellPositions = _kfDwellColors = _kfDwellRadii = null;
+    _kfDwellHaloPositions = _kfDwellHaloFillColors = _kfDwellHaloLineColors = _kfDwellHaloRadii = _kfDwellHaloWidths = null;
     _kfPersonIndi = _kfPersonDwell = null;
-    _kfDwellCount = 0;
+    _kfDwellCount = _kfDwellHaloCount = 0;
     _kfPersonsCacheYear = -Infinity;
     return;
   }
@@ -957,6 +959,11 @@ function buildDeckDwellData() {
   _kfDwellPositions = new Float32Array(N * 2);
   _kfDwellColors    = new Uint8Array(N * 4);
   _kfDwellRadii     = new Float32Array(N);
+  _kfDwellHaloPositions  = new Float32Array(N * 2);
+  _kfDwellHaloFillColors = new Uint8Array(N * 4);
+  _kfDwellHaloLineColors = new Uint8Array(N * 4);
+  _kfDwellHaloRadii      = new Float32Array(N);
+  _kfDwellHaloWidths     = new Float32Array(N);
   _kfPersonIndi     = new Int32Array(N);
   _kfPersonDwell    = new Int32Array(N);
   _kfPersonsCacheYear = -Infinity;
@@ -1013,11 +1020,16 @@ function rebuildPersonMarkers() {
   // Allocate buffers if they don't exist yet — guards against ticks that fire
   // between `lastIndividuals = ...` and `buildDeckDwellData()` during
   // processFile/applyRoot. Otherwise we'd write into null typed arrays.
-  if (!_kfDwellPositions || _kfDwellPositions.length < lastIndividuals.length * 2) {
+  if (!_kfDwellPositions || !_kfDwellHaloPositions || _kfDwellPositions.length < lastIndividuals.length * 2) {
     const N = lastIndividuals.length;
     _kfDwellPositions = new Float32Array(N * 2);
     _kfDwellColors    = new Uint8Array(N * 4);
     _kfDwellRadii     = new Float32Array(N);
+    _kfDwellHaloPositions  = new Float32Array(N * 2);
+    _kfDwellHaloFillColors = new Uint8Array(N * 4);
+    _kfDwellHaloLineColors = new Uint8Array(N * 4);
+    _kfDwellHaloRadii      = new Float32Array(N);
+    _kfDwellHaloWidths     = new Float32Array(N);
     _kfPersonIndi     = new Int32Array(N);
     _kfPersonDwell    = new Int32Array(N);
     _kfPersonsCacheYear = -Infinity;  // force a fresh build below
@@ -1030,6 +1042,7 @@ function rebuildPersonMarkers() {
   _kfPersonsCacheYear = key;
   const N = lastIndividuals.length;
   let count = 0;
+  let haloCount = 0;
   for (let idx = 0; idx < N; idx++) {
     const ind = lastIndividuals[idx];
     if (!ind) continue;
@@ -1047,17 +1060,33 @@ function rebuildPersonMarkers() {
     const level = dwellLevel ? dwellLevel[bestDi] : (dwellExact[bestDi] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
     _kfDwellPositions[count * 2]     = dwellLon[bestDi];
     _kfDwellPositions[count * 2 + 1] = dwellLat[bestDi];
-    _kfDwellRadii[count]             = _kfGeoMarkerRadiusPx(level);
+    _kfDwellRadii[count]             = _kfGeoCenterMarkerRadiusPx(level);
     const c = colorForFinal(dwellSide[bestDi], dwellSrc[bestDi], idx);
     _kfDwellColors[count * 4]     = c[0];
     _kfDwellColors[count * 4 + 1] = c[1];
     _kfDwellColors[count * 4 + 2] = c[2];
     _kfDwellColors[count * 4 + 3] = _kfGeoMarkerAlpha(level);
+    if (_kfGeoIsImprecise(level)) {
+      _kfDwellHaloPositions[haloCount * 2]     = dwellLon[bestDi];
+      _kfDwellHaloPositions[haloCount * 2 + 1] = dwellLat[bestDi];
+      _kfDwellHaloRadii[haloCount]             = _kfGeoMarkerRadiusPx(level);
+      _kfDwellHaloWidths[haloCount]            = _kfGeoHaloLineWidthPx(level);
+      _kfDwellHaloFillColors[haloCount * 4]     = c[0];
+      _kfDwellHaloFillColors[haloCount * 4 + 1] = c[1];
+      _kfDwellHaloFillColors[haloCount * 4 + 2] = c[2];
+      _kfDwellHaloFillColors[haloCount * 4 + 3] = _kfGeoHaloFillAlpha(level);
+      _kfDwellHaloLineColors[haloCount * 4]     = c[0];
+      _kfDwellHaloLineColors[haloCount * 4 + 1] = c[1];
+      _kfDwellHaloLineColors[haloCount * 4 + 2] = c[2];
+      _kfDwellHaloLineColors[haloCount * 4 + 3] = _kfGeoHaloLineAlpha(level);
+      haloCount++;
+    }
     _kfPersonIndi[count]  = idx;
     _kfPersonDwell[count] = bestDi;
     count++;
   }
   _kfDwellCount = count;
+  _kfDwellHaloCount = haloCount;
 }
 
 function refreshDeckDwellColors() {
@@ -1066,18 +1095,52 @@ function refreshDeckDwellColors() {
   _kfPersonsCacheYear = -Infinity;
 }
 
-function makeDwellLayer() {
+function _kfDwellLayersReplaced() {
   // Cluster modes replace the dot view with a different visualization. Hide
   // the person layer when one of those is active so deck doesn't paint dots
   // underneath the cluster overlay.
   const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
-  const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
-                    || clusterMode === "parents"   || clusterMode === "gender"
-                    || clusterMode === "tree"      || clusterMode === "state"
-                    || clusterMode === "group"
-                    || useDispersion
-                    || !!_kfActiveLens;   // active lens replaces dwells too
-  if (replaceMode) return null;
+  return clusterMode === "aggregate" || clusterMode === "pie"
+      || clusterMode === "parents"   || clusterMode === "gender"
+      || clusterMode === "tree"      || clusterMode === "state"
+      || clusterMode === "group"
+      || useDispersion
+      || !!_kfActiveLens;   // active lens replaces dwells too
+}
+
+function makeDwellPrecisionHaloLayer() {
+  if (_kfDwellLayersReplaced()) return null;
+  if (typeof deck === "undefined" || !deck.ScatterplotLayer) return null;
+  rebuildPersonMarkers();
+  if (!_kfDwellHaloCount) return null;
+  const N = _kfDwellHaloCount;
+  return new deck.ScatterplotLayer({
+    id: "kf-person-precision-halos",
+    data: {
+      length: N,
+      attributes: {
+        getPosition:  { value: _kfDwellHaloPositions.subarray(0, N * 2),      size: 2 },
+        getFillColor: { value: _kfDwellHaloFillColors.subarray(0, N * 4),     size: 4 },
+        getLineColor: { value: _kfDwellHaloLineColors.subarray(0, N * 4),     size: 4 },
+        getRadius:    { value: _kfDwellHaloRadii.subarray(0, N),              size: 1 },
+        getLineWidth: { value: _kfDwellHaloWidths.subarray(0, N),             size: 1 },
+      },
+    },
+    radiusUnits: "pixels",
+    pickable: false,
+    stroked: true,
+    filled: true,
+    lineWidthUnits: "pixels",
+    updateTriggers: {
+      getPosition:  _kfPersonsCacheYear,
+      getFillColor: _kfPersonsCacheYear + ":" + colorMode,
+      getLineColor: _kfPersonsCacheYear + ":" + colorMode,
+    },
+  });
+}
+
+function makeDwellLayer() {
+  if (_kfDwellLayersReplaced()) return null;
   if (typeof deck === "undefined" || !deck.ScatterplotLayer) return null;
   rebuildPersonMarkers();
   if (!_kfDwellCount) return null;
@@ -1115,7 +1178,7 @@ function updateDeckDwellLayer() {
   // dwell history.
   rebuildPersonMarkers();
   // deck.gl renders in array order; later layers paint on top. Stack:
-  // hull → arcs → kin → lineage → dwells → aggregate → highlight → pins → labels.
+  // hull → arcs → kin → lineage → precision halos → dwell dots → aggregate → highlight → pins → labels.
   const layers = [
     makeLensLayer(),       // user/Claude-defined SQL cluster — drawn under everything else
     makeFlowOriginUncertaintyLayer(),
@@ -1123,6 +1186,7 @@ function updateDeckDwellLayer() {
     makeFlowDestLayer(),
     makeKinLinesLayer(),
     makeLineageLayer(),
+    makeDwellPrecisionHaloLayer(),
     makeDwellLayer(),
     makeAggregateLayer(),
     makeAggregateLabelsLayer(),
