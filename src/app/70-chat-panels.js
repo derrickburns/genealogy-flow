@@ -139,8 +139,11 @@ function _kfSetSideTab(tab) {
   if (next === "map" && !_kfIsMobileLayout()) next = "chat";
   if (next === "tour" && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
   if (_kfIsMobileLayout() && next !== "map" && playing) {
-    playing = false;
-    if (typeof _kfSetPlayButtonLabel === "function") _kfSetPlayButtonLabel();
+    if (typeof _kfSetPlayback === "function") _kfSetPlayback(false, { clearStop: true });
+    else {
+      playing = false;
+      if (typeof _kfSetPlayButtonLabel === "function") _kfSetPlayButtonLabel();
+    }
   }
   _kfActiveSideTab = next;
   _kfSyncSideTabChrome(next);
@@ -1195,8 +1198,8 @@ function renderChat() {
     const chips = (m.chips && m.chips.length)
       ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}" title="${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}">${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}</button>`).join("")}</div>`
       : "";
-    const kindClass = m.kind === "tool" ? " tool" : m.kind === "action" ? " action" : "";
-    const who = m.role === "user" ? "you" : m.kind === "tool" ? "tool" : m.kind === "action" ? "action" : "claude";
+    const kindClass = m.kind === "tool" ? " tool" : m.kind === "action" ? " action" : m.kind === "notice" ? " notice" : "";
+    const who = m.role === "user" ? "you" : m.kind === "tool" ? "tool" : m.kind === "action" ? "action" : m.kind === "notice" ? "app" : "claude";
     return `<div class="msg ${m.role}${kindClass}"><span class="who">${who}</span><div class="body">${body}</div>${chips}</div>`;
   }).join("");
   chatHistoryEl.querySelectorAll(".msg.bot:not(.tool):not(.action) .body").forEach(_kfAutoLinkChatBody);
@@ -1293,7 +1296,7 @@ async function _kfDispatchChip(chip) {
 }
 
 const _KF_AI_VISUALIZATION_SUFFIX =
-  "Answer in concise prose. When a map view, chart, timeline, network, or diagram would make the answer clearer, also create it as a visualization tab or activate the appropriate map view. If no visualization would help, say so briefly.";
+  "Answer in concise prose. For named people and family-specific claims, separate direct tree evidence from inference and historical context. When a map view, chart, timeline, network, or diagram would make the answer clearer, also create it as a visualization tab or activate the appropriate map view. If no visualization would help, say so briefly.";
 
 function _kfAugmentAiSuggestionQuestion(text) {
   const raw = String(text || "").trim();
@@ -1355,13 +1358,35 @@ function _kfReportChipResult(chip, r) {
     } else {
       summary = `\u2717 **${chip.label || chip.method}** failed: ${r && r.error || "unknown error"}`;
     }
+  } else if (chip.method === "traceLineage") {
+    const from = r?.from?.name || (Array.isArray(chip.args) ? chip.args[0] : "");
+    const to = r?.to?.name || (Array.isArray(chip.args) ? chip.args[1] : "");
+    const relation = r?.relationship ? ` Relationship: ${r.relationship}.` : "";
+    summary = `\u2713 **${chip.label || "Trace lineage"}** drew a lineage path${from && to ? ` from **${from}** to **${to}**` : ""}.${relation}`;
+  } else if (chip.method === "addRoute") {
+    const label = r?.route?.label || chip.label || "Route";
+    summary = `\u2713 **${label}** was added to the map.`;
+  } else if (chip.method === "addPin") {
+    const label = r?.pin?.label || chip.label || "Pin";
+    summary = `\u2713 **${label}** was pinned on the map.`;
+  } else if (chip.method === "selectPerson") {
+    const name = r?.person?.name || chip.label || "Person";
+    summary = `\u2713 Selected **${name}**.`;
+  } else if (chip.method === "centerOn") {
+    const name = r?.person?.name || r?.place || chip.label || "Location";
+    summary = `\u2713 Centered the map on **${name}**.`;
+  } else if (chip.method === "setClusterMode") {
+    summary = `\u2713 Switched clustering to **${r?.mode || chip.args || chip.label || "selected mode"}**.`;
+  } else if (r && r.ok) {
+    summary = `\u2713 **${chip.label || chip.method}** completed.`;
   } else {
     const out = (r && typeof r === "object") ? JSON.stringify(r).slice(0, 200) : String(r);
     summary = `\u2713 **${chip.label || chip.method}**: ${out}`;
   }
-  // Action feedback is not Claude's answer. Keep it hidden with tools off so
-  // the chat remains a clean user/Claude transcript.
-  chatHistory.push({ role: "bot", kind: "action", content: summary });
+  // User-triggered chip feedback is not tool output and should remain visible
+  // when tool logs are hidden. Mark it as a notice so it is not replayed back
+  // to Claude as if Claude said it.
+  chatHistory.push({ role: "bot", kind: "notice", content: summary });
   renderChat();
   const last = chatHistoryEl.lastElementChild;
   if (last && last.scrollIntoView) {
@@ -1376,11 +1401,11 @@ function appendError(text) {
 const _KF_STANDARD_AI_QUESTIONS = [
   {
     label: "Immigration waves",
-    text: "Summarize the waves of immigration in my family. Cite important surnames, transition years, and people with source-marked historical significance.",
+    text: "Summarize the waves of immigration in my family. Separate direct tree evidence, inferred transitions, and historical context. Cite important surnames, transition years, and people with source-marked historical significance.",
   },
   {
     label: "Farthest-moving surnames",
-    text: "Which surnames moved the farthest across generations? Cite example people, routes, and approximate distances.",
+    text: "Which surnames moved the farthest across generations? Cite example people, routes, and approximate distances, and mark movement as inferred when it comes from separated records.",
   },
   {
     label: "Rural to city",
@@ -1396,11 +1421,11 @@ const _KF_STANDARD_AI_QUESTIONS = [
   },
   {
     label: "Moved together",
-    text: "Which families or surnames repeatedly migrated together? Cite shared routes and example people.",
+    text: "Which families or surnames repeatedly migrated together? Cite shared routes and example people, and distinguish repeated tree patterns from historical context.",
   },
   {
     label: "History overlaps",
-    text: "Which ancestors were alive during slavery, wars, or major historical transitions? Make clear that overlap does not prove participation.",
+    text: "Which ancestors were alive during slavery, wars, or major historical transitions? Separate direct tree evidence from historical context, and make clear that overlap does not prove participation.",
   },
   {
     label: "Distant marriages",
@@ -1412,7 +1437,7 @@ const _KF_STANDARD_AI_QUESTIONS = [
   },
   {
     label: "Migration jumps",
-    text: "Where are the biggest unexplained migration jumps? Flag jumps with large time gaps between records.",
+    text: "Where are the biggest unexplained migration jumps? Flag jumps with large time gaps between records and avoid implying continuous travel across the whole gap.",
   },
 ];
 
@@ -1439,7 +1464,7 @@ function _kfChatScopeQuestions(root, selected, visible) {
   const questions = [
     _kfQuestionDef("This year", `Explain this year in plain language.`),
     _kfQuestionDef("Visible people", `Why are these people visible in ${y}?`),
-    _kfQuestionDef("Migration story", `Summarize the migration story for the visible people in ${y}.`),
+    _kfQuestionDef("Migration story", `Summarize the migration story for the visible people in ${y}. Separate recorded locations, inferred movement, and historical context.`),
     _kfQuestionDef("Cluster pattern", `Explain the biggest place or cluster pattern in ${y}.`),
     ..._kfStandardAiQuestions(),
   ];
@@ -1646,6 +1671,7 @@ function buildChatContext(userMsg = "", opts = {}) {
     lines.push(`Tree: ${lastIndividuals.length.toLocaleString()} individuals, ${dwellY ? dwellY.length.toLocaleString() : 0} events.`);
     lines.push(`Year range: ${minYear}-${maxYear}.`);
   }
+  lines.push("Evidence rule for this answer: named-person and family-specific claims must come from selected tree data or tool results; inferred movement must be labeled as inference; broader history must be labeled as context, not tree evidence.");
   if (typeof _kfSelectedVizSourceList === "function") {
     const sources = _kfSelectedVizSourceList();
     if (sources.length) lines.push(`Selected trees: ${sources.map(s => s.name).join("; ")}.`);

@@ -477,6 +477,35 @@ function _kfGeoForPlaceCached(cache, place) {
   return g || null;
 }
 
+function _kfRefreshMapActionOverlays() {
+  fxCtx.clearRect(0, 0, W, H);
+  if (_kfDeckOverlay) updateDeckDwellLayer();
+}
+
+function _kfRoutePointFromInput(point) {
+  if (typeof point === "string") {
+    const ind = _kfFindIndi(point);
+    if (ind) {
+      const p = _kfLatestDwellLatLon(ind);
+      if (p) return { lat: p.lat, lon: p.lon, label: ind.name };
+    }
+    if (!geocoder) return { error: "geocoder not ready" };
+    const g = geocoder(point);
+    if (!g) return { error: "no place matched: " + point };
+    return { lat: g.lat, lon: g.lon, label: point };
+  }
+  if (point && typeof point === "object") {
+    if (typeof point.place === "string") return _kfRoutePointFromInput(point.place);
+    if (typeof point.person === "string") return _kfRoutePointFromInput(point.person);
+    const lat = Number(point.lat);
+    const lon = Number(point.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      return { lat, lon, label: point.label || "" };
+    }
+  }
+  return { error: "route point must be a place, person, or {lat, lon}" };
+}
+
 function _kfNormalizedPlaceForTool(place) {
   const raw = String(place || "").trim();
   if (!raw) return "";
@@ -1829,7 +1858,7 @@ window.kfApi = {
     if (points.length < 2) return { error: "not enough recorded locations along the path" };
     const color = opts?.color || [255, 196, 64];
     _kfOverlayPaths.push({ points, color, label: `${a.name} → ${b.name}` });
-    fxCtx.clearRect(0, 0, W, H);
+    _kfRefreshMapActionOverlays();
     return {
       ok: true,
       from: { id: a.id, name: a.name },
@@ -1849,8 +1878,40 @@ window.kfApi = {
   clearLineage() {
     const n = _kfOverlayPaths.length;
     _kfOverlayPaths = [];
-    fxCtx.clearRect(0, 0, W, H);
+    _kfRefreshMapActionOverlays();
     return { ok: true, cleared: n };
+  },
+
+  addRoute(arg1, arg2, arg3) {
+    // Accept ({points,label,color}) | ([place/person/{lat,lon}, ...], label?, color?)
+    // | (from, to, label?). This gives Claude a direct geographic-route tool
+    // instead of misusing genealogy lineage paths for migration routes.
+    let rawPoints, label, color;
+    if (arg1 && typeof arg1 === "object" && !Array.isArray(arg1) && Array.isArray(arg1.points)) {
+      rawPoints = arg1.points;
+      label = arg1.label;
+      color = arg1.color;
+    } else if (Array.isArray(arg1)) {
+      rawPoints = arg1;
+      label = arg2;
+      color = arg3;
+    } else {
+      rawPoints = [arg1, arg2].filter(v => v != null && v !== "");
+      label = arg3;
+    }
+    if (!Array.isArray(rawPoints) || rawPoints.length < 2) return { error: "route needs at least two points" };
+    const points = [];
+    const labels = [];
+    for (const point of rawPoints) {
+      const resolved = _kfRoutePointFromInput(point);
+      if (resolved?.error) return resolved;
+      points.push({ lat: resolved.lat, lon: resolved.lon, label: resolved.label || "" });
+      if (resolved.label) labels.push(resolved.label);
+    }
+    const routeColor = Array.isArray(color) && color.length >= 3 ? color : [255, 140, 40];
+    _kfOverlayPaths.push({ points, color: routeColor, label: label || labels.join(" → ") });
+    _kfRefreshMapActionOverlays();
+    return { ok: true, route: { points: points.length, label: label || labels.join(" → ") } };
   },
 
   addPin(arg1, arg2, arg3, arg4) {
@@ -1868,14 +1929,14 @@ window.kfApi = {
     }
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { error: "lat/lon required" };
     _kfOverlayPins.push({ lat, lon, label: label || "", color: color || null });
-    fxCtx.clearRect(0, 0, W, H);
+    _kfRefreshMapActionOverlays();
     return { ok: true, pin: { lat, lon, label }, total: _kfOverlayPins.length };
   },
 
   clearPins() {
     const n = _kfOverlayPins.length;
     _kfOverlayPins = [];
-    fxCtx.clearRect(0, 0, W, H);
+    _kfRefreshMapActionOverlays();
     return { ok: true, cleared: n };
   },
 

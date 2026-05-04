@@ -1335,7 +1335,7 @@ function tick(now) {
     if (yearThumbLabelEl && range) {
       yearThumbLabelEl.textContent = ystr;
       const pct = (curYear - parseFloat(range.min)) / Math.max(1, parseFloat(range.max) - parseFloat(range.min));
-      yearThumbLabelEl.style.left = (pct * 100) + "%";
+      yearThumbLabelEl.style.setProperty("--year-pos", (pct * 100) + "%");
     }
     updateMapLegend();
     _kfRefreshLoopControls();

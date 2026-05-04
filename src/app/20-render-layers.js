@@ -158,7 +158,9 @@ function _kfVizSrcDoc(type, spec) {
     return `<!doctype html><html><head>${head}</head><body><div id="out">${String(spec || "")}</div></body></html>`;
   }
   if (type === "html") {
-    return `<!doctype html><html><head>${head}</head><body><div id="out">${String(spec || "")}</div></body></html>`;
+    const html = String(spec || "");
+    if (/<(?:!doctype|html)\b/i.test(html)) return html;
+    return `<!doctype html><html><head>${head}</head><body><div id="out">${html}</div></body></html>`;
   }
   if (type === "markdown") {
     const text = JSON.stringify(String(spec || ""));
@@ -309,6 +311,13 @@ function _kfCloseViz(id) {
 function _kfShowVizPane(on) {
   const pane = $("vizPane");
   if (!pane) return;
+  if (on && playing) {
+    if (typeof _kfSetPlayback === "function") _kfSetPlayback(false, { clearStop: true });
+    else {
+      playing = false;
+      if (typeof _kfSetPlayButtonLabel === "function") _kfSetPlayButtonLabel();
+    }
+  }
   pane.classList.toggle("on", !!on);
   if (!on) _kfActiveVizId = null;
   _kfRenderVizTabs();

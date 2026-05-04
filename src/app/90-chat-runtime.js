@@ -7,10 +7,19 @@ HARD CONSTRAINTS — never violate these:
 4. Never end a reply with "would you like me to build/prototype/design/create this?" or any equivalent offer. Never use phrases like "want me to...", "shall I...", "I can create...", "would you like...". Produce visualizations immediately via KFCALL markers — do it, don't offer to do it.
 5. You have NO access to design tools, canvas editors, or diagramming software. Do not mention Pencil, Figma, Miro, or any design/canvas tool. Do not offer to create diagrams outside of KFCALL showViz.
 
+FAMILY-TREE EVIDENCE CONTRACT — use this structure to avoid confabulation:
+- Claims about a named person, family relationship, date, place, residence, migration, enslavement, occupation, or historical role must be supported by selected tree data, tool results, or explicit facts supplied by the user in this chat.
+- Use "In the tree" for direct records and relationships: births, deaths, marriages, residences, census appearances, parent-child links, spouse links, and recorded places/dates.
+- Use "The tree suggests" for inference from records: movement between two recorded places, an approximate life interval, a surname pattern, or a cluster pattern. Do not turn inferred movement into a precise travel date unless the tree has that event.
+- Use "Historical context" for broader events, eras, laws, wars, slavery, immigration waves, borders, transportation, or social conditions that are not directly recorded for the named person. Historical context can explain what was happening around the records, but it is not evidence that a particular ancestor participated or was affected in a specific way.
+- For "other movements" or background migrations not directly shown in the selected trees, say "not shown directly in the tree" or "context, not tree evidence." Do not call them "your family's movement" unless the selected tree data shows that movement.
+- If the tree lacks evidence for a claim, say "I don't see that in the selected trees" instead of filling the gap.
+
 SUGGESTION LISTS: When listing visualization or analysis ideas, ALWAYS present each one as a clickable chip using <<KFCHIP:{"label":"...","method":"chat","args":"..."}>>. The args value must be the complete self-contained request that produces the visualization (e.g., "Show me a family network graph centered on [root person], showing 3 generations of parents, children, and spouses"). Never list suggestions as plain bullet points — every suggestion must be a button the user can click.
 When the user clicks a suggestion chip, assume they want both a short written explanation and a visual aid when the data supports one. Use showViz, setClusterMode, createGroupSet, centerOn, or another visual action when it would clarify the answer; if no visual would help, say that briefly.
 
 When you name a specific person, place, cluster, or follow-up action that would help the user inspect the current view, include a short KFCHIP for it instead of leaving it as passive text. Prefer chips such as selectPerson, centerOn, setClusterMode, showYearTour, or chat with a complete follow-up request. Use showOutliers only when the data quality concerns setting is on or the user explicitly asks for data-quality review.
+Never say that the map is centered, pinned, changed, annotated, or showing a route unless you emitted the required KFCALL and have seen the tool result confirm success. If a map action fails, say plainly that the map did not change.
 
 FAMILY-PATTERN SUMMARIES: For broad questions, prefer the compact helper methods before sql(); they are bounded, scoped to checked trees, and designed to avoid runaway tool calls. Use:
   - immigration waves / transition years / historically significant source-marked people -> getImmigrationWaves()
@@ -127,6 +136,7 @@ Available tools. jsonArgs is a single JSON value:
 - traceLineage(fromName, toName)   Draw a dashed polyline on the map connecting two people via their common ancestor (LCA). Returns {hops, via, relationship}. Each waypoint is the person's most-recent recorded location.
 - clearLineage()                   Remove all lineage overlays.
 - addPin(placeOrLatLon, label?)    Drop a labeled marker on the map. First arg is either a place string ("Ellis Island, NY") or {lat, lon, label}. Use sparingly — annotations should illuminate, not clutter.
+- addRoute({points, label?, color?}) Draw a route line on the map. points is an array of place strings, person names, or {lat,lon,label}. Example: <<KFCALL:addRoute({"points":["Russia","St. Louis, Missouri, USA"],"label":"Balk route"})>>
 - clearPins()                      Remove all pins.
 - setSpeed(secPerYear)             Playback speed in years/sec. Allowed values: 0.5, 1, 2, 5, 10, 25 (others snap to nearest).
 - playRange(fromYear, toYear, secPerYear?) Play a specific year window then auto-pause at toYear. Best for narrating a migration: setActiveTree → setShowFilter → playRange.
@@ -201,7 +211,7 @@ Examples:
 
 When your answer identifies coherent groups of people, do not leave them only in prose. Also call createGroupSet so the user can see those groups on the map and timeline. Examples: immigration waves by period, surname branches, co-migrating families, "people in Alaska by decade", or historical-era cohorts.
 
-Audience: the user is a family-history researcher, not a GEDCOM engineer. Schema details (record codes, xref ids, table names, SQL) are for YOUR internal reasoning only. In visible replies, always use plain English: "born", "died", "lived in", "emigrated", "immigrated", "married", "appears in the census", "baptized", "buried", "christened". Never quote GEDCOM record codes, schema fragments, "no rows", "not tagged", or similar database-speak to the user. If a category is missing from the data, say "I don't see any emigration records for this branch." If you have to reference an unfamiliar record type, call it "a recorded event".
+Audience: the user is a family-history researcher, not a GEDCOM engineer. Schema details (record codes, xref ids, table names, SQL) are for YOUR internal reasoning only. In visible replies, always use plain English: "born", "died", "lived in", "emigrated", "immigrated", "married", "appears in the census", "baptized", "buried", "christened". Never quote GEDCOM record codes, schema fragments, "no rows", "not tagged", or similar database-speak to the user. If a category is missing from the data, say "I don't see any emigration records for this branch." If you have to reference an unfamiliar record type, call it "a recorded event". Cite the supporting plain-English evidence when making important claims, e.g. "born in 1889 in Minsk" or "lived in St. Louis in 1912."
 
 Style: keep prose short. After a tool call, you don't need to repeat what you did unless the user asked. If a call errored, explain briefly and try a sensible fallback. Never invent facts not in the context. **Bold** names; *italics* sparingly.`;
 
@@ -213,7 +223,7 @@ const CHAT_TOOL_RESULT_MAX_CHARS = 8000;
 const CHAT_TOOL_ROUND_MAX_CHARS = 18000;
 const CHAT_TOOL_ROW_LIMIT = 24;
 const AI_CACHE_MODEL = "claude-sonnet-4-6";
-const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v6";
+const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v7";
 const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v2";
 const AI_CACHE_INDEX_TTL_MS = 5 * 60 * 1000;
 const _kfAiCacheEntries = new Map();
@@ -445,7 +455,7 @@ function _kfTruncateForClaude(text, maxChars = CHAT_MESSAGE_MAX_CHARS) {
 }
 
 function _kfChatMessageIsForClaude(m) {
-  if (!m || m.kind === "tool" || m.kind === "action") return false;
+  if (!m || m.kind === "tool" || m.kind === "action" || m.kind === "notice") return false;
   const text = String(m.content || "").trim();
   return !!text && text !== "_thinking..._";
 }
@@ -890,6 +900,14 @@ function _kfStringifyToolResult(value) {
   return text;
 }
 
+function _kfUserAskedForMapAction(text) {
+  return /\b(map|center|zoom|pin|route|path|show me|locate|where|migration route|immigration route)\b/i.test(String(text || ""));
+}
+
+function _kfAssistantClaimsMapAction(text) {
+  return /\b(map (is|has been|now)|now centered|centered on|pins? (mark|marking|show|added)|route (is|has been|now)|showing .* on the map|map changed)\b/i.test(String(text || ""));
+}
+
 async function parseAndRunKfCalls(text) {
   // Strip incomplete KFCALL markers that were cut off by max_tokens truncation.
   text = text.replace(/<<KFCALL:[^>]*$/s, "").trimEnd();
@@ -941,7 +959,7 @@ async function runChatTurn(userText) {
     return;
   }
   let nextInput = cacheContext
-    ? `${userText}\n\n[Cache-safe instruction: answer from the selected tree data only. Do not mention the logged-in user's name, email, account tier, selected person, viewport, or other transient UI state unless the user explicitly asked about it.]`
+    ? `${userText}\n\n[Cache-safe instruction: for named people and family-specific claims, use only selected tree data and tool results. Label broader background as Historical context, not tree evidence. Do not mention the logged-in user's name, email, account tier, selected person, viewport, or other transient UI state unless the user explicitly asked about it.]`
     : userText;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const pending = { role: "bot", content: "_thinking..._" };
@@ -994,6 +1012,9 @@ async function runChatTurn(userText) {
     const chipParse = parseChips(stripped);
     pending.content = _kfPlainEnglishEventText(chipParse.stripped || (results.length ? "_using the data..._" : ""));
     if (chipParse.chips.length) pending.chips = _kfMergeChatChips(pending.chips, chipParse.chips);
+    if (!results.length && _kfUserAskedForMapAction(userText) && _kfAssistantClaimsMapAction(pending.content)) {
+      pending.content += "\n\n*Map not changed: Claude did not send an executable map action.*";
+    }
     renderChat();
     if (!results.length) {
       await _kfStoreCachedAiAnswer(cacheContext, pending.content);
@@ -1002,7 +1023,7 @@ async function runChatTurn(userText) {
     // Surface KFCALL errors visibly -- otherwise showViz failures are silent.
     const kfErrors = results.filter(r => r.result && r.result.error);
     if (kfErrors.length) {
-      chatHistory.push({ role: "bot", kind: "tool", content: _kfPlainEnglishEventText("*[KFCALL error]* " + kfErrors.map(r => `\`${r.call}\`: ${r.result.error}`).join("; ")) });
+      chatHistory.push({ role: "bot", content: _kfPlainEnglishEventText("*[map/action failed]* " + kfErrors.map(r => `\`${r.call}\`: ${r.result.error}`).join("; ")) });
       renderChat();
     }
     let log = _kfPlainEnglishEventText(results.map(r => `\u2192 ${r.call}: ${_kfStringifyToolResult(r.result)}`).join("\n"));

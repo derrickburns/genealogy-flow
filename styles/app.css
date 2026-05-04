@@ -87,6 +87,25 @@
   #mapLegend div { max-width:40ch; white-space:normal; overflow-wrap:anywhere; }
   .rangeWrap { position:relative; flex:1 1 auto; min-width:120px; padding:18px 0 14px; display:flex; align-items:center; }
   #yearHist { position:absolute; left:0; right:0; bottom:14px; height:18px; width:100%; pointer-events:none; opacity:0.55; }
+  #yearThumbLabel {
+    position:absolute;
+    left:clamp(18px, var(--year-pos, 0%), calc(100% - 18px));
+    top:0;
+    z-index:2;
+    transform:translate(-50%, -35%);
+    pointer-events:none;
+    user-select:none;
+    padding:1px 5px;
+    border:1px solid rgba(42,74,140,0.18);
+    border-radius:999px;
+    background:rgba(255,255,255,0.92);
+    color:#2a4a8c;
+    font-size:11px;
+    font-weight:900;
+    line-height:1.2;
+    font-variant-numeric:tabular-nums;
+    box-shadow:0 1px 4px rgba(15,23,42,0.08);
+  }
   #quickChips { display:flex; flex-wrap:wrap; gap:4px; padding:2px 4px; align-items:center; font-size:12.75px; }
   #quickChips.hidden { display:none; }
   #quickChips .chipGroup { display:flex; flex-wrap:wrap; gap:1px; align-items:center; }
@@ -362,10 +381,13 @@
   #chatHistory .msg.bot .body tr:nth-child(even) td { background:#f8fafd; }
   #chatHistory .msg.tool { font-size:11px; color:#888; }
   #chatHistory .msg.action { font-size:11px; color:#64748b; }
+  #chatHistory .msg.notice { font-size:11px; color:#334155; }
   #chatHistory .msg.tool .who { color:#9aa6bc; }
   #chatHistory .msg.action .who { color:#94a3b8; }
+  #chatHistory .msg.notice .who { color:#64748b; }
   #chatHistory .msg.tool .body { word-wrap:break-word; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
   #chatHistory .msg.action .body { word-wrap:break-word; }
+  #chatHistory .msg.notice .body { word-wrap:break-word; }
   #chatHistory .msg.tool .body p { margin:0 0 4px; }
   #chatHistory .msg.tool .body p:last-child { margin-bottom:0; }
   #chatHistory .msg.bot .body a { color:#2a4a8c; }
@@ -663,7 +685,7 @@
     #range { min-width:100%; height:9px; }
     #range::-webkit-slider-thumb { width:24px; height:24px; }
     #range::-moz-range-thumb { width:24px; height:24px; }
-    #yearThumbLabel { display:none !important; }
+    #yearThumbLabel { top:-1px; font-size:10px; padding:1px 4px; }
     .rangeMark.loop { display:none !important; }
     #migBar { height:32px; padding-top:15px; }
 
