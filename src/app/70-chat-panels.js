@@ -1121,6 +1121,7 @@ function _kfChatScopeQuestions(root, selected, visible) {
     `Explain this year in plain language.`,
     `Why are these people visible in ${y}?`,
     `Summarize the migration story for the visible people in ${y}.`,
+    `Summarize the waves of immigration in my family. Cite important surnames, transition years, and people with source-marked historical significance.`,
     `Explain the biggest place or cluster pattern in ${y}.`,
   ];
   if (_kfShowDataQualityConcerns) questions.push(`Find the weakest location evidence in the checked trees at ${y}.`);

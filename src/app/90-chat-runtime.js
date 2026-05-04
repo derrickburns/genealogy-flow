@@ -11,6 +11,8 @@ SUGGESTION LISTS: When listing visualization or analysis ideas, ALWAYS present e
 
 When you name a specific person, place, cluster, or follow-up action that would help the user inspect the current view, include a short KFCHIP for it instead of leaving it as passive text. Prefer chips such as selectPerson, centerOn, setClusterMode, showYearTour, or chat with a complete follow-up request. Use showOutliers only when the data quality concerns setting is on or the user explicitly asks for data-quality review.
 
+IMMIGRATION / MIGRATION SUMMARIES: For broad questions about waves of family immigration, migration transitions, important surnames, or historically significant people, call getImmigrationWaves() first. It returns a compact, bounded summary designed for narrative answers. Only run extra sql() calls if a specific claim still needs support. Do not infer historical significance from fame; cite a person as historically significant only when the data itself marks them with a title, role, or relevant event.
+
 VISUALIZATION REQUESTS: When asked for any chart, graph, or visualization, produce it immediately:
 1. Run sql() to get the data
 2. Emit <<KFCALL:showViz(...)>> with all data inlined in the spec
@@ -119,6 +121,7 @@ Available tools. jsonArgs is a single JSON value:
 - chain({steps: [...]} | [...])    Run multiple kfApi calls in one round-trip. Each step is {"method":"<name>","args":<sameShapeAsAbove>}. Stops at first error unless {"continueOnError":true}. Use this whenever a single user request needs more than one operation — saves tool round-trips and makes the intent atomic. Cannot recurse.
 
 - getFamily(name)                  Returns {person, parents:{father,mother}, siblings, spouses, children}. Faster than SQL for one-person family unit; pulls from in-memory family graph.
+- getImmigrationWaves({limit?})    Compact summary of immigration/emigration and cross-country transition waves across the checked trees: decade/routes, key surnames, example people, and source-marked title/role people. Use FIRST for broad immigration-wave questions.
 - getAncestors(name, maxGen?)      Returns {ancestors: [{id,name,birth,death,generation}, ...]} sorted by generation. DATA-only; doesn't change the visualization.
 - getDescendants(name, maxGen?)    Same shape, descending through children. Default maxGen 6.
 - getMigrations(name)              Returns {moves: [{from, to, years_elapsed, miles}, ...]} sorted chronologically. Use this when narrating someone's life ("she moved 3 times: ...").
@@ -172,6 +175,11 @@ Style: keep prose short. After a tool call, you don't need to repeat what you di
 
 let _chatNewSession = true;
 const CHAT_REQUEST_TIMEOUT_MS = 90000;
+const CHAT_HISTORY_MAX_CHARS = 32000;
+const CHAT_MESSAGE_MAX_CHARS = 6000;
+const CHAT_TOOL_RESULT_MAX_CHARS = 12000;
+const CHAT_TOOL_ROUND_MAX_CHARS = 36000;
+const CHAT_TOOL_ROW_LIMIT = 40;
 
 async function detectChatProxy() {
   if (_chatProxyOk !== null) return _chatProxyOk;
@@ -198,12 +206,24 @@ function _kfPushClaudeMessage(messages, role, content) {
   else messages.push({ role, content: text });
 }
 
+function _kfTruncateForClaude(text, maxChars = CHAT_MESSAGE_MAX_CHARS) {
+  const s = String(text || "");
+  if (s.length <= maxChars) return s;
+  return s.slice(0, maxChars) + `\n[truncated ${s.length - maxChars} characters]`;
+}
+
+function _kfChatMessageIsForClaude(m) {
+  if (!m || m.kind === "tool" || m.kind === "action") return false;
+  const text = String(m.content || "").trim();
+  return !!text && text !== "_thinking..._";
+}
+
 function _kfBuildClaudeMessages(userMsg, pendingMsg = null) {
   const ctx = buildChatContext();
   const dataCtx = buildQuestionDataContext(userMsg);
   const fullCtx = [ctx, dataCtx].filter(Boolean).join("\n\n");
   const requestText = fullCtx ? `Context for current view:\n${fullCtx}\n\nQuestion: ${userMsg}` : userMsg;
-  const messages = [];
+  const prior = [];
   let currentUserIdx = -1;
   for (let i = chatHistory.length - 1; i >= 0; i--) {
     const m = chatHistory[i];
@@ -216,8 +236,22 @@ function _kfBuildClaudeMessages(userMsg, pendingMsg = null) {
   for (let i = 0; i < chatHistory.length; i++) {
     const m = chatHistory[i];
     if (m === pendingMsg || i === currentUserIdx) continue;
-    _kfPushClaudeMessage(messages, m.role === "user" ? "user" : "assistant", m.content);
+    if (!_kfChatMessageIsForClaude(m)) continue;
+    prior.push({
+      role: m.role === "user" ? "user" : "assistant",
+      content: _kfTruncateForClaude(m.content),
+    });
   }
+  const kept = [];
+  let used = requestText.length;
+  for (let i = prior.length - 1; i >= 0; i--) {
+    const cost = prior[i].content.length + 32;
+    if (used + cost > CHAT_HISTORY_MAX_CHARS) break;
+    kept.unshift(prior[i]);
+    used += cost;
+  }
+  const messages = [];
+  for (const m of kept) _kfPushClaudeMessage(messages, m.role, m.content);
   _kfPushClaudeMessage(messages, "user", requestText);
   return messages;
 }
@@ -436,6 +470,64 @@ function parseChips(text) {
   }
   return { stripped: out, chips };
 }
+
+function _kfCompactToolCall(method, args) {
+  if (method === "showViz" && args && typeof args === "object") {
+    const spec = args.spec;
+    let dataRows = null;
+    if (spec && typeof spec === "object" && Array.isArray(spec.data?.values)) dataRows = spec.data.values.length;
+    return `showViz(${JSON.stringify({ type: args.type, title: args.title, dataRows })})`;
+  }
+  if (method === "sql") return `sql(${_kfTruncateForClaude(args, 800)})`;
+  if (method === "chain") {
+    const steps = Array.isArray(args) ? args : Array.isArray(args?.steps) ? args.steps : [];
+    return `chain(${steps.map(s => s?.method || "?").join(" -> ")})`;
+  }
+  const body = args === null ? "" : JSON.stringify(args);
+  return `${method}(${_kfTruncateForClaude(body, 1000)})`;
+}
+
+function _kfCompactToolValue(value, depth = 0) {
+  if (value == null || typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value.startsWith("data:image/")) return `[image data omitted: ${value.length} chars]`;
+    return _kfTruncateForClaude(value, depth > 1 ? 1000 : 2500);
+  }
+  if (Array.isArray(value)) {
+    const limit = depth > 0 ? Math.min(12, CHAT_TOOL_ROW_LIMIT) : CHAT_TOOL_ROW_LIMIT;
+    const out = value.slice(0, limit).map(v => _kfCompactToolValue(v, depth + 1));
+    if (value.length > limit) out.push({ omitted: value.length - limit });
+    return out;
+  }
+  if (typeof value === "object") {
+    const out = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (key === "dataUrl" || key === "srcdoc" || key === "spec") {
+        out[key] = `[omitted: ${typeof val === "string" ? val.length + " chars" : "large visualization payload"}]`;
+        continue;
+      }
+      if (key === "rows" && Array.isArray(val)) {
+        const limit = Math.min(CHAT_TOOL_ROW_LIMIT, val.length);
+        out.rows = val.slice(0, limit).map(v => _kfCompactToolValue(v, depth + 1));
+        out.returnedRows = val.length;
+        if (val.length > limit) out.rowsOmitted = val.length - limit;
+        continue;
+      }
+      out[key] = _kfCompactToolValue(val, depth + 1);
+    }
+    return out;
+  }
+  return String(value);
+}
+
+function _kfStringifyToolResult(value) {
+  let text = JSON.stringify(_kfCompactToolValue(value));
+  if (text.length > CHAT_TOOL_RESULT_MAX_CHARS) {
+    text = text.slice(0, CHAT_TOOL_RESULT_MAX_CHARS) + `...[tool result truncated ${text.length - CHAT_TOOL_RESULT_MAX_CHARS} chars]`;
+  }
+  return text;
+}
+
 async function parseAndRunKfCalls(text) {
   // Strip incomplete KFCALL markers that were cut off by max_tokens truncation.
   text = text.replace(/<<KFCALL:[^>]*$/s, "").trimEnd();
@@ -443,7 +535,13 @@ async function parseAndRunKfCalls(text) {
   const calls = [];
   const stripped = text.replace(KFCALL_RE, (_match, method, argsStr) => {
     let args = null, err = null;
-    if (argsStr.trim()) { try { args = JSON.parse(argsStr); } catch (e) { err = "invalid json args: " + e.message; } }
+    if (argsStr.trim()) {
+      try { args = JSON.parse(argsStr); }
+      catch (e) {
+        args = _kfTryLenientParse(argsStr);
+        if (args == null) err = "invalid json args: " + e.message;
+      }
+    }
     calls.push({ method, args, err });
     return "";
   });
@@ -459,7 +557,7 @@ async function parseAndRunKfCalls(text) {
       const out = Array.isArray(c.args)
         ? await fn.apply(window.kfApi, c.args)
         : await fn.call(window.kfApi, c.args);
-      results.push({ call: `${c.method}(${c.args === null ? "" : JSON.stringify(c.args)})`, result: out });
+      results.push({ call: _kfCompactToolCall(c.method, c.args), result: _kfCompactToolValue(out) });
     } catch (e) {
       results.push({ call: c.method, result: { error: e.message || String(e) } });
     }
@@ -467,7 +565,7 @@ async function parseAndRunKfCalls(text) {
   return { stripped: stripped.trim(), results };
 }
 
-const MAX_TOOL_ROUNDS = 10;
+const MAX_TOOL_ROUNDS = 6;
 async function runChatTurn(userText) {
   let nextInput = userText;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -491,7 +589,11 @@ async function runChatTurn(userText) {
         _kfRecordClientError({ type: "chat", message, stack: e?.stack || "" });
       }
       console.warn("[kf] Claude chat failed:", message);
-      pending.content = `*[error]* ${e.message || e}`;
+      let messageForUser = e.message || String(e);
+      if (/load failed|failed to fetch|networkerror/i.test(messageForUser)) {
+        messageForUser = "Claude request failed while loading. The request may have been interrupted or too large; tool outputs are now capped, so try the question again.";
+      }
+      pending.content = `*[error]* ${messageForUser}`;
       renderChat();
       return;
     }
@@ -509,7 +611,10 @@ async function runChatTurn(userText) {
       chatHistory.push({ role: "bot", kind: "tool", content: _kfPlainEnglishEventText("*[KFCALL error]* " + kfErrors.map(r => `\`${r.call}\`: ${r.result.error}`).join("; ")) });
       renderChat();
     }
-    const log = _kfPlainEnglishEventText(results.map(r => `\u2192 ${r.call}: ${JSON.stringify(r.result)}`).join("\n"));
+    let log = _kfPlainEnglishEventText(results.map(r => `\u2192 ${r.call}: ${_kfStringifyToolResult(r.result)}`).join("\n"));
+    if (log.length > CHAT_TOOL_ROUND_MAX_CHARS) {
+      log = log.slice(0, CHAT_TOOL_ROUND_MAX_CHARS) + `\n[tool round truncated ${log.length - CHAT_TOOL_ROUND_MAX_CHARS} characters]`;
+    }
     chatHistory.push({ role: "bot", kind: "tool", content: "*[tool calls]*\n" + log });
     renderChat();
     nextInput = "Tool results:\n" + log + "\n\nIf you have enough to answer, write the final answer now without further tool calls. Otherwise issue more tool calls.";
@@ -566,6 +671,7 @@ function autoIntroOnce() {
       { label: "Gender breakdown",   method: "setClusterMode", args: { mode: "gender" } },
       { label: "Connect blood kin",  method: "setKinLines",    args: { n: 5 } },
       { label: "Summarize my tree",  method: "sendChat",       args: { text: "Summarize this tree: key ancestors, geographic spread, and time range." } },
+      { label: "Immigration waves",  method: "sendChat",       args: { text: "Summarize the waves of immigration in my family. Cite important surnames, transition years, and people with source-marked historical significance." } },
       { label: "Migration patterns", method: "sendChat",       args: { text: "What migration patterns do you see in this tree?" } },
     ],
   };

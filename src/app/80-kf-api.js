@@ -426,6 +426,694 @@ function buildQuestionDataContext(userMsg) {
   return `Database context precomputed for this question:\n${blocks.join("\n\n")}`;
 }
 
+const _KF_HISTORICAL_TITLE_RE = /\b(Sir|Dame|Lady|Lord|King|Queen|Prince|Princess|Duke|Duchess|Earl|Count|Countess|Baron|Baroness|Rev\.?|Dr\.?|Capt\.?|Captain|Col\.?|Colonel|Maj\.?|Major|Gen\.?|General)\b/i;
+
+function _kfCountryLabelFromPlace(place) {
+  const raw = String(place || "").trim();
+  if (!raw) return "";
+  if (geocoder) {
+    const g = geocoder(raw);
+    if (g) {
+      const normalized = typeof geocoder.normalizePlace === "function" ? geocoder.normalizePlace(raw) : raw;
+      const parts = String(normalized || raw).split(",").map(s => s.trim()).filter(Boolean);
+      if (parts.length) return parts[parts.length - 1];
+      if (g.cc === "US") return "USA";
+      return g.cc || "";
+    }
+  }
+  const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
+function _kfTopCountsFromMap(map, limit = 8) {
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, limit)
+    .map(([name, count]) => ({ name, count }));
+}
+
+function _kfAddCount(map, key, n = 1) {
+  if (!key) return;
+  map.set(key, (map.get(key) || 0) + n);
+}
+
+function _kfLifeForTool(ind) {
+  return { name: ind.name || "?", birth: ind.birth_year ?? null, death: ind.death_year ?? null };
+}
+
+function _kfImmigrationRouteLabel(fromCountry, toCountry) {
+  return `${fromCountry || "unknown"} -> ${toCountry || "unknown"}`;
+}
+
+function _kfGeoForPlaceCached(cache, place) {
+  const raw = String(place || "").trim();
+  if (!raw || !geocoder) return null;
+  if (cache.has(raw)) return cache.get(raw);
+  const g = geocoder(raw);
+  cache.set(raw, g || null);
+  return g || null;
+}
+
+function _kfNormalizedPlaceForTool(place) {
+  const raw = String(place || "").trim();
+  if (!raw) return "";
+  if (geocoder && typeof geocoder.normalizePlace === "function") return geocoder.normalizePlace(raw) || raw;
+  return raw;
+}
+
+function _kfRegionLabelFromGeo(place, geo) {
+  const normalized = _kfNormalizedPlaceForTool(place);
+  const parts = normalized.split(",").map(s => s.trim()).filter(Boolean);
+  if (parts.length >= 2) return `${parts[parts.length - 2]}, ${parts[parts.length - 1]}`;
+  if (parts.length === 1) return parts[0];
+  if (geo?.st && geo?.cc) return `${geo.st}, ${geo.cc}`;
+  return String(place || "").trim();
+}
+
+function _kfPersonKey(src, ind) {
+  return `${src.source_id}:${ind.id}`;
+}
+
+function _kfSelectedGenealogyFacts(opts = {}) {
+  const geoCache = new Map();
+  const sources = _kfSelectedSourceSnapshots();
+  const persons = [];
+  const facts = [];
+  const factsByPerson = new Map();
+  const families = [];
+  for (const src of sources) {
+    for (const ind of (src.individuals || [])) {
+      const key = _kfPersonKey(src, ind);
+      const person = {
+        key,
+        tree: src.name,
+        id: ind.id,
+        name: ind.name || "?",
+        surname: _kfSurnameOf(ind.name || "") || "(unknown)",
+        birth: ind.birth_year ?? null,
+        death: ind.death_year ?? null,
+      };
+      persons.push(person);
+      const rows = [];
+      for (const ev of (ind.events || [])) {
+        const year = Number(ev?.year);
+        const place = String(ev?.place || "").trim();
+        if (!Number.isFinite(year) || !place) continue;
+        const geo = _kfGeoForPlaceCached(geoCache, place);
+        const fact = {
+          ...person,
+          type: String(ev.type || "").toUpperCase(),
+          event: _kfEventPlainLabel(ev.type, { noun: true }),
+          year,
+          place,
+          normalizedPlace: _kfNormalizedPlaceForTool(place),
+          region: _kfRegionLabelFromGeo(place, geo),
+          country: geo ? _kfCountryLabelFromPlace(place) : _kfCountryLabelFromPlace(place),
+          lat: geo?.lat ?? null,
+          lon: geo?.lon ?? null,
+          geoLevel: geo?.level || null,
+          geoState: geo?.st || null,
+        };
+        rows.push(fact);
+        facts.push(fact);
+      }
+      rows.sort((a, b) => a.year - b.year || a.event.localeCompare(b.event));
+      factsByPerson.set(key, rows);
+    }
+    for (const [, fam] of (src.families || new Map())) {
+      families.push({
+        tree: src.name,
+        id: fam.id,
+        husbKey: fam.husb ? `${src.source_id}:${fam.husb}` : null,
+        wifeKey: fam.wife ? `${src.source_id}:${fam.wife}` : null,
+        childKeys: (fam.chil || []).map(id => `${src.source_id}:${id}`),
+      });
+    }
+  }
+  return { sources: sources.map(s => s.name), persons, facts, factsByPerson, families, limit: parseInt(opts.limit, 10) || 12 };
+}
+
+function _kfMoveRowsFromFacts(data, opts = {}) {
+  const minMiles = Number.isFinite(Number(opts.minMiles)) ? Number(opts.minMiles) : 25;
+  const moves = [];
+  for (const [personKey, rows] of data.factsByPerson.entries()) {
+    let prev = null;
+    for (const row of rows) {
+      if (row.lat == null || row.lon == null) continue;
+      if (prev) {
+        const miles = _kfHaversineMiles(prev.lat, prev.lon, row.lat, row.lon);
+        if (miles >= minMiles && row.year >= prev.year) {
+          moves.push({
+            personKey,
+            tree: row.tree,
+            person: row.name,
+            surname: row.surname,
+            birth: row.birth,
+            death: row.death,
+            fromYear: prev.year,
+            toYear: row.year,
+            yearsElapsed: row.year - prev.year,
+            from: prev.normalizedPlace || prev.place,
+            to: row.normalizedPlace || row.place,
+            fromRegion: prev.region,
+            toRegion: row.region,
+            fromCountry: prev.country,
+            toCountry: row.country,
+            miles: Math.round(miles * 10) / 10,
+          });
+        }
+      }
+      prev = row;
+    }
+  }
+  return moves;
+}
+
+function _kfExamplePerson(row) {
+  return {
+    person: row.person || row.name,
+    birth: row.birth ?? null,
+    death: row.death ?? null,
+    tree: row.tree,
+  };
+}
+
+function _kfUniqueExamples(rows, limit = 6) {
+  const out = [], seen = new Set();
+  for (const row of rows) {
+    const key = `${row.tree}:${row.person || row.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(_kfExamplePerson(row));
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function _kfCollectImmigrationWaves(opts = {}) {
+  const limit = Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 18));
+  const signals = [];
+  const seenSignals = new Set();
+  const titleMarked = [];
+  const selectedSources = _kfSelectedSourceSnapshots();
+  const countryCache = new Map();
+  const countryFor = (place) => {
+    const key = String(place || "");
+    if (countryCache.has(key)) return countryCache.get(key);
+    const value = _kfCountryLabelFromPlace(key);
+    countryCache.set(key, value);
+    return value;
+  };
+
+  function addSignal(signal) {
+    if (!Number.isFinite(signal.year)) return;
+    const key = [signal.tree, signal.person, signal.year, signal.kind, signal.fromCountry, signal.toCountry, signal.place].join("|");
+    if (seenSignals.has(key)) return;
+    seenSignals.add(key);
+    signals.push(signal);
+  }
+
+  for (const src of selectedSources) {
+    for (const ind of (src.individuals || [])) {
+      const name = ind.name || "?";
+      const surname = _kfSurnameOf(name) || "";
+      if (_KF_HISTORICAL_TITLE_RE.test(name) && titleMarked.length < 40) {
+        titleMarked.push({ tree: src.name, ..._kfLifeForTool(ind) });
+      }
+      const events = (ind.events || [])
+        .filter(ev => ev && Number.isFinite(Number(ev.year)) && ev.place)
+        .map(ev => ({
+          type: String(ev.type || "").toUpperCase(),
+          year: Number(ev.year),
+          place: String(ev.place || ""),
+          country: countryFor(ev.place),
+        }))
+        .sort((a, b) => a.year - b.year || a.type.localeCompare(b.type));
+      let prevPlaced = null;
+      for (const ev of events) {
+        if (prevPlaced && prevPlaced.country && ev.country && prevPlaced.country !== ev.country) {
+          addSignal({
+            kind: "cross-country transition",
+            tree: src.name,
+            person: name,
+            birth: ind.birth_year ?? null,
+            death: ind.death_year ?? null,
+            surname,
+            year: ev.year,
+            fromCountry: prevPlaced.country,
+            toCountry: ev.country,
+            fromPlace: prevPlaced.place,
+            place: ev.place,
+          });
+        }
+        if (ev.type === "IMMI" || ev.type === "EMIG") {
+          addSignal({
+            kind: ev.type === "IMMI" ? "immigration record" : "emigration record",
+            tree: src.name,
+            person: name,
+            birth: ind.birth_year ?? null,
+            death: ind.death_year ?? null,
+            surname,
+            year: ev.year,
+            fromCountry: ev.type === "EMIG" ? ev.country : "",
+            toCountry: ev.type === "IMMI" ? ev.country : "",
+            place: ev.place,
+          });
+        }
+        if (ev.country) prevPlaced = ev;
+      }
+    }
+  }
+
+  const surnameCounts = new Map();
+  const routeCounts = new Map();
+  const byWave = new Map();
+  for (const sig of signals) {
+    const decade = Math.floor(sig.year / 10) * 10;
+    const route = _kfImmigrationRouteLabel(sig.fromCountry, sig.toCountry);
+    const key = `${decade}|${route}`;
+    let wave = byWave.get(key);
+    if (!wave) {
+      wave = {
+        period: `${decade}s`,
+        decade,
+        route,
+        count: 0,
+        firstYear: sig.year,
+        lastYear: sig.year,
+        surnames: new Map(),
+        kinds: new Map(),
+        examples: [],
+      };
+      byWave.set(key, wave);
+    }
+    wave.count++;
+    wave.firstYear = Math.min(wave.firstYear, sig.year);
+    wave.lastYear = Math.max(wave.lastYear, sig.year);
+    _kfAddCount(wave.surnames, sig.surname || "(unknown)");
+    _kfAddCount(wave.kinds, sig.kind);
+    if (wave.examples.length < 6) {
+      wave.examples.push({
+        person: sig.person,
+        birth: sig.birth,
+        death: sig.death,
+        year: sig.year,
+        from: sig.fromPlace || sig.fromCountry || null,
+        to: sig.place || sig.toCountry || null,
+        tree: sig.tree,
+      });
+    }
+    _kfAddCount(surnameCounts, sig.surname || "(unknown)");
+    _kfAddCount(routeCounts, route);
+  }
+
+  const waves = [...byWave.values()]
+    .sort((a, b) => b.count - a.count || a.decade - b.decade || a.route.localeCompare(b.route))
+    .slice(0, limit)
+    .map(w => ({
+      period: w.period,
+      yearRange: w.firstYear === w.lastYear ? String(w.firstYear) : `${w.firstYear}-${w.lastYear}`,
+      route: w.route,
+      count: w.count,
+      surnames: _kfTopCountsFromMap(w.surnames, 6),
+      evidenceTypes: _kfTopCountsFromMap(w.kinds, 3),
+      examples: w.examples,
+    }));
+
+  return {
+    ok: true,
+    scope: {
+      selectedTrees: selectedSources.map(s => s.name),
+      treeCount: selectedSources.length,
+    },
+    totals: {
+      signals: signals.length,
+      waves: byWave.size,
+    },
+    waves,
+    importantSurnames: _kfTopCountsFromMap(surnameCounts, 12),
+    commonRoutes: _kfTopCountsFromMap(routeCounts, 12),
+    titleMarkedPeople: titleMarked.slice(0, 25),
+    notes: [
+      "Signals include explicit immigration/emigration records and inferred cross-country transitions between consecutive placed events.",
+      "Title-marked people are candidates for historical significance because the source name includes a title or role; do not claim external fame without corroboration.",
+    ],
+  };
+}
+
+function _kfCollectSurnameMigrationDistances(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const moves = _kfMoveRowsFromFacts(data, { minMiles: 50 });
+  const bySurname = new Map();
+  for (const m of moves) {
+    let row = bySurname.get(m.surname);
+    if (!row) {
+      row = { surname: m.surname, moveCount: 0, totalMiles: 0, maxMiles: 0, people: new Set(), examples: [] };
+      bySurname.set(m.surname, row);
+    }
+    row.moveCount++;
+    row.totalMiles += m.miles;
+    row.maxMiles = Math.max(row.maxMiles, m.miles);
+    row.people.add(`${m.tree}:${m.person}`);
+    if (row.examples.length < 5) row.examples.push(m);
+  }
+  const surnames = [...bySurname.values()]
+    .map(row => ({
+      surname: row.surname,
+      people: row.people.size,
+      moveCount: row.moveCount,
+      totalMiles: Math.round(row.totalMiles),
+      maxMiles: Math.round(row.maxMiles),
+      examples: row.examples.map(m => ({ person: m.person, years: `${m.fromYear}-${m.toYear}`, from: m.from, to: m.to, miles: Math.round(m.miles), tree: m.tree })),
+    }))
+    .sort((a, b) => b.totalMiles - a.totalMiles || b.maxMiles - a.maxMiles || a.surname.localeCompare(b.surname))
+    .slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 12)));
+  return { ok: true, scope: { selectedTrees: data.sources }, totals: { moves: moves.length }, surnames };
+}
+
+function _kfCollectUrbanizationShift(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const buckets = new Map();
+  for (const fact of data.facts) {
+    if (!fact.geoLevel) continue;
+    const decade = Math.floor(fact.year / 10) * 10;
+    let bucket = buckets.get(decade);
+    if (!bucket) {
+      bucket = { decade, events: 0, city: 0, broader: 0, surnames: new Map(), examples: [] };
+      buckets.set(decade, bucket);
+    }
+    bucket.events++;
+    if (fact.geoLevel === "city") bucket.city++;
+    else bucket.broader++;
+    _kfAddCount(bucket.surnames, fact.surname);
+    if (bucket.examples.length < 5) bucket.examples.push({ person: fact.name, year: fact.year, place: fact.normalizedPlace, tree: fact.tree });
+  }
+  const series = [...buckets.values()]
+    .filter(b => b.events >= 3)
+    .sort((a, b) => a.decade - b.decade)
+    .map(b => ({
+      decade: b.decade,
+      events: b.events,
+      cityEvents: b.city,
+      cityShare: Math.round((b.city / Math.max(1, b.events)) * 100),
+      topSurnames: _kfTopCountsFromMap(b.surnames, 5),
+      examples: b.examples,
+    }));
+  const transitions = [];
+  for (let i = 1; i < series.length; i++) {
+    transitions.push({
+      fromDecade: series[i - 1].decade,
+      toDecade: series[i].decade,
+      cityShareChange: series[i].cityShare - series[i - 1].cityShare,
+      fromCityShare: series[i - 1].cityShare,
+      toCityShare: series[i].cityShare,
+    });
+  }
+  transitions.sort((a, b) => b.cityShareChange - a.cityShareChange);
+  return {
+    ok: true,
+    scope: { selectedTrees: data.sources },
+    series: series.slice(-20),
+    biggestShifts: transitions.filter(t => t.cityShareChange > 0).slice(0, Math.max(3, Math.min(10, parseInt(opts?.limit, 10) || 6))),
+    notes: ["City share means records geocoded to a named city rather than only a county, state, province, or country."],
+  };
+}
+
+function _kfCollectFamilyCrossroads(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const byPlace = new Map();
+  for (const fact of data.facts) {
+    const place = fact.normalizedPlace || fact.place;
+    if (!place) continue;
+    let row = byPlace.get(place);
+    if (!row) {
+      row = { place, people: new Set(), surnames: new Map(), firstYear: fact.year, lastYear: fact.year, events: 0, examples: [] };
+      byPlace.set(place, row);
+    }
+    row.events++;
+    row.people.add(fact.key);
+    _kfAddCount(row.surnames, fact.surname);
+    row.firstYear = Math.min(row.firstYear, fact.year);
+    row.lastYear = Math.max(row.lastYear, fact.year);
+    if (row.examples.length < 6) row.examples.push({ person: fact.name, year: fact.year, event: fact.event, tree: fact.tree });
+  }
+  const crossroads = [...byPlace.values()]
+    .map(row => ({
+      place: row.place,
+      people: row.people.size,
+      events: row.events,
+      yearRange: row.firstYear === row.lastYear ? String(row.firstYear) : `${row.firstYear}-${row.lastYear}`,
+      surnameCount: row.surnames.size,
+      topSurnames: _kfTopCountsFromMap(row.surnames, 8),
+      examples: row.examples,
+      score: row.people + row.surnames.size * 2 + Math.min(8, Math.floor((row.lastYear - row.firstYear) / 25)),
+    }))
+    .filter(row => row.people >= 2 || row.surnameCount >= 2)
+    .sort((a, b) => b.score - a.score || b.people - a.people || a.place.localeCompare(b.place))
+    .slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 12)))
+    .map(({ score, ...row }) => row);
+  return { ok: true, scope: { selectedTrees: data.sources }, crossroads };
+}
+
+function _kfCollectStableBranches(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const bySurname = new Map();
+  for (const fact of data.facts) {
+    if (!fact.region) continue;
+    let row = bySurname.get(fact.surname);
+    if (!row) {
+      row = { surname: fact.surname, events: 0, people: new Set(), regions: new Map(), firstYear: fact.year, lastYear: fact.year, examples: [] };
+      bySurname.set(fact.surname, row);
+    }
+    row.events++;
+    row.people.add(fact.key);
+    _kfAddCount(row.regions, fact.region);
+    row.firstYear = Math.min(row.firstYear, fact.year);
+    row.lastYear = Math.max(row.lastYear, fact.year);
+    if (row.examples.length < 5) row.examples.push({ person: fact.name, year: fact.year, place: fact.normalizedPlace, tree: fact.tree });
+  }
+  const branches = [...bySurname.values()]
+    .filter(row => row.events >= 5 && row.people.size >= 2)
+    .map(row => {
+      const top = _kfTopCountsFromMap(row.regions, 4);
+      const dominant = top[0] || { name: "", count: 0 };
+      return {
+        surname: row.surname,
+        people: row.people.size,
+        events: row.events,
+        dominantRegion: dominant.name,
+        dominantShare: Math.round((dominant.count / Math.max(1, row.events)) * 100),
+        yearRange: `${row.firstYear}-${row.lastYear}`,
+        topRegions: top,
+        examples: row.examples,
+      };
+    })
+    .sort((a, b) => b.dominantShare - a.dominantShare || b.events - a.events || a.surname.localeCompare(b.surname))
+    .slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 12)));
+  return { ok: true, scope: { selectedTrees: data.sources }, stableBranches: branches };
+}
+
+function _kfCollectCoMigratingFamilies(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const moves = _kfMoveRowsFromFacts(data, { minMiles: 50 });
+  const groups = new Map();
+  for (const m of moves) {
+    const decade = Math.floor(m.toYear / 10) * 10;
+    const route = `${m.fromRegion || m.fromCountry || "unknown"} -> ${m.toRegion || m.toCountry || "unknown"}`;
+    const key = `${decade}|${route}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { decade, route, moves: 0, people: new Set(), surnames: new Map(), examples: [] };
+      groups.set(key, group);
+    }
+    group.moves++;
+    group.people.add(`${m.tree}:${m.person}`);
+    _kfAddCount(group.surnames, m.surname);
+    if (group.examples.length < 8) group.examples.push({ person: m.person, surname: m.surname, years: `${m.fromYear}-${m.toYear}`, from: m.from, to: m.to, miles: Math.round(m.miles), tree: m.tree });
+  }
+  const coMoves = [...groups.values()]
+    .filter(g => g.people.size >= 2 || g.surnames.size >= 2)
+    .map(g => ({
+      decade: g.decade,
+      route: g.route,
+      moves: g.moves,
+      people: g.people.size,
+      surnames: _kfTopCountsFromMap(g.surnames, 8),
+      examples: g.examples,
+    }))
+    .sort((a, b) => b.people - a.people || b.moves - a.moves || a.decade - b.decade)
+    .slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 12)));
+  return { ok: true, scope: { selectedTrees: data.sources }, coMigratingGroups: coMoves };
+}
+
+const _KF_HISTORY_WINDOWS = [
+  { name: "slavery era in the United States", start: 1619, end: 1865 },
+  { name: "American Revolution", start: 1775, end: 1783 },
+  { name: "Civil War", start: 1861, end: 1865 },
+  { name: "Reconstruction", start: 1865, end: 1877 },
+  { name: "Great Migration", start: 1916, end: 1970 },
+  { name: "Great Depression", start: 1929, end: 1939 },
+  { name: "World War I", start: 1914, end: 1918 },
+  { name: "World War II", start: 1939, end: 1945 },
+  { name: "Civil Rights era", start: 1954, end: 1968 },
+];
+
+function _kfPersonKnownSpan(person, facts) {
+  let start = Number.isFinite(person.birth) ? person.birth : Infinity;
+  let end = Number.isFinite(person.death) ? person.death : -Infinity;
+  for (const fact of facts || []) {
+    start = Math.min(start, fact.year);
+    end = Math.max(end, fact.year);
+  }
+  if (start === Infinity || end === -Infinity) return null;
+  if (end < start) end = start;
+  return { start, end };
+}
+
+function _kfCollectHistoricalOverlaps(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const rows = [];
+  const personByKey = new Map(data.persons.map(p => [p.key, p]));
+  for (const [key, facts] of data.factsByPerson.entries()) {
+    const person = personByKey.get(key);
+    if (!person) continue;
+    const span = _kfPersonKnownSpan(person, facts);
+    if (!span) continue;
+    for (const w of _KF_HISTORY_WINDOWS) {
+      if (span.start <= w.end && span.end >= w.start) {
+        rows.push({
+          period: w.name,
+          years: `${w.start}-${w.end}`,
+          person: person.name,
+          surname: person.surname,
+          birth: person.birth,
+          death: person.death,
+          tree: person.tree,
+          knownSpan: `${span.start}-${span.end}`,
+          examplePlace: facts.find(f => f.year >= w.start && f.year <= w.end)?.normalizedPlace || facts[0]?.normalizedPlace || null,
+        });
+      }
+    }
+  }
+  const byPeriod = new Map();
+  for (const row of rows) {
+    let p = byPeriod.get(row.period);
+    if (!p) {
+      p = { period: row.period, years: row.years, people: 0, surnames: new Map(), examples: [] };
+      byPeriod.set(row.period, p);
+    }
+    p.people++;
+    _kfAddCount(p.surnames, row.surname);
+    if (p.examples.length < 8) p.examples.push(row);
+  }
+  const periods = [...byPeriod.values()]
+    .map(p => ({ period: p.period, years: p.years, people: p.people, topSurnames: _kfTopCountsFromMap(p.surnames, 8), examples: p.examples }))
+    .sort((a, b) => b.people - a.people || a.period.localeCompare(b.period))
+    .slice(0, Math.max(5, Math.min(20, parseInt(opts?.limit, 10) || 9)));
+  return {
+    ok: true,
+    scope: { selectedTrees: data.sources },
+    periods,
+    notes: ["Overlap means the person's known life or record span intersects the historical period; it does not prove direct participation."],
+  };
+}
+
+function _kfCollectDistantBranchMarriages(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const factsByPerson = data.factsByPerson;
+  const personByKey = new Map(data.persons.map(p => [p.key, p]));
+  const rows = [];
+  for (const fam of data.families) {
+    const a = fam.husbKey ? personByKey.get(fam.husbKey) : null;
+    const b = fam.wifeKey ? personByKey.get(fam.wifeKey) : null;
+    if (!a || !b) continue;
+    const aEvent = (factsByPerson.get(fam.husbKey) || []).find(f => f.lat != null && f.lon != null);
+    const bEvent = (factsByPerson.get(fam.wifeKey) || []).find(f => f.lat != null && f.lon != null);
+    if (!aEvent || !bEvent) continue;
+    const miles = _kfHaversineMiles(aEvent.lat, aEvent.lon, bEvent.lat, bEvent.lon);
+    if (miles < 100 && aEvent.country === bEvent.country) continue;
+    rows.push({
+      tree: fam.tree,
+      spouseA: { name: a.name, birth: a.birth, death: a.death },
+      spouseB: { name: b.name, birth: b.birth, death: b.death },
+      surnameA: a.surname,
+      surnameB: b.surname,
+      placeA: aEvent.normalizedPlace || aEvent.place,
+      placeB: bEvent.normalizedPlace || bEvent.place,
+      yearA: aEvent.year,
+      yearB: bEvent.year,
+      miles: Math.round(miles),
+      countryA: aEvent.country,
+      countryB: bEvent.country,
+    });
+  }
+  rows.sort((a, b) => b.miles - a.miles || a.spouseA.name.localeCompare(b.spouseA.name));
+  return { ok: true, distantMarriages: rows.slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 12))) };
+}
+
+function _kfParentsFromAnalysisFamilies(families) {
+  const parents = new Map();
+  for (const fam of families || []) {
+    for (const child of (fam.childKeys || [])) parents.set(child, [fam.husbKey || null, fam.wifeKey || null]);
+  }
+  return parents;
+}
+
+function _kfCollectDeepestAncestryBranches(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const rows = [];
+  const byKey = new Map(data.persons.map(p => [p.key, p]));
+  const parents = _kfParentsFromAnalysisFamilies(data.families);
+  for (const sourceName of data.sources) {
+    const memo = new Map();
+    const depthFor = (id, seen = new Set()) => {
+      if (!id || seen.has(id)) return 0;
+      if (memo.has(id)) return memo.get(id);
+      seen.add(id);
+      const ps = parents.get(id) || [];
+      let best = 0;
+      for (const p of ps) if (p && byKey.has(p)) best = Math.max(best, 1 + depthFor(p, seen));
+      seen.delete(id);
+      memo.set(id, best);
+      return best;
+    };
+    for (const person of data.persons.filter(p => p.tree === sourceName)) {
+      const depth = depthFor(person.key);
+      if (depth <= 0) continue;
+      rows.push({ tree: person.tree, person: person.name, birth: person.birth, death: person.death, surname: person.surname, generations: depth });
+    }
+  }
+  const deepestPeople = rows
+    .sort((a, b) => b.generations - a.generations || (a.birth ?? 9999) - (b.birth ?? 9999) || a.person.localeCompare(b.person))
+    .slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 12)));
+  const bySurname = new Map();
+  for (const row of rows) {
+    let cur = bySurname.get(row.surname);
+    if (!cur || row.generations > cur.maxGenerations) {
+      cur = { surname: row.surname, maxGenerations: row.generations, example: row };
+      bySurname.set(row.surname, cur);
+    }
+  }
+  const branches = [...bySurname.values()]
+    .sort((a, b) => b.maxGenerations - a.maxGenerations || a.surname.localeCompare(b.surname))
+    .slice(0, Math.max(5, Math.min(20, parseInt(opts?.limit, 10) || 12)));
+  return { ok: true, deepestPeople, deepestBranches: branches };
+}
+
+function _kfCollectMigrationJumps(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  const moves = _kfMoveRowsFromFacts(data, { minMiles: Number(opts?.minMiles) || 100 });
+  const jumps = moves
+    .map(m => ({
+      ...m,
+      milesPerYear: m.yearsElapsed > 0 ? Math.round((m.miles / Math.max(1, m.yearsElapsed)) * 10) / 10 : null,
+      ambiguity: m.yearsElapsed > 10 ? "large time gap between records" : "tight record sequence",
+    }))
+    .sort((a, b) => b.miles - a.miles || b.yearsElapsed - a.yearsElapsed)
+    .slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 15)));
+  return { ok: true, scope: { selectedTrees: data.sources }, jumps };
+}
+
 // Page-control API for Claude. Each method returns a small status object that
 // is sent back to Claude as tool-call output. To invoke a method, Claude
 // emits a single line in its response of the form:
@@ -1244,6 +1932,11 @@ window.kfApi = {
   },
 
   // ---- Genealogy data lookups (no map mutation; complement to show*) ----
+
+  getImmigrationWaves(opts) {
+    if (!_kfLoadedSources.size) return { error: "no tree loaded" };
+    return _kfCollectImmigrationWaves(opts || {});
+  },
 
   getFamily(query) {
     if (!lastIndividuals || !lastIndiById) return { error: "no tree loaded" };
