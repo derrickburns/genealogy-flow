@@ -1586,6 +1586,7 @@ let _kfChatScopePendingTap = null;
 let _kfChatScopeDispatching = false;
 let _kfChatScopeLastHandledAt = 0;
 let _kfChatScopeLastRenderKey = "";
+let _kfChatMoreQuestionsOpen = false;
 
 function _kfStandardAiQuestions() {
   return _KF_STANDARD_AI_QUESTIONS.map(q => q.text);
@@ -1598,6 +1599,32 @@ function _kfQuestionDef(label, text) {
 function _kfIsYearDependentQuestion(q) {
   const text = String(q?.text || "").toLowerCase();
   return /\b(this year|visible people|current year|shown here|in \d{3,4}|at \d{3,4}|visible in|pattern in)\b/.test(text);
+}
+
+function _kfIsCacheableScopeQuestion(q) {
+  const text = String(q?.text || "");
+  if (typeof _kfIsTreeLevelCacheableQuestion === "function") {
+    return _kfIsTreeLevelCacheableQuestion(text);
+  }
+  return !_kfIsYearDependentQuestion(q) && _KF_STANDARD_AI_QUESTIONS.some(s => s.text === text);
+}
+
+function _kfOrderChatScopeQuestions(questions, primaryCount) {
+  const primary = [];
+  const used = new Set();
+  for (const q of questions) {
+    if (_kfIsYearDependentQuestion(q) || !_kfIsCacheableScopeQuestion(q)) continue;
+    primary.push(q);
+    used.add(q.text);
+    if (primary.length >= primaryCount) break;
+  }
+  const yearDependent = questions.filter(q => !used.has(q.text) && _kfIsYearDependentQuestion(q));
+  const otherCacheable = questions.filter(q => !used.has(q.text) && !_kfIsYearDependentQuestion(q) && _kfIsCacheableScopeQuestion(q));
+  const other = questions.filter(q => !used.has(q.text) && !_kfIsYearDependentQuestion(q) && !_kfIsCacheableScopeQuestion(q));
+  return {
+    primary,
+    secondary: [...yearDependent, ...otherCacheable, ...other],
+  };
 }
 
 function _kfChatScopeQuestions(root, selected, visible) {
@@ -1632,6 +1659,7 @@ function _kfBindChatScopeQuestions() {
   if (chatScopeEl.dataset.kfQuestionDelegate === "1") return;
   chatScopeEl.dataset.kfQuestionDelegate = "1";
   const buttonFrom = target => target?.closest?.("[data-chat-scope-question]");
+  const moreFrom = target => target?.closest?.("[data-chat-more]");
   const clearPending = () => { _kfChatScopePendingTap = null; };
   const dispatch = async (text, button = null) => {
     text = String(text || "").trim();
@@ -1681,6 +1709,14 @@ function _kfBindChatScopeQuestions() {
   });
   window.addEventListener("pointercancel", clearPending);
   chatScopeEl.addEventListener("click", e => {
+    const more = moreFrom(e.target);
+    if (more) {
+      e.preventDefault();
+      _kfChatMoreQuestionsOpen = !_kfChatMoreQuestionsOpen;
+      _kfChatScopeLastRenderKey = "";
+      _kfRefreshChatScope(true);
+      return;
+    }
     const btn = buttonFrom(e.target);
     if (!btn) return;
     e.preventDefault();
@@ -1715,13 +1751,13 @@ function _kfRefreshChatScope(force = false) {
     return `<button type="button" class="${cls}" data-chat-scope-question="${escChat(q.text)}" title="${escChat(q.text)}">${label}</button>`;
   };
   const primaryCount = _kfIsMobileLayout() ? 3 : 4;
-  const primary = questions.slice(0, primaryCount);
-  const secondary = questions.slice(primaryCount);
+  const { primary, secondary } = _kfOrderChatScopeQuestions(questions, primaryCount);
   chatScopeEl.innerHTML = questions.length
     ? `<div class="chatScopeHead">Suggested questions</div>` +
       `<div class="chatChips chat-scope-actions" aria-label="Suggested questions">${primary.map(renderQuestion).join("")}</div>` +
       (secondary.length
-        ? `<details class="chatMoreQuestions"><summary>More ideas</summary><div class="chatChips">${secondary.map(renderQuestion).join("")}</div></details>`
+        ? `<button type="button" class="chatMoreToggle" data-chat-more="1" aria-expanded="${_kfChatMoreQuestionsOpen ? "true" : "false"}">${_kfChatMoreQuestionsOpen ? "Fewer ideas" : `More ideas (${secondary.length})`}</button>` +
+          (_kfChatMoreQuestionsOpen ? `<div class="chatMoreQuestions"><div class="chatChips">${secondary.map(renderQuestion).join("")}</div></div>` : "")
         : "")
     : "";
   _kfBindChatScopeQuestions();
@@ -1794,7 +1830,8 @@ function _kfAppendVisibleMarkerContext(lines, profile) {
     const values = [];
     for (const row of visibleRows) {
       const source = showSource && row.source ? `; ${row.source}` : "";
-      values.push(`${row.ind.name} (${row.year}, ${row.place || "unknown place"}${source})`);
+      const precision = row.imprecise && row.precision ? `; approximate ${row.precision}` : "";
+      values.push(`${row.ind.name} (${row.year}, ${row.place || "unknown place"}${precision}${source})`);
       if (values.length >= profile.markerSampleLimit) break;
     }
     if (values.length > 0) {

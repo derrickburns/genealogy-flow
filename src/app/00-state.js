@@ -114,7 +114,48 @@ let borderLayer = "historical";
 let historicalBasemaps = new Map(); // year -> { world, name } loaded snapshots
 let currentHistoricalWorld = null;
 
-let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;
+const GEO_LEVEL_CITY = 0;
+const GEO_LEVEL_COUNTY = 1;
+const GEO_LEVEL_ADMIN1 = 2;
+const GEO_LEVEL_COUNTRY = 3;
+
+function _kfGeoLevelCode(level) {
+  const v = String(level || "").toLowerCase();
+  if (v === "city") return GEO_LEVEL_CITY;
+  if (v === "county") return GEO_LEVEL_COUNTY;
+  if (v === "admin1" || v === "state" || v === "province" || v === "region") return GEO_LEVEL_ADMIN1;
+  return GEO_LEVEL_COUNTRY;
+}
+
+function _kfGeoLevelName(code) {
+  const n = Number(code);
+  if (n === GEO_LEVEL_CITY) return "city";
+  if (n === GEO_LEVEL_COUNTY) return "county/region";
+  if (n === GEO_LEVEL_ADMIN1) return "state/province";
+  return "country";
+}
+
+function _kfGeoIsImprecise(code) {
+  return Number(code) > GEO_LEVEL_CITY;
+}
+
+function _kfGeoMarkerRadiusPx(code) {
+  const n = Number(code);
+  if (n === GEO_LEVEL_CITY) return 4;
+  if (n === GEO_LEVEL_COUNTY) return 8;
+  if (n === GEO_LEVEL_ADMIN1) return 14;
+  return 22;
+}
+
+function _kfGeoMarkerAlpha(code) {
+  const n = Number(code);
+  if (n === GEO_LEVEL_CITY) return 220;
+  if (n === GEO_LEVEL_COUNTY) return 138;
+  if (n === GEO_LEVEL_ADMIN1) return 92;
+  return 70;
+}
+
+let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellLevel, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;
 let placesList = [];
 let migrationsData = null;
 let highlightedDwell = -1;
@@ -146,7 +187,7 @@ function _kfSurnameOf(name) {
   while (i > 0 && _KF_SUFFIXES.has(tokens[i].toLowerCase().replace(/[.,]/g, ""))) i--;
   return tokens[i];
 }
-let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact;
+let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact, flowFromLevel, flowToLevel;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
 let migrationViz = "continuous";

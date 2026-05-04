@@ -337,10 +337,11 @@ function _kfVisibleMarkerData() {
     const place = _kfDwellPlace(di);
     const year = Number.isFinite(dwellY?.[di]) ? dwellY[di] : "";
     const eventLabel = _kfEventLabelForDwell(di);
+    const level = dwellLevel ? dwellLevel[di] : (dwellExact?.[di] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
     const ev = _kfPlaceEvidence(place, !!dwellExact?.[di]);
     if (ev.rank <= 1) exact++;
     if (ev.rank >= 3) weak++;
-    rows.push({ marker: m, di, idx, ind, source, place, year, eventLabel, evidence: ev });
+    rows.push({ marker: m, di, idx, ind, source, place, year, eventLabel, evidence: ev, precision: _kfGeoLevelName(level), imprecise: _kfGeoIsImprecise(level) });
   }
   const data = { key, individuals: lastIndividuals, personDwell: _kfPersonDwell, rows, count: rows.length, sourceCounts, exact, weak };
   _kfDerivedCache.visible = data;
@@ -400,6 +401,7 @@ function _kfVisibleRowsForYear(yint) {
     const source = _kfSourceNameForIndiIdx(idx);
     const place = _kfDwellPlace(di);
     const placeHead = _kfShortPlace(place, 1);
+    const level = dwellLevel ? dwellLevel[di] : (dwellExact?.[di] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
     const evidence = _kfPlaceEvidence(place, !!dwellExact?.[di]);
     if (evidence.rank <= 1) exact++;
     if (evidence.rank >= 3) weak++;
@@ -416,6 +418,8 @@ function _kfVisibleRowsForYear(yint) {
       year: Number.isFinite(dwellY?.[di]) ? dwellY[di] : "",
       eventLabel: _kfEventLabelForDwell(di),
       evidence,
+      precision: _kfGeoLevelName(level),
+      imprecise: _kfGeoIsImprecise(level),
     });
   }
   const data = { key, y: yint, rows, count: rows.length, exact, weak, sourceCounts, placeCounts };

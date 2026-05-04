@@ -552,7 +552,8 @@
   #chatScope[hidden] { display:none !important; }
   #chatScope .chatChips { margin:0; }
   .chatMoreQuestions { margin-top:5px; }
-  .chatMoreQuestions summary { cursor:pointer; color:#64748b; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; }
+  .chatMoreToggle { display:inline-flex; align-items:center; gap:4px; margin-top:5px; padding:2px 0; border:0; background:transparent; color:#64748b; font:inherit; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer; }
+  .chatMoreToggle:hover { color:#1e40af; text-decoration:underline; text-underline-offset:2px; }
   .chatMoreQuestions .chatChips { margin-top:5px !important; }
   .chat-scope-actions { display:flex; flex-wrap:wrap; gap:5px; }
   .chat-scope-question { border-color:#b9c8dd; background:#fff; color:#1f3a78; padding:4px 8px; font-size:10.5px; }

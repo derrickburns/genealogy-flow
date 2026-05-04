@@ -26,6 +26,7 @@ function buildTimeline(individuals, geocode, parentsOf) {
   const dwells = [], flows = [];
   const dwellIndi = [], flowIndi = [], dwellSrc = [], flowSrc = [];
   const dwellExact = [], flowExact = [];
+  const dwellLevel = [], flowFromLevel = [], flowToLevel = [];
   const dwellType = [], dwellPlace = [];
   const placeMap = new Map(); const placesList = [];
   function placeIdx(p) { let i = placeMap.get(p); if (i == null) { i = placesList.length; placesList.push(p); placeMap.set(p, i); } return i; }
@@ -50,6 +51,7 @@ function buildTimeline(individuals, geocode, parentsOf) {
       if (!g) { missed++; continue; }
       geocoded++;
       const exact = g.level === "city" ? 1 : 0;
+      const levelCode = _kfGeoLevelCode(g.level);
       const [lat, lon] = jitter(g.lat, g.lon, g.level);
       if (exact) {
         const key = g.lat.toFixed(2) + "," + g.lon.toFixed(2);
@@ -64,18 +66,19 @@ function buildTimeline(individuals, geocode, parentsOf) {
       }
       const tcode = EVENT_TYPE_CODE[e.type] ?? 10;
       // Store base (un-jittered) coords at indices 6,7 for flow comparison.
-      coded.push([e.year, lat, lon, exact, tcode, placeIdx(e.place), g.lat, g.lon]);
+      coded.push([e.year, lat, lon, exact, tcode, placeIdx(e.place), g.lat, g.lon, levelCode]);
     }
     if (!coded.length) continue;
     coded.sort((a, b) => a[0] - b[0]);
     let prev = null;
     for (const c of coded) {
-      const [y, lat, lon, exact, tcode, pidx, blat, blon] = c;
+      const [y, lat, lon, exact, tcode, pidx, blat, blon, levelCode] = c;
       if (y < mn) mn = y; if (y > mx) mx = y;
       dwells.push([y, lat, lon]); dwellIndi.push(idx); dwellSrc.push(isSource); dwellExact.push(exact);
+      dwellLevel.push(levelCode);
       dwellType.push(tcode); dwellPlace.push(pidx);
       if (prev) {
-        const [py, plat, plon, pex, , , pblat, pblon] = prev;
+        const [py, plat, plon, pex, , , pblat, pblon, pLevelCode] = prev;
         // Use base geocode coords (not jittered) to determine whether a real
         // move occurred. Comparing jittered coords incorrectly created flows
         // between consecutive events at the same location, causing the
@@ -84,15 +87,17 @@ function buildTimeline(individuals, geocode, parentsOf) {
           flows.push([py, y, plat, plon, lat, lon]);
           flowIndi.push(idx); flowSrc.push(isSource);
           flowExact.push(exact && pex ? 1 : 0);
+          flowFromLevel.push(pLevelCode);
+          flowToLevel.push(levelCode);
         }
       }
-      prev = [y, lat, lon, exact, tcode, pidx, blat, blon];
+      prev = [y, lat, lon, exact, tcode, pidx, blat, blon, levelCode];
     }
   }
   if (mn > mx) { mn = 1700; mx = 2026; }
   const eventCitiesArr = Array.from(evCities.values()).sort((a, b) => b.count - a.count);
   for (let i = 0; i < eventCitiesArr.length; i++) eventCitiesArr[i]._idx = i;
-  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, dwellType, dwellPlace, places: placesList, eventCities: eventCitiesArr, min_year: mn, max_year: mx, geocoded, missed };
+  return { dwells, flows, dwellIndi, flowIndi, dwellSrc, flowSrc, dwellExact, flowExact, dwellLevel, flowFromLevel, flowToLevel, dwellType, dwellPlace, places: placesList, eventCities: eventCitiesArr, min_year: mn, max_year: mx, geocoded, missed };
 }
 
 function loadTimelineArrays(t, sideForIdx, opts = {}) {
@@ -102,7 +107,7 @@ function loadTimelineArrays(t, sideForIdx, opts = {}) {
   const N = t.dwells.length, F = t.flows.length;
   dwellY = new Int16Array(N); dwellLat = new Float32Array(N); dwellLon = new Float32Array(N);
   dwellSide = new Uint8Array(N); dwellSrc = new Uint8Array(N); dwellIndi = new Int32Array(N);
-  dwellBlood = new Uint8Array(N); dwellExact = new Uint8Array(N);
+  dwellBlood = new Uint8Array(N); dwellExact = new Uint8Array(N); dwellLevel = new Uint8Array(N);
   dwellType = new Uint8Array(N); dwellPlace = new Int32Array(N);
   dwellSx = new Float32Array(N); dwellSy = new Float32Array(N);
   for (let i = 0; i < N; i++) {
@@ -110,6 +115,7 @@ function loadTimelineArrays(t, sideForIdx, opts = {}) {
     dwellY[i] = d[0]; dwellLat[i] = d[1]; dwellLon[i] = d[2];
     dwellIndi[i] = t.dwellIndi[i]; dwellSrc[i] = t.dwellSrc[i];
     dwellExact[i] = t.dwellExact ? t.dwellExact[i] : 0;
+    dwellLevel[i] = (t.dwellLevel && t.dwellLevel[i] != null) ? t.dwellLevel[i] : (dwellExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
     dwellType[i] = t.dwellType ? t.dwellType[i] : 10;
     dwellPlace[i] = t.dwellPlace ? t.dwellPlace[i] : -1;
     dwellSide[i] = sideForIdx[t.dwellIndi[i]] ?? 3;
@@ -120,6 +126,7 @@ function loadTimelineArrays(t, sideForIdx, opts = {}) {
   flowToLat = new Float32Array(F); flowToLon = new Float32Array(F);
   flowSide = new Uint8Array(F); flowSrc = new Uint8Array(F); flowIndi = new Int32Array(F);
   flowBlood = new Uint8Array(F); flowExact = new Uint8Array(F);
+  flowFromLevel = new Uint8Array(F); flowToLevel = new Uint8Array(F);
   flowFromSx = new Float32Array(F); flowFromSy = new Float32Array(F);
   flowToSx = new Float32Array(F); flowToSy = new Float32Array(F);
   for (let i = 0; i < F; i++) {
@@ -129,6 +136,8 @@ function loadTimelineArrays(t, sideForIdx, opts = {}) {
     flowToLat[i] = f[4]; flowToLon[i] = f[5];
     flowIndi[i] = t.flowIndi[i]; flowSrc[i] = t.flowSrc[i];
     flowExact[i] = t.flowExact ? t.flowExact[i] : 0;
+    flowFromLevel[i] = (t.flowFromLevel && t.flowFromLevel[i] != null) ? t.flowFromLevel[i] : (flowExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
+    flowToLevel[i] = (t.flowToLevel && t.flowToLevel[i] != null) ? t.flowToLevel[i] : (flowExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
     flowSide[i] = sideForIdx[t.flowIndi[i]] ?? 3;
   }
   dwellOrder = new Int32Array(N); for (let i = 0; i < N; i++) dwellOrder[i] = i; dwellOrder.sort((a, b) => dwellY[a] - dwellY[b]);

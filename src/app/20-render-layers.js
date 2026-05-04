@@ -1019,14 +1019,15 @@ function rebuildPersonMarkers() {
     }
     const bestDi = _kfLatestValidDwellForIndi(idx, yint);
     if (bestDi < 0) continue;
+    const level = dwellLevel ? dwellLevel[bestDi] : (dwellExact[bestDi] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
     _kfDwellPositions[count * 2]     = dwellLon[bestDi];
     _kfDwellPositions[count * 2 + 1] = dwellLat[bestDi];
-    _kfDwellRadii[count]             = dwellExact[bestDi] ? 4 : 3;
+    _kfDwellRadii[count]             = _kfGeoMarkerRadiusPx(level);
     const c = colorForFinal(dwellSide[bestDi], dwellSrc[bestDi], idx);
     _kfDwellColors[count * 4]     = c[0];
     _kfDwellColors[count * 4 + 1] = c[1];
     _kfDwellColors[count * 4 + 2] = c[2];
-    _kfDwellColors[count * 4 + 3] = 220;
+    _kfDwellColors[count * 4 + 3] = _kfGeoMarkerAlpha(level);
     _kfPersonIndi[count]  = idx;
     _kfPersonDwell[count] = bestDi;
     count++;
@@ -1069,7 +1070,11 @@ function makeDwellLayer() {
     },
     radiusUnits: "pixels",
     pickable: false,
-    stroked: false,
+    stroked: true,
+    filled: true,
+    getLineColor: [255, 255, 255, 220],
+    getLineWidth: 1.2,
+    lineWidthUnits: "pixels",
     updateTriggers: {
       getPosition:  _kfPersonsCacheYear,
       getFillColor: _kfPersonsCacheYear + ":" + colorMode,
@@ -1088,6 +1093,7 @@ function updateDeckDwellLayer() {
   // hull → arcs → kin → lineage → dwells → aggregate → highlight → pins → labels.
   const layers = [
     makeLensLayer(),       // user/Claude-defined SQL cluster — drawn under everything else
+    makeFlowOriginUncertaintyLayer(),
     makeFlowLayer(),
     makeFlowDestLayer(),
     makeKinLinesLayer(),
@@ -1148,6 +1154,11 @@ function refreshDeckFlowColors() {
 
 let _kfFlowParticlePositions = new Float32Array(0);
 let _kfFlowParticleColors = new Uint8Array(0);
+let _kfFlowOriginPositions = new Float32Array(0);
+let _kfFlowOriginFillColors = new Uint8Array(0);
+let _kfFlowOriginLineColors = new Uint8Array(0);
+let _kfFlowOriginRadii = new Float32Array(0);
+let _kfFlowOriginWidths = new Float32Array(0);
 let _kfFlowDestPositions = new Float32Array(0);
 let _kfFlowDestColors = new Uint8Array(0);
 let _kfFlowDestRadii = new Float32Array(0);
@@ -1169,6 +1180,14 @@ function _kfBufferSize(required) {
 function _kfEnsureFlowParticleCapacity(points) {
   if (_kfFlowParticlePositions.length < points * 2) _kfFlowParticlePositions = new Float32Array(_kfBufferSize(points * 2));
   if (_kfFlowParticleColors.length < points * 4) _kfFlowParticleColors = new Uint8Array(_kfBufferSize(points * 4));
+}
+
+function _kfEnsureFlowOriginCapacity(points) {
+  if (_kfFlowOriginPositions.length < points * 2) _kfFlowOriginPositions = new Float32Array(_kfBufferSize(points * 2));
+  if (_kfFlowOriginFillColors.length < points * 4) _kfFlowOriginFillColors = new Uint8Array(_kfBufferSize(points * 4));
+  if (_kfFlowOriginLineColors.length < points * 4) _kfFlowOriginLineColors = new Uint8Array(_kfBufferSize(points * 4));
+  if (_kfFlowOriginRadii.length < points) _kfFlowOriginRadii = new Float32Array(_kfBufferSize(points));
+  if (_kfFlowOriginWidths.length < points) _kfFlowOriginWidths = new Float32Array(_kfBufferSize(points));
 }
 
 function _kfEnsureFlowDestCapacity(points) {
@@ -1552,6 +1571,70 @@ function _kfObservationPulse(i, y = curYear) {
   return { gap, ambiguous, strength: Math.max(0, Math.min(1, strength)) };
 }
 
+function makeFlowOriginUncertaintyLayer() {
+  if (!flowFromLat || !flowFromLat.length) return null;
+  if (typeof deck === "undefined" || !deck.ScatterplotLayer) return null;
+  const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
+  const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
+                    || clusterMode === "parents"   || clusterMode === "gender"
+                    || clusterMode === "tree"      || clusterMode === "state"
+                    || clusterMode === "group"
+                    || useDispersion
+                    || !!_kfActiveLens;
+  if (replaceMode) return null;
+  const F = flowFromLat.length;
+  const y = curYear;
+  _kfEnsureFlowOriginCapacity(F);
+  let count = 0;
+  for (let i = 0; i < F; i++) {
+    const level = flowFromLevel ? flowFromLevel[i] : (flowExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
+    if (!_kfGeoIsImprecise(level)) continue;
+    let strength = 1;
+    if (migrationViz === "observations") {
+      const pulse = _kfObservationPulse(i, y);
+      if (!pulse) continue;
+      strength = pulse.strength;
+    } else {
+      const win = _kfFlowAnimationWindow(i);
+      if (!win || y < win.start || y > win.end) continue;
+    }
+    if (!_kfFlowPassesFilter(i)) continue;
+    const c = colorForFinal(flowSide[i], flowSrc[i], flowIndi[i]);
+    const fillAlpha = Math.round((16 + _kfGeoMarkerAlpha(level) * 0.18) * strength);
+    const lineAlpha = Math.round((58 + _kfGeoMarkerAlpha(level) * 0.25) * strength);
+    _kfFlowOriginPositions[count * 2] = flowFromLon[i];
+    _kfFlowOriginPositions[count * 2 + 1] = flowFromLat[i];
+    _kfFlowOriginFillColors[count * 4] = c[0];
+    _kfFlowOriginFillColors[count * 4 + 1] = c[1];
+    _kfFlowOriginFillColors[count * 4 + 2] = c[2];
+    _kfFlowOriginFillColors[count * 4 + 3] = fillAlpha;
+    _kfFlowOriginLineColors[count * 4] = c[0];
+    _kfFlowOriginLineColors[count * 4 + 1] = c[1];
+    _kfFlowOriginLineColors[count * 4 + 2] = c[2];
+    _kfFlowOriginLineColors[count * 4 + 3] = lineAlpha;
+    _kfFlowOriginRadii[count] = _kfGeoMarkerRadiusPx(level) + 5;
+    _kfFlowOriginWidths[count] = level === GEO_LEVEL_COUNTRY ? 1.4 : 1.1;
+    count++;
+  }
+  if (!count) return null;
+  return new deck.ScatterplotLayer({
+    id: "kf-flow-origin-uncertainty",
+    data: { length: count, attributes: {
+      getPosition:  { value: _kfFlowOriginPositions,  size: 2 },
+      getFillColor: { value: _kfFlowOriginFillColors, size: 4 },
+      getLineColor: { value: _kfFlowOriginLineColors, size: 4 },
+      getRadius:    { value: _kfFlowOriginRadii,      size: 1 },
+      getLineWidth: { value: _kfFlowOriginWidths,     size: 1 },
+    }},
+    dataComparator: _kfDeckDataAlwaysDirty,
+    radiusUnits: "pixels",
+    stroked: true,
+    filled: true,
+    lineWidthUnits: "pixels",
+    pickable: false,
+  });
+}
+
 function makeFlowObservationArcLayer() {
   if (!deck || !deck.ArcLayer) return null;
   const F = flowFromLat.length;
@@ -1630,6 +1713,7 @@ function makeFlowDestLayer() {
     }
     if (!_kfFlowPassesFilter(i)) continue;
     const c = colorForFinal(flowSide[i], flowSrc[i], flowIndi[i]);
+    const toLevel = flowToLevel ? flowToLevel[i] : (flowExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
     _kfFlowDestPositions[count * 2] = flowToLon[i];
     _kfFlowDestPositions[count * 2 + 1] = flowToLat[i];
     const alpha = pulse
@@ -1639,8 +1723,10 @@ function makeFlowDestLayer() {
     _kfFlowDestColors[count * 4 + 1] = c[1];
     _kfFlowDestColors[count * 4 + 2] = c[2];
     _kfFlowDestColors[count * 4 + 3] = alpha;
-    _kfFlowDestRadii[count] = pulse ? (pulse.ambiguous ? 7 + 6 * pulse.strength : 5 + 5 * pulse.strength) : 5;
-    _kfFlowDestWidths[count] = pulse?.ambiguous ? 1 : 1.5;
+    const precisionRadius = _kfGeoMarkerRadiusPx(toLevel) + (_kfGeoIsImprecise(toLevel) ? 3 : 1);
+    const pulseRadius = pulse ? (pulse.ambiguous ? 7 + 6 * pulse.strength : 5 + 5 * pulse.strength) : 5;
+    _kfFlowDestRadii[count] = Math.max(precisionRadius, pulseRadius);
+    _kfFlowDestWidths[count] = _kfGeoIsImprecise(toLevel) ? 1 : (pulse?.ambiguous ? 1 : 1.5);
     count++;
   }
   if (!count) return null;

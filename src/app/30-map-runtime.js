@@ -482,6 +482,11 @@ function updateMapLegend() {
       html += swatch("#566480",  9, "diamond", "One unknown");
       html += swatch("#566480",  9, "square",  "Both unknown");
     }
+    html += hdr("Place precision");
+    html += swatch("rgba(42,74,140,0.86)", 8, "circle", "City point");
+    html += swatch("rgba(42,74,140,0.54)", 16, "circle", "County/region area");
+    html += swatch("rgba(42,74,140,0.36)", 24, "circle", "State/country area");
+    html += `<div style="font-size:10px;color:#9aa6bc;margin-top:2px;">Large translucent circles mean approximate locations, not exact cities.</div>`;
   }
 
   if (flowFromY && flowFromY.length && clusterMode === "none" && !_kfActiveLens) {
@@ -535,6 +540,25 @@ function drawShape(ctx, x, y, r, ps) {
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+function drawPrecisionMarker(ctx, x, y, level, rgb, parentStatus = 0, opacityScale = 1) {
+  const alpha = Math.max(0.05, Math.min(1, (_kfGeoMarkerAlpha(level) / 255) * opacityScale));
+  if (_kfGeoIsImprecise(level)) {
+    const r = _kfGeoMarkerRadiusPx(level);
+    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.min(0.75, alpha + 0.16).toFixed(3)})`;
+    ctx.lineWidth = level === GEO_LEVEL_COUNTRY ? 1.4 : 1;
+    ctx.beginPath();
+    ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+  ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.min(0.95, alpha).toFixed(3)})`;
+  drawShape(ctx, x, y, 4.2, parentStatus);
 }
 
 function lowerBound(arr, order, target) {
@@ -640,9 +664,8 @@ function frame(activeTrailFade) {
       const sx = dwellSx[i], sy = dwellSy[i];
       if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
       const c = colorForFinal(dwellSide[i], dwellSrc[i], dwellIndi[i]);
-      fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.88)`;
-      const r = dwellExact[i] ? 4.2 : 3.2;
-      drawShape(fxCtx, sx, sy, r, dwellSrc[i]);
+      const level = dwellLevel ? dwellLevel[i] : (dwellExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
+      drawPrecisionMarker(fxCtx, sx, sy, level, c, dwellSrc[i]);
     }
   }
 
@@ -662,6 +685,11 @@ function frame(activeTrailFade) {
       fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(3)})`;
       fxCtx.lineWidth = pulse.ambiguous ? 0.8 : 1.6;
       drawGreatCircle(fxCtx, lon0, lat0, lon1, lat1);
+      const fromLevel = flowFromLevel ? flowFromLevel[i] : (flowExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
+      if (_kfGeoIsImprecise(fromLevel)) {
+        const p0 = safeProject([lon0, lat0]);
+        if (p0) drawPrecisionMarker(fxCtx, p0[0], p0[1], fromLevel, c, flowSrc[i], 0.55 * pulse.strength);
+      }
       const p = safeProject([lon1, lat1]);
       if (p) {
         fxCtx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${Math.min(0.9, alpha + 0.2).toFixed(3)})`;
@@ -707,6 +735,11 @@ function frame(activeTrailFade) {
       const p = positionOnGreatCircle(flowFromLon[i], flowFromLat[i], flowToLon[i], flowToLat[i], t);
       if (!p) continue;
       const c = colorForFinal(fs, fp, idi);
+      const fromLevel = flowFromLevel ? flowFromLevel[i] : (flowExact[i] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1);
+      if (_kfGeoIsImprecise(fromLevel)) {
+        const p0 = safeProject([flowFromLon[i], flowFromLat[i]]);
+        if (p0) drawPrecisionMarker(fxCtx, p0[0], p0[1], fromLevel, c, fp, 0.45);
+      }
       fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.95)`;
       const r = flowExact[i] ? 2.6 : 1.9;
       drawShape(fxCtx, p[0], p[1], r, fp);

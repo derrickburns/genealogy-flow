@@ -2071,6 +2071,7 @@ window.kfApi = {
         lat: dwellLat[di],
         lon: dwellLon[di],
         exact: dwellExact[di] === 1,
+        precision: _kfGeoLevelName(dwellLevel ? dwellLevel[di] : (dwellExact[di] ? GEO_LEVEL_CITY : GEO_LEVEL_ADMIN1)),
       })),
     };
   },
