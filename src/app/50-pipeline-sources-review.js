@@ -1,168 +1,13 @@
 // ---------- Pipeline ----------
-let _kfJitterCountryByCode = null;
-let _kfJitterStateByAbbr = null;
-let _kfJitterLandFeatures = null;
-let _kfJitterLandGrid = null;
 let _kfJitterPoolCache = new Map();
 let _kfJitterCache = new Map();
-
-function _kfJitterSlug(value) {
-  return String(value || "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function _kfFeatureBounds(feature) {
-  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
-  function visit(coords) {
-    if (!coords) return;
-    if (typeof coords[0] === "number") {
-      const lon = coords[0], lat = coords[1];
-      if (lon < minLon) minLon = lon;
-      if (lon > maxLon) maxLon = lon;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-    } else {
-      for (const c of coords) visit(c);
-    }
-  }
-  visit(feature?.geometry?.coordinates);
-  return Number.isFinite(minLon) ? [minLon, minLat, maxLon, maxLat] : null;
-}
-
-function _kfBoundsContains(bounds, lon, lat) {
-  return !bounds || (lon >= bounds[0] && lon <= bounds[2] && lat >= bounds[1] && lat <= bounds[3]);
-}
-
-function _kfJitterFeatureContains(entry, lat, lon) {
-  return !!entry && _kfBoundsContains(entry.bounds, lon, lat) && d3.geoContains(entry.feature, [lon, lat]);
-}
-
-function _kfJitterFeatureEntries(feature) {
-  const entries = [];
-  function addGeometry(geometry, properties = null) {
-    if (!geometry) return;
-    if (geometry.type === "GeometryCollection") {
-      for (const g of geometry.geometries || []) addGeometry(g, properties);
-      return;
-    }
-    if (geometry.type === "MultiPolygon") {
-      for (const coordinates of geometry.coordinates || []) {
-        addGeometry({ type: "Polygon", coordinates }, properties);
-      }
-      return;
-    }
-    if (geometry.type !== "Polygon") return;
-    const f = { type: "Feature", properties, geometry };
-    const bounds = _kfFeatureBounds(f);
-    if (bounds) entries.push({ feature: f, bounds });
-  }
-  if (feature?.type === "FeatureCollection") {
-    for (const f of feature.features || []) entries.push(..._kfJitterFeatureEntries(f));
-  } else if (feature?.type === "Feature") {
-    addGeometry(feature.geometry, feature.properties || null);
-  } else {
-    addGeometry(feature);
-  }
-  return entries;
-}
-
-function _kfJitterLandGridKey(lon, lat) {
-  const size = 5;
-  const x = Math.max(0, Math.min(71, Math.floor((lon + 180) / size)));
-  const y = Math.max(0, Math.min(35, Math.floor((lat + 90) / size)));
-  return `${x}|${y}`;
-}
-
-function _kfBuildJitterLandGrid(entries) {
-  const grid = new Map();
-  const size = 5;
-  for (const entry of entries) {
-    const b = entry.bounds;
-    const minX = Math.max(0, Math.min(71, Math.floor((b[0] + 180) / size)));
-    const maxX = Math.max(0, Math.min(71, Math.floor((b[2] + 180) / size)));
-    const minY = Math.max(0, Math.min(35, Math.floor((b[1] + 90) / size)));
-    const maxY = Math.max(0, Math.min(35, Math.floor((b[3] + 90) / size)));
-    for (let x = minX; x <= maxX; x++) {
-      for (let y = minY; y <= maxY; y++) {
-        const key = `${x}|${y}`;
-        let list = grid.get(key);
-        if (!list) { list = []; grid.set(key, list); }
-        list.push(entry);
-      }
-    }
-  }
-  return grid;
-}
+let _kfJitterWorker = null;
+let _kfJitterWorkerSeq = 0;
+const _kfJitterWorkerPending = new Map();
 
 function _kfResetJitterIndexes() {
-  _kfJitterCountryByCode = null;
-  _kfJitterStateByAbbr = null;
-  _kfJitterLandFeatures = null;
-  _kfJitterLandGrid = null;
   _kfJitterPoolCache = new Map();
   _kfJitterCache = new Map();
-}
-
-function _kfEnsureJitterLandIndex() {
-  if (_kfJitterLandFeatures) return _kfJitterLandFeatures;
-  _kfJitterLandFeatures = [];
-  if (!world || !topojson || !world.objects?.land) return _kfJitterLandFeatures;
-  const fc = topojson.feature(world, world.objects.land);
-  _kfJitterLandFeatures = _kfJitterFeatureEntries(fc);
-  _kfJitterLandGrid = _kfBuildJitterLandGrid(_kfJitterLandFeatures);
-  return _kfJitterLandFeatures;
-}
-
-function _kfJitterLandEntriesForPoint(lat, lon) {
-  const land = _kfEnsureJitterLandIndex();
-  if (!land.length) return land;
-  return _kfJitterLandGrid?.get(_kfJitterLandGridKey(lon, lat)) || [];
-}
-
-function _kfEnsureJitterCountryIndex() {
-  if (_kfJitterCountryByCode) return _kfJitterCountryByCode;
-  _kfJitterCountryByCode = new Map();
-  if (!world || !topojson || !world.objects?.countries) return _kfJitterCountryByCode;
-  const fc = topojson.feature(world, world.objects.countries);
-  const byName = new Map();
-  for (const f of fc.features || []) {
-    const name = _kfJitterSlug(f.properties?.name || "");
-    if (name) byName.set(name, { feature: f, bounds: _kfFeatureBounds(f) });
-  }
-  const aliases = {
-    US: ["united states", "united states of america", "usa"],
-    GB: ["united kingdom", "great britain", "england", "scotland", "wales"],
-    RU: ["russia", "russian federation"],
-    KR: ["south korea", "republic of korea"],
-    KP: ["north korea"],
-    CD: ["democratic republic of the congo"],
-    CG: ["republic of the congo"],
-    CZ: ["czech republic", "czechia"],
-  };
-  for (const c of gazetteer?.countries || []) {
-    const names = [_kfJitterSlug(c.name), ...((aliases[c.cc] || []).map(_kfJitterSlug))].filter(Boolean);
-    const hit = names.map(n => byName.get(n)).find(Boolean);
-    if (hit) _kfJitterCountryByCode.set(c.cc, hit);
-  }
-  return _kfJitterCountryByCode;
-}
-
-function _kfEnsureJitterStateIndex() {
-  if (_kfJitterStateByAbbr) return _kfJitterStateByAbbr;
-  _kfJitterStateByAbbr = new Map();
-  if (!usStates || !topojson || !usStates.objects?.states || typeof US_STATE_ABBR === "undefined") return _kfJitterStateByAbbr;
-  const nameToAbbr = new Map();
-  for (const [abbr, name] of Object.entries(US_STATE_ABBR)) nameToAbbr.set(_kfJitterSlug(name), abbr);
-  const fc = topojson.feature(usStates, usStates.objects.states);
-  for (const f of fc.features || []) {
-    const abbr = nameToAbbr.get(_kfJitterSlug(f.properties?.name || ""));
-    if (abbr) _kfJitterStateByAbbr.set(abbr, { feature: f, bounds: _kfFeatureBounds(f) });
-  }
-  return _kfJitterStateByAbbr;
 }
 
 function _kfHash32(value) {
@@ -184,23 +29,13 @@ function _kfJitterRadius(level) {
   return 0.7;
 }
 
-function _kfJitterCandidateAllowed(lat, lon, g) {
-  if (!g) return true;
-  const land = _kfJitterLandEntriesForPoint(lat, lon);
-  if (_kfJitterLandFeatures?.length && !land.some(entry => _kfJitterFeatureContains(entry, lat, lon))) return false;
-  const state = g.cc === "US" && g.st ? _kfEnsureJitterStateIndex().get(g.st) : null;
-  if (state && !_kfJitterFeatureContains(state, lat, lon)) return false;
-  const country = g.cc ? _kfEnsureJitterCountryIndex().get(g.cc) : null;
-  if (country && !_kfJitterFeatureContains(country, lat, lon)) return false;
-  return true;
+function _kfJitterPoolKey(lat, lon, level, g = null) {
+  return `${lat.toFixed(5)}|${lon.toFixed(5)}|${level}|${g?.cc || ""}|${g?.st || ""}`;
 }
 
-function _kfJitterCandidatePool(lat, lon, level, g = null) {
+function _kfFallbackJitterPool(lat, lon, level, poolKey) {
   const radius = _kfJitterRadius(level);
   if (!radius) return [[lat, lon]];
-  const poolKey = `${lat.toFixed(5)}|${lon.toFixed(5)}|${level}|${g?.cc || ""}|${g?.st || ""}`;
-  const cached = _kfJitterPoolCache.get(poolKey);
-  if (cached) return cached;
   const h = _kfHash32(poolKey);
   const baseAngle = (h / 0xffffffff) * Math.PI * 2;
   const golden = Math.PI * (3 - Math.sqrt(5));
@@ -211,22 +46,110 @@ function _kfJitterCandidatePool(lat, lon, level, g = null) {
     const candLat = lat + Math.sin(angle) * radius * ring;
     const latScale = Math.max(0.25, Math.cos((Math.max(-85, Math.min(85, lat)) * Math.PI) / 180));
     const candLon = lon + (Math.cos(angle) * radius * ring) / latScale;
-    if (_kfJitterCandidateAllowed(candLat, candLon, g)) pool.push([candLat, candLon]);
+    pool.push([candLat, candLon]);
   }
-  if (!pool.length) pool.push([lat, lon]);
-  _kfJitterPoolCache.set(poolKey, pool);
   return pool;
 }
 
 function jitter(lat, lon, level, key = "", g = null) {
-  const cacheKey = `${lat.toFixed(5)}|${lon.toFixed(5)}|${level}|${g?.cc || ""}|${g?.st || ""}|${key}`;
+  const poolKey = _kfJitterPoolKey(lat, lon, level, g);
+  const cacheKey = `${poolKey}|${key}`;
   const cached = _kfJitterCache.get(cacheKey);
   if (cached) return cached;
-  const pool = _kfJitterCandidatePool(lat, lon, level, g);
+  let pool = _kfJitterPoolCache.get(poolKey);
+  if (!pool) {
+    pool = _kfFallbackJitterPool(lat, lon, level, poolKey);
+    _kfJitterPoolCache.set(poolKey, pool);
+  }
   const h = _kfHash32(cacheKey);
   const out = pool[h % pool.length] || [lat, lon];
   _kfJitterCache.set(cacheKey, out);
   return out;
+}
+
+function _kfGetJitterWorker() {
+  if (_kfJitterWorker) return _kfJitterWorker;
+  if (typeof Worker === "undefined") return null;
+  try {
+    _kfJitterWorker = new Worker("./workers/jitter-worker.js", { type: "module" });
+  } catch (e) {
+    console.warn("[kf] could not start jitter worker:", e?.message || e);
+    _kfJitterWorker = null;
+    return null;
+  }
+  _kfJitterWorker.addEventListener("message", e => {
+    const msg = e.data || {};
+    const pending = _kfJitterWorkerPending.get(msg.id);
+    if (!pending) return;
+    _kfJitterWorkerPending.delete(msg.id);
+    clearTimeout(pending.timer);
+    if (msg.ok) pending.resolve(msg.pools || []);
+    else pending.reject(new Error(msg.error || "jitter worker failed"));
+  });
+  _kfJitterWorker.addEventListener("error", e => {
+    console.warn("[kf] jitter worker error:", e.message || e);
+    for (const [id, pending] of _kfJitterWorkerPending) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(e.message || "jitter worker error"));
+      _kfJitterWorkerPending.delete(id);
+    }
+    try { _kfJitterWorker.terminate(); } catch (_) {}
+    _kfJitterWorker = null;
+  });
+  return _kfJitterWorker;
+}
+
+function _kfComputeJitterPoolsInWorker(items) {
+  const worker = _kfGetJitterWorker();
+  if (!worker || !items.length) return Promise.resolve([]);
+  const id = ++_kfJitterWorkerSeq;
+  const countries = (gazetteer?.countries || []).map(c => ({ cc: c.cc, name: c.name }));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      _kfJitterWorkerPending.delete(id);
+      reject(new Error("jitter worker timed out"));
+    }, 5000);
+    _kfJitterWorkerPending.set(id, { resolve, reject, timer });
+    worker.postMessage({ id, items, countries });
+  });
+}
+
+async function _kfPrecomputeJitterPoolsForTimeline(individuals, geocode) {
+  if (!individuals?.length || !geocode) return false;
+  const placeCache = new Map();
+  const pending = new Map();
+  for (const ind of individuals) {
+    for (const e of ind.events || []) {
+      let g = placeCache.get(e.place);
+      if (g === undefined) { g = geocode(e.place); placeCache.set(e.place, g); }
+      if (!g) continue;
+      const key = _kfJitterPoolKey(g.lat, g.lon, g.level, g);
+      if (!_kfJitterPoolCache.has(key)) {
+        pending.set(key, {
+          key,
+          lat: g.lat,
+          lon: g.lon,
+          level: g.level,
+          cc: g.cc || "",
+          st: g.st || "",
+        });
+      }
+    }
+  }
+  const items = [...pending.values()];
+  if (!items.length) return true;
+  try {
+    const pools = await _kfComputeJitterPoolsInWorker(items);
+    for (const row of pools || []) {
+      if (row?.key && Array.isArray(row.pool) && row.pool.length) {
+        _kfJitterPoolCache.set(row.key, row.pool);
+      }
+    }
+    return true;
+  } catch (e) {
+    console.warn("[kf] land-aware jitter precompute failed; using deterministic fallback:", e?.message || e);
+    return false;
+  }
 }
 
 function hasRecordedParent(id, parentsOf) {
@@ -1665,8 +1588,9 @@ async function processFile(file) {
   lastParentsOf = parentsOf; lastIsParent = isParent; lastChildrenOf = childrenOf;
   lastFamilies = families;
   prewarmKinCache();
-  stats.textContent = `geocoding ${individuals.length.toLocaleString()} people...`;
+  stats.textContent = `placing ${individuals.length.toLocaleString()} people...`;
   await new Promise(r => requestAnimationFrame(r));
+  await _kfPrecomputeJitterPoolsForTimeline(individuals, geocoder);
   const tl = buildTimeline(individuals, geocoder, parentsOf);
   lastTimeline = tl;
   // A newly parsed tree needs fresh typed arrays. Otherwise loading a smaller

@@ -1140,19 +1140,12 @@ async function fetchJson(url) {
   return r.json();
 }
 
-async function fetchWorldTopology() {
-  return fetchJson("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json");
-}
-
 async function bootBasemap() {
-  // World land/country topology is used for land-aware marker placement;
-  // usStates supports state cluster mode and US jitter bounds.
+  // usStates supports state cluster mode. World land/country topology for
+  // marker placement is loaded inside the jitter worker off the main thread.
   stats.textContent = "loading basemap...";
-  const [w, us] = await Promise.all([
-    fetchWorldTopology(),
-    fetchJson("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").catch(() => null),
-  ]);
-  world = w; usStates = us;
+  usStates = await fetchJson("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").catch(() => null);
+  world = null;
   _kfResetJitterIndexes();
   resize();
   stats.textContent = "ready";
