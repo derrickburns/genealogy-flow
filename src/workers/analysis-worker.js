@@ -457,12 +457,16 @@ function deepestAncestryBranches(payload, opts = {}) {
 
 function migrationJumps(payload, opts = {}) {
   const data = normalize(payload);
-  const moves = moveRows(data, { minMiles: Number(opts?.minMiles) || 100 });
+  const minMiles = Number(opts?.minMiles) || 100;
+  const moves = moveRows(data, { minMiles });
   const jumps = moves
     .map(m => ({ ...m, milesPerYear: m.yearsElapsed > 0 ? Math.round((m.miles / Math.max(1, m.yearsElapsed)) * 10) / 10 : null, ambiguity: m.yearsElapsed > 10 ? "large time gap between records" : "tight record sequence" }))
     .sort((a, b) => b.miles - a.miles || b.yearsElapsed - a.yearsElapsed)
     .slice(0, limitFrom(opts, 15));
-  return { ok: true, scope: { selectedTrees: data.sources }, jumps };
+  const summary = jumps.length
+    ? `Found ${moves.length} location jumps of at least ${Math.round(minMiles)} miles in the selected trees. The largest returned jump is ${jumps[0].person}, ${jumps[0].fromRegion || jumps[0].from} to ${jumps[0].toRegion || jumps[0].to}, ${Math.round(jumps[0].miles)} miles over ${jumps[0].yearsElapsed} years.`
+    : `I did not find consecutive placed records at least ${Math.round(minMiles)} miles apart in the selected trees.`;
+  return { ok: true, summary, scope: { selectedTrees: data.sources }, totals: { candidateJumps: moves.length, returnedJumps: jumps.length, minMiles }, jumps };
 }
 
 const DISPATCH = {

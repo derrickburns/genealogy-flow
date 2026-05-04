@@ -269,17 +269,29 @@ function _kfRenderVizTabs() {
     return;
   }
   const isMapActive = !$("vizPane").classList.contains("on");
-  let html = `<button class="vizTab${isMapActive ? " on" : ""}" data-tab="map">Map</button>`;
+  let html = `<button class="vizTabScroll prev" type="button" data-scroll="-1" aria-label="Scroll output tabs left">&#8249;</button>` +
+    `<button class="vizTab${isMapActive ? " on" : ""}" data-tab="map">Map</button>`;
   for (const v of _kfVizList) {
     html += `<button class="vizTab${v.id === _kfActiveVizId ? " on" : ""}" data-id="${v.id}" title="${escHtml(v.title || v.type)}">${escHtml(v.title || v.type)}<span class="tabClose" data-close="${v.id}">&times;</span></button>`;
   }
+  html += `<button class="vizTabScroll next" type="button" data-scroll="1" aria-label="Scroll output tabs right">&#8250;</button>`;
   bar.innerHTML = html;
   bar.querySelector("[data-tab='map']").addEventListener("click", () => _kfShowVizPane(false));
+  bar.querySelectorAll(".vizTabScroll[data-scroll]").forEach(el => {
+    el.addEventListener("click", () => {
+      const dir = Number(el.dataset.scroll) || 1;
+      bar.scrollBy({ left: dir * Math.max(180, Math.floor(bar.clientWidth * 0.72)), behavior: "smooth" });
+    });
+  });
   bar.querySelectorAll(".vizTab[data-id]").forEach(el => {
     el.addEventListener("click", e => {
       if (e.target.dataset.close) { _kfCloseViz(Number(e.target.dataset.close)); return; }
       _kfRenderViz(Number(el.dataset.id));
     });
+  });
+  requestAnimationFrame(() => {
+    const active = bar.querySelector(".vizTab.on");
+    active?.scrollIntoView?.({ behavior: "smooth", inline: "center", block: "nearest" });
   });
 }
 

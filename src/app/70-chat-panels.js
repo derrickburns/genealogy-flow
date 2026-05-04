@@ -24,12 +24,28 @@ function _kfIsSideTabActive(tab) {
 function _kfUpdateMobileSheetTitle(tab) {
   if (!_mobileSheetTitleEl) return;
   _mobileSheetTitleEl.textContent =
+    tab === "map" ? "Map" :
     tab === "person" ? "People" :
     tab === "cluster" ? "Cluster" :
-    tab === "options" ? "Options" :
     tab === "trees" ? "Trees" :
     tab === "tour" ? "Tour" :
     "AI";
+}
+
+function _kfSyncSideTabChrome(tab) {
+  document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
+    btn.classList.toggle("on", btn.dataset.sideTab === tab);
+  });
+  document.querySelectorAll("#chatPanel .sidePane").forEach(pane => {
+    pane.classList.toggle("on", tab !== "map" && pane.id === `${tab}Pane`);
+  });
+  _kfUpdateMobileSheetTitle(tab);
+}
+
+function _kfMarkMapTabActive() {
+  if (!_kfIsMobileLayout()) return;
+  _kfActiveSideTab = "map";
+  _kfSyncSideTabChrome("map");
 }
 
 function _kfSyncMobileControlHeight() {
@@ -51,11 +67,12 @@ function _kfSetMobileSheetState(state) {
   if (!panel) return;
   const next = state === "full" || state === "open" ? state : "peek";
   panel.dataset.sheet = next;
+  if (next === "peek") _kfMarkMapTabActive();
   if (_mobileSheetHandleEl) {
     _mobileSheetHandleEl.setAttribute("aria-expanded", next !== "peek" ? "true" : "false");
     _mobileSheetHandleEl.setAttribute(
       "aria-label",
-      next === "peek" ? "Open details panel" : "Close details panel",
+      next === "peek" ? "Open details panel" : "Adjust details panel",
     );
   }
   requestAnimationFrame(() => { resize(); renderMigBar(); });
@@ -73,20 +90,19 @@ function _kfDemoteMobileSheet() {
 
 function _kfBumpMobileSheetForTab(tab) {
   if (!_kfIsMobileLayout()) return;
+  if (tab === "map") {
+    _kfSetMobileSheetState("peek");
+    return;
+  }
   _kfSetMobileSheetState("open");
 }
 
 function _kfSetSideTab(tab) {
-  const next = tab === "person" || tab === "cluster" || tab === "options" || tab === "trees" || tab === "tour" ? tab : "chat";
+  let next = tab === "map" || tab === "person" || tab === "cluster" || tab === "trees" || tab === "tour" ? tab : "chat";
+  if (next === "map" && !_kfIsMobileLayout()) next = "chat";
   if (next === "tour" && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
   _kfActiveSideTab = next;
-  document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
-    btn.classList.toggle("on", btn.dataset.sideTab === next);
-  });
-  document.querySelectorAll("#chatPanel .sidePane").forEach(pane => {
-    pane.classList.toggle("on", pane.id === `${next}Pane`);
-  });
-  _kfUpdateMobileSheetTitle(next);
+  _kfSyncSideTabChrome(next);
   if (next === "chat" && typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
   _kfBumpMobileSheetForTab(next);
 }
@@ -100,12 +116,18 @@ document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
     _kfSetSideTab(btn.dataset.sideTab);
   });
 });
-_kfUpdateMobileSheetTitle("chat");
+if (_kfIsMobileLayout()) _kfMarkMapTabActive();
+else _kfUpdateMobileSheetTitle("chat");
 _kfSetMobileSheetState("peek");
 _kfSyncMobileControlHeight();
 window.addEventListener("resize", () => {
   _kfSyncMobileControlHeight();
-  if (!_kfIsMobileLayout()) _kfSetMobileSheetState("peek");
+  if (!_kfIsMobileLayout()) {
+    _kfSetMobileSheetState("peek");
+    if (_kfActiveSideTab === "map") _kfSetSideTab("chat");
+  } else if (($("panel")?.dataset.sheet || "peek") === "peek") {
+    _kfMarkMapTabActive();
+  }
 });
 const _kfMobileUiResizeObserver = typeof ResizeObserver !== "undefined"
   ? new ResizeObserver(() => _kfSyncMobileControlHeight())
@@ -791,6 +813,116 @@ const _kfChatDiagramSpecs = new Map();
 
 function escChat(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
+function _kfHideToolMarkersInChatText(text) {
+  if (_chatShowTools) return String(text || "");
+  return String(text || "")
+    .replace(/<<KFCALL:\w+\((.*?)\)>>/gs, "")
+    .replace(/<<KFCALL:[\s\S]*$/g, "")
+    .trimEnd();
+}
+
+let _kfChatEntityCacheKey = "";
+let _kfChatEntityCache = { people: new Map(), places: new Map() };
+
+function _kfChatEntityKey(s) {
+  return String(s || "").toLowerCase().replace(/[.,;:!?]+$/g, "").replace(/\s+/g, " ").trim();
+}
+
+function _kfChatAddPersonAlias(map, alias, canonical) {
+  const key = _kfChatEntityKey(alias);
+  if (key.length >= 5 && key.includes(" ") && !map.has(key)) map.set(key, canonical);
+}
+
+function _kfChatAddPlaceAlias(map, alias, target) {
+  const key = _kfChatEntityKey(alias);
+  if (key.length >= 4 && !map.has(key)) map.set(key, target);
+}
+
+function _kfChatBuildEntityCache() {
+  const loadedKey = _kfLoadedSources
+    ? [..._kfLoadedSources.values()].map(s => `${s.source_id || s.name}:${s.n_individuals || 0}:${s.n_events || 0}`).join("|")
+    : "";
+  const selectedKey = _kfSelectedSourceIds ? [..._kfSelectedSourceIds].join(",") : "";
+  const lastIdx = lastIndividuals && lastIndividuals.length ? lastIndividuals.length - 1 : -1;
+  const sourceKey = `${loadedKey}::${selectedKey}::${lastIndividuals?.length || 0}:${lastIndividuals?.[0]?.id || ""}:${lastIdx >= 0 ? lastIndividuals[lastIdx]?.id || "" : ""}`;
+  if (sourceKey === _kfChatEntityCacheKey) return _kfChatEntityCache;
+  const people = new Map();
+  const places = new Map();
+  if (lastIndividuals) {
+    for (const ind of lastIndividuals) {
+      const name = String(ind?.name || "").trim();
+      if (!name || name === "?") continue;
+      _kfChatAddPersonAlias(people, name, name);
+      _kfChatAddPersonAlias(people, name.replace(/,.*/, ""), name);
+      _kfChatAddPersonAlias(people, name.replace(/^(Sir|Dame|Lady|Lord|King|Queen|Prince|Princess|Duke|Duchess|Earl|Count|Countess|Baron|Baroness|Rev\.?|Dr\.?)\s+/i, "").replace(/,.*/, ""), name);
+    }
+  }
+  if (_kfLoadedSources) {
+    for (const src of _kfLoadedSources.values()) {
+      for (const ind of (src.individuals || [])) {
+        for (const ev of (ind.events || [])) {
+          const place = String(ev?.place || "").trim();
+          if (!place) continue;
+          _kfChatAddPlaceAlias(places, place, place);
+          const parts = place.split(",").map(p => p.trim()).filter(Boolean);
+          for (const part of parts) _kfChatAddPlaceAlias(places, part, part);
+          if (parts.length >= 2) _kfChatAddPlaceAlias(places, `${parts[0]}, ${parts[parts.length - 1]}`, place);
+        }
+      }
+    }
+  }
+  _kfChatEntityCacheKey = sourceKey;
+  _kfChatEntityCache = { people, places };
+  return _kfChatEntityCache;
+}
+
+function _kfChatEntityForText(text) {
+  const { people, places } = _kfChatBuildEntityCache();
+  const key = _kfChatEntityKey(text);
+  if (people.has(key)) return { type: "person", value: people.get(key) };
+  if (places.has(key)) return { type: "place", value: places.get(key) };
+  return null;
+}
+
+function _kfAutoLinkChatBody(root) {
+  if (!root || !lastIndividuals) return;
+  const entityRe = /\b[A-Z][A-Za-z'’.-]*(?:\s+(?:[A-Z][A-Za-z'’.-]*|of|de|del|la|le|van|von|der|den|the)){0,5}\b/g;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      if (parent.closest("a,button,code,pre,script,style,iframe,.chatDiagram")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    entityRe.lastIndex = 0;
+    let match, last = 0, changed = false;
+    const frag = document.createDocumentFragment();
+    while ((match = entityRe.exec(text))) {
+      const label = match[0];
+      const entity = _kfChatEntityForText(label);
+      if (!entity) continue;
+      if (match.index > last) frag.append(document.createTextNode(text.slice(last, match.index)));
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chatInlineLink";
+      btn.dataset.chatLinkType = entity.type;
+      btn.dataset.chatLinkValue = entity.value;
+      btn.textContent = label;
+      frag.append(btn);
+      last = match.index + label.length;
+      changed = true;
+    }
+    if (!changed) continue;
+    if (last < text.length) frag.append(document.createTextNode(text.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  }
+}
+
 // Inline transforms: applied AFTER HTML-escape so the surrounding text is safe.
 // Order matters: code spans first (so their contents aren't transformed),
 // then links, then bold/italic.
@@ -996,7 +1128,8 @@ function renderChat() {
     chatHistoryEl.scrollHeight - chatHistoryEl.scrollTop - chatHistoryEl.clientHeight < stickThreshold;
   const prevScrollTop = chatHistoryEl.scrollTop;
   chatHistoryEl.innerHTML = visible.map((m, mi) => {
-    const body = m.role === "user" ? escChat(m.content) : renderMd(_kfPlainEnglishEventText(m.content));
+    const rawContent = m.role === "user" ? m.content : _kfHideToolMarkersInChatText(m.content);
+    const body = m.role === "user" ? escChat(rawContent) : renderMd(_kfPlainEnglishEventText(rawContent));
     const chips = (m.chips && m.chips.length)
       ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}">${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}</button>`).join("")}</div>`
       : "";
@@ -1004,6 +1137,19 @@ function renderChat() {
     const who = m.role === "user" ? "you" : m.kind === "tool" ? "tool" : m.kind === "action" ? "action" : "claude";
     return `<div class="msg ${m.role}${kindClass}"><span class="who">${who}</span><div class="body">${body}</div>${chips}</div>`;
   }).join("");
+  chatHistoryEl.querySelectorAll(".msg.bot:not(.tool):not(.action) .body").forEach(_kfAutoLinkChatBody);
+  chatHistoryEl.querySelectorAll(".chatInlineLink[data-chat-link-type]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const value = btn.dataset.chatLinkValue || "";
+      if (!value || !window.kfApi) return;
+      if (btn.dataset.chatLinkType === "person") {
+        window.kfApi.selectPerson(value);
+        window.kfApi.centerOn(value);
+      } else {
+        window.kfApi.centerOn(value);
+      }
+    });
+  });
   // Wire chip clicks. Each chip carries an action (kfApi method + args) that
   // fires once on click, mirroring how KFCALL markers work but via UI.
   chatHistoryEl.querySelectorAll(".chatChip").forEach(btn => {
@@ -1063,6 +1209,8 @@ async function _kfDispatchChip(chip) {
     if (chip.method === "saveLens" && r && r.ok && r.lens && window.kfApi.activateLens) {
       const a = await window.kfApi.activateLens(r.lens);
       _kfReportChipResult(chip, { saved: r.lens, activated: a });
+    } else if ((chip.method === "sendChat" || chip.method === "chat") && r && r.ok) {
+      return;
     } else {
       _kfReportChipResult(chip, r);
     }
@@ -1087,7 +1235,7 @@ function _kfReportChipResult(chip, r) {
       summary = `\u26A0 **${chip.label || lensName}** activated, but **0 rows match at year ${Math.floor(curYear)}**. Try scrubbing the timeline, or the SQL may need adjusting (e.g., \`__YEAR__\` placeholder, source filter).`;
     } else {
       const n = (Array.isArray(_kfLensData) && _kfLensData.length) || "?";
-      summary = `\u2713 **${chip.label || lensName}** activated. ${n} rows rendered. Open Options \u2192 Lens to switch off.`;
+      summary = `\u2713 **${chip.label || lensName}** activated. ${n} rows rendered.`;
     }
   } else if (chip.method === "activateLens") {
     summary = `\u2713 **${chip.label}** activated.`;
@@ -1195,7 +1343,7 @@ function _kfBindChatScopeQuestions() {
 
 function _kfRefreshChatScope() {
   if (!chatScopeEl) return;
-  if (!timelineLoaded || !lastIndividuals) {
+  if (_kfIsMobileLayout() || !timelineLoaded || !lastIndividuals) {
     chatScopeEl.hidden = true;
     chatScopeEl.innerHTML = "";
     return;

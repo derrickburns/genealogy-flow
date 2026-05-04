@@ -1102,7 +1102,8 @@ function _kfCollectDeepestAncestryBranches(opts = {}) {
 
 function _kfCollectMigrationJumps(opts = {}) {
   const data = _kfSelectedGenealogyFacts(opts);
-  const moves = _kfMoveRowsFromFacts(data, { minMiles: Number(opts?.minMiles) || 100 });
+  const minMiles = Number(opts?.minMiles) || 100;
+  const moves = _kfMoveRowsFromFacts(data, { minMiles });
   const jumps = moves
     .map(m => ({
       ...m,
@@ -1111,7 +1112,10 @@ function _kfCollectMigrationJumps(opts = {}) {
     }))
     .sort((a, b) => b.miles - a.miles || b.yearsElapsed - a.yearsElapsed)
     .slice(0, Math.max(5, Math.min(30, parseInt(opts?.limit, 10) || 15)));
-  return { ok: true, scope: { selectedTrees: data.sources }, jumps };
+  const summary = jumps.length
+    ? `Found ${moves.length} location jumps of at least ${Math.round(minMiles)} miles in the selected trees. The largest returned jump is ${jumps[0].person}, ${jumps[0].fromRegion || jumps[0].from} to ${jumps[0].toRegion || jumps[0].to}, ${Math.round(jumps[0].miles)} miles over ${jumps[0].yearsElapsed} years.`
+    : `I did not find consecutive placed records at least ${Math.round(minMiles)} miles apart in the selected trees.`;
+  return { ok: true, summary, scope: { selectedTrees: data.sources }, totals: { candidateJumps: moves.length, returnedJumps: jumps.length, minMiles }, jumps };
 }
 
 function _kfSelectedGenealogyAnalysisPayload(opts = {}) {
@@ -1372,6 +1376,34 @@ function _kfNormalizeClusterMode(input) {
   return aliases.get(key) || key;
 }
 
+function _kfMapTargetFromChatText(text) {
+  const raw = String(text || "").trim();
+  const patterns = [
+    /^(?:show|select|find|open)\s+(.+?)\s+(?:on|in)\s+(?:the\s+)?map\.?$/i,
+    /^center\s+(?:on\s+)?(.+?)\.?$/i,
+  ];
+  for (const re of patterns) {
+    const m = raw.match(re);
+    if (!m) continue;
+    return String(m[1] || "").trim().replace(/^["']|["']$/g, "");
+  }
+  return "";
+}
+
+function _kfTryFastMapChatCommand(text) {
+  const target = _kfMapTargetFromChatText(text);
+  if (!target || !window.kfApi) return null;
+  const ind = _kfFindIndi(target);
+  if (ind) {
+    const selected = window.kfApi.selectPerson(target);
+    if (selected?.error) return selected;
+    const centered = window.kfApi.centerOn(target);
+    return { ok: true, fast: true, action: "showOnMap", person: selected.person, dwellYear: selected.dwellYear, centered: !centered?.error };
+  }
+  const centered = window.kfApi.centerOn(target);
+  return centered?.ok ? { ...centered, fast: true, action: "showOnMap" } : null;
+}
+
 window.kfApi = {
   setYear(year) {
     const y = Math.max(minYear, Math.min(maxYear, Number(year)));
@@ -1623,6 +1655,8 @@ window.kfApi = {
   async sendChat(input) {
     const text = (typeof input === "string" ? input : input && input.text) || "";
     if (!text) return { error: "text required" };
+    const fast = _kfTryFastMapChatCommand(text);
+    if (fast) return fast;
     if (_chatBusy) return { error: "chat busy" };
     chatHistory.push({ role: "user", content: text });
     renderChat();
@@ -2241,6 +2275,8 @@ window.kfApi = {
   },
   // Submit a message to the chat programmatically (used by KFCHIP suggestion buttons)
   chat(text) {
+    const fast = _kfTryFastMapChatCommand(text);
+    if (fast) return fast;
     if (typeof _kfAskQuestion === "function" && text) {
       return _kfAskQuestion(String(text)).then(() => ({ ok: true }));
     }

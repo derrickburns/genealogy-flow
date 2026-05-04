@@ -27,6 +27,7 @@ Only run extra sql() calls if a specific claim still needs support. Do not infer
 VISUALIZATION REQUESTS: When asked for any chart, graph, or visualization, produce it immediately:
 1. Run sql() to get the data
 2. Emit <<KFCALL:showViz(...)>> with all data inlined in the spec
+For multi-page or multi-part visual output, emit one showViz call per page with short distinct titles. The app will create horizontally scrollable tabs for those pages, including on mobile.
 For network/graph visualizations use type "html" — a self-contained HTML page with the visualization library loaded from CDN and ALL data as an inline JavaScript variable (the frame cannot fetch external data). Keep network graphs to ≤200 nodes by focusing on a root person's closest relatives.
 
 Each user message is preceded by a context block describing what they're looking at: tree size, year range, root person, current playback year, currently selected person, and people visible at the current year. Use the context to disambiguate ("them", "her", "this place"); use the SQL database for everything beyond what's on screen. If the context includes a capped sample of visible markers, never treat the sample size as the total; use the explicit visible marker total and viewport count lines.
@@ -200,6 +201,204 @@ const CHAT_MESSAGE_MAX_CHARS = 6000;
 const CHAT_TOOL_RESULT_MAX_CHARS = 12000;
 const CHAT_TOOL_ROUND_MAX_CHARS = 36000;
 const CHAT_TOOL_ROW_LIMIT = 40;
+const AI_CACHE_MODEL = "claude-sonnet-4-6";
+const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v4";
+const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v2";
+const AI_CACHE_INDEX_TTL_MS = 5 * 60 * 1000;
+const _kfAiCacheEntries = new Map();
+let _kfAiCacheIndexKey = "";
+let _kfAiCacheIndexLoadedAt = 0;
+let _kfAiCacheRefreshTimer = null;
+
+async function _kfSha256Hex(text) {
+  const bytes = new TextEncoder().encode(String(text || ""));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function _kfBuildCommitForCache() {
+  const text = document.getElementById("buildVersion")?.textContent?.trim() || "";
+  return text && text !== "__COMMIT_SHA__" ? text : "dev";
+}
+
+function _kfNormalizeQuestionForCache(text) {
+  return String(text || "").trim().replace(/\s+/g, " ");
+}
+
+function _kfIsStandardAiQuestion(text) {
+  const q = _kfNormalizeQuestionForCache(text);
+  return (typeof _KF_STANDARD_AI_QUESTIONS !== "undefined" ? _KF_STANDARD_AI_QUESTIONS : [])
+    .some(item => _kfNormalizeQuestionForCache(item.text) === q);
+}
+
+function _kfIsTreeLevelCacheableQuestion(text) {
+  const q = _kfNormalizeQuestionForCache(text).toLowerCase();
+  if (!q || q.length < 12) return false;
+  if (/\b(current year|this year|visible people|selected person|this marker|this cluster|viewport|where is|who is|show |select |center |why is )\b/.test(q)) return false;
+  if (_kfIsStandardAiQuestion(text)) return true;
+  return /\b(immigration|migration waves|migration jumps|farthest-moving|farthest moving|rural|city|crossroads|stable branches|moved together|historical overlaps|slavery|war|distant marriages|deepest|summarize this tree|migration patterns|family story)\b/.test(q);
+}
+
+function _kfSelectedAiCacheTreeRefs() {
+  if (typeof _kfSelectedSourceSnapshots !== "function") return [];
+  return _kfSelectedSourceSnapshots()
+    .map(src => {
+      const hash = String(src?.content_hash || "").trim().toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(hash)) return null;
+      const kind = src?.source_kind === "catalog" || src?.catalog_key ? "catalog" : "gedcom";
+      if (kind === "gedcom" && !src.server_source_id && !src.tree_uuid) return null;
+      return {
+        kind,
+        key: kind === "catalog" ? (src.catalog_key || src.tree_uuid || src.name) : String(src.server_source_id || src.tree_uuid || ""),
+        source_id: src.server_source_id || null,
+        tree_uuid: src.tree_uuid || null,
+        catalog_key: src.catalog_key || null,
+        content_hash: hash,
+        name: src.common_name || src.name || "",
+      };
+    })
+    .filter(Boolean);
+}
+
+async function _kfAiCacheContextForQuestion(question) {
+  if (!_kfIsTreeLevelCacheableQuestion(question)) return null;
+  const treeRefs = _kfSelectedAiCacheTreeRefs();
+  if (!treeRefs.length) return null;
+  const normalizedRefs = treeRefs.slice().sort((a, b) =>
+    a.content_hash.localeCompare(b.content_hash) ||
+    String(a.kind).localeCompare(String(b.kind)) ||
+    String(a.key || "").localeCompare(String(b.key || ""))
+  );
+  const treeHashKey = await _kfSha256Hex(JSON.stringify(normalizedRefs.map(ref => ref.content_hash)));
+  const questionText = _kfNormalizeQuestionForCache(question);
+  const appCommit = _kfBuildCommitForCache();
+  const cacheKey = await _kfSha256Hex(JSON.stringify({
+    tree_hash_key: treeHashKey,
+    question: questionText.toLowerCase(),
+    model: AI_CACHE_MODEL,
+    prompt_version: AI_CACHE_PROMPT_VERSION,
+    analysis_version: AI_CACHE_ANALYSIS_VERSION,
+    app_commit: appCommit,
+  }));
+  return {
+    cache_key: cacheKey,
+    tree_hash_key: treeHashKey,
+    tree_refs: normalizedRefs,
+    question: questionText,
+    model: AI_CACHE_MODEL,
+    prompt_version: AI_CACHE_PROMPT_VERSION,
+    analysis_version: AI_CACHE_ANALYSIS_VERSION,
+    app_commit: appCommit,
+    is_standard: _kfIsStandardAiQuestion(question),
+  };
+}
+
+function _kfAiCacheHeaders() {
+  return typeof _kfAuthHeaders === "function" ? _kfAuthHeaders() : {};
+}
+
+async function _kfPostAiCache(body) {
+  const r = await fetch("/api/ai-cache", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ..._kfAiCacheHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.error || `AI cache ${r.status}`);
+  return data;
+}
+
+async function _kfRefreshAiCacheIndex(opts = {}) {
+  const treeRefs = _kfSelectedAiCacheTreeRefs();
+  if (!treeRefs.length) return null;
+  const fakeContext = await _kfAiCacheContextForQuestion("Summarize this tree: key ancestors, geographic spread, and time range.");
+  if (!fakeContext) return null;
+  const now = Date.now();
+  if (!opts.force && _kfAiCacheIndexKey === fakeContext.tree_hash_key && now - _kfAiCacheIndexLoadedAt < AI_CACHE_INDEX_TTL_MS) {
+    return fakeContext.tree_hash_key;
+  }
+  const standard_questions = (typeof _KF_STANDARD_AI_QUESTIONS !== "undefined" ? _KF_STANDARD_AI_QUESTIONS : []).map(q => _kfNormalizeQuestionForCache(q.text));
+  try {
+    const data = await _kfPostAiCache({
+      action: "index",
+      tree_refs: fakeContext.tree_refs,
+      tree_hash_key: fakeContext.tree_hash_key,
+      model: AI_CACHE_MODEL,
+      prompt_version: AI_CACHE_PROMPT_VERSION,
+      analysis_version: AI_CACHE_ANALYSIS_VERSION,
+      app_commit: fakeContext.app_commit,
+      standard_questions,
+      limit: 60,
+    });
+    _kfAiCacheEntries.clear();
+    for (const entry of data.entries || []) _kfAiCacheEntries.set(entry.cache_key, entry);
+    _kfAiCacheIndexKey = fakeContext.tree_hash_key;
+    _kfAiCacheIndexLoadedAt = now;
+    return fakeContext.tree_hash_key;
+  } catch (e) {
+    console.warn("[kf] AI cache index:", e?.message || e);
+    return null;
+  }
+}
+
+function _kfScheduleAiCacheIndexRefresh() {
+  clearTimeout(_kfAiCacheRefreshTimer);
+  _kfAiCacheRefreshTimer = setTimeout(() => {
+    _kfRefreshAiCacheIndex({ force: true }).catch(e => console.warn("[kf] AI cache refresh:", e?.message || e));
+  }, 350);
+}
+
+async function _kfLoadCachedAiAnswer(cacheContext) {
+  if (!cacheContext) return null;
+  await _kfRefreshAiCacheIndex();
+  const indexed = _kfAiCacheEntries.get(cacheContext.cache_key);
+  if (indexed?.answer) return indexed;
+  if (!indexed) return null;
+  try {
+    const data = await _kfPostAiCache({
+      action: "get",
+      tree_refs: cacheContext.tree_refs,
+      tree_hash_key: cacheContext.tree_hash_key,
+      cache_key: cacheContext.cache_key,
+    });
+    const entry = data?.entry || null;
+    if (entry?.answer) {
+      _kfAiCacheEntries.set(cacheContext.cache_key, entry);
+      return entry;
+    }
+  } catch (e) {
+    if (!/404/.test(String(e?.message || ""))) console.warn("[kf] AI cache get:", e?.message || e);
+  }
+  return null;
+}
+
+async function _kfStoreCachedAiAnswer(cacheContext, answer) {
+  if (!cacheContext || _clerkUserTier === "anon") return;
+  const text = String(answer || "").trim();
+  if (!text || /^\*?\[?error/i.test(text) || text.length < 40) return;
+  try {
+    const data = await _kfPostAiCache({
+      action: "put",
+      ...cacheContext,
+      answer: text,
+    });
+    _kfAiCacheEntries.set(cacheContext.cache_key, {
+      cache_key: cacheContext.cache_key,
+      question: cacheContext.question,
+      answer: text.length <= 4000 && cacheContext.is_standard ? text : undefined,
+      preview: text.replace(/\s+/g, " ").slice(0, 260),
+      model: cacheContext.model,
+      prompt_version: cacheContext.prompt_version,
+      analysis_version: cacheContext.analysis_version,
+      app_commit: cacheContext.app_commit,
+      is_standard: cacheContext.is_standard,
+      updated_at: Math.floor(Date.now() / 1000),
+      ...data,
+    });
+  } catch (e) {
+    console.warn("[kf] AI cache put:", e?.message || e);
+  }
+}
 
 async function detectChatProxy() {
   if (_chatProxyOk !== null) return _chatProxyOk;
@@ -587,7 +786,20 @@ async function parseAndRunKfCalls(text) {
 
 const MAX_TOOL_ROUNDS = 6;
 async function runChatTurn(userText) {
-  let nextInput = userText;
+  const cacheContext = await _kfAiCacheContextForQuestion(userText);
+  const cached = await _kfLoadCachedAiAnswer(cacheContext);
+  if (cached?.answer) {
+    chatHistory.push({
+      role: "bot",
+      content: `*cached answer*\n\n${cached.answer}`,
+      cached: true,
+    });
+    renderChat();
+    return;
+  }
+  let nextInput = cacheContext
+    ? `${userText}\n\n[Cache-safe instruction: answer from the selected tree data only. Do not mention the logged-in user's name, email, account tier, selected person, viewport, or other transient UI state unless the user explicitly asked about it.]`
+    : userText;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const pending = { role: "bot", content: "_thinking..._" };
     chatHistory.push(pending);
@@ -624,7 +836,10 @@ async function runChatTurn(userText) {
     pending.content = _kfPlainEnglishEventText(chipParse.stripped || (results.length ? "_using the data..._" : ""));
     if (chipParse.chips.length) pending.chips = chipParse.chips;
     renderChat();
-    if (!results.length) return;  // no tool calls -> Claude is done
+    if (!results.length) {
+      await _kfStoreCachedAiAnswer(cacheContext, pending.content);
+      return;  // no tool calls -> Claude is done
+    }
     // Surface KFCALL errors visibly -- otherwise showViz failures are silent.
     const kfErrors = results.filter(r => r.result && r.result.error);
     if (kfErrors.length) {
@@ -681,6 +896,14 @@ $("chatTools").addEventListener("click", () => {
 
 function autoIntroOnce() {
   if (chatHistory.length > 0) return;
+  if (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) {
+    chatHistory.push({
+      role: "bot",
+      content: "Ask a question about the selected trees, people, clusters, or migration story.",
+    });
+    renderChat();
+    return;
+  }
   const standardQuestionChips = (typeof _KF_STANDARD_AI_QUESTIONS !== "undefined" ? _KF_STANDARD_AI_QUESTIONS : [])
     .map(q => ({ label: q.label, method: "sendChat", args: { text: q.text } }));
   const msg = {

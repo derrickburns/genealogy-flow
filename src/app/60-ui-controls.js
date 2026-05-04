@@ -85,6 +85,14 @@ function _kfSetCookie(name, value, days = 365) {
   document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
 }
 
+function _kfOpenTreesPanelAfterSplashIfMobile() {
+  if (typeof _kfIsMobileLayout !== "function" || !_kfIsMobileLayout()) return;
+  requestAnimationFrame(() => {
+    if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
+    else if (typeof _kfSetMobileSheetState === "function") _kfSetMobileSheetState("open");
+  });
+}
+
 function _kfInitSplash() {
   const splash = $("splash");
   const btn = $("splashDismiss");
@@ -97,6 +105,7 @@ function _kfInitSplash() {
   btn.addEventListener("click", () => {
     _kfSetCookie("kf_splash_seen", "1");
     splash.classList.add("hidden");
+    _kfOpenTreesPanelAfterSplashIfMobile();
   });
 }
 

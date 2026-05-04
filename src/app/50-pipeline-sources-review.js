@@ -394,6 +394,8 @@ function _kfGetLoadedSourcesList() {
       id: s.source_id,
       name: s.name,
       common_name: s.common_name || s.name,
+      source_kind: s.source_kind || null,
+      catalog_key: s.catalog_key || null,
       tree_uuid: s.tree_uuid || null,
       content_hash: s.content_hash || null,
       content_changed_at: s.content_changed_at || null,
@@ -440,6 +442,7 @@ function _kfRefreshBrowserViews() {
     _kfBrowserDb.run(`CREATE VIEW events AS SELECT * FROM base_events WHERE ${where}`);
     _kfBrowserDb.run(`CREATE VIEW families AS SELECT * FROM base_families WHERE ${where}`);
     _kfBrowserDb.run(`CREATE VIEW family_children AS SELECT * FROM base_family_children WHERE ${where}`);
+    if (typeof _kfScheduleAiCacheIndexRefresh === "function") _kfScheduleAiCacheIndexRefresh();
   } catch (e) {
     console.warn("[kf] refreshBrowserViews:", e.message || e);
   }
@@ -832,6 +835,8 @@ async function loadCatalogTree(key, opts = {}) {
   if (!catalogMeta?.tree_uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
   const file = new File([text], name, { type: "text/plain" });
   file._kfTreeMeta = {
+    source_kind: "catalog",
+    catalog_key: key,
     tree_uuid: catalogMeta?.tree_uuid || null,
     owner_email: catalogMeta?.owner_email || null,
     relation: catalogMeta?.relation || null,
@@ -871,6 +876,15 @@ async function autoLoadPublicDemoTree() {
     if (!resp.ok) throw new Error(resp.status + " " + resp.statusText);
     const text = await resp.text();
     const demoFile = new File([text], "DEMO.json", { type: "application/json" });
+    const demoMeta = (_kfCatalogTrees || []).find(t => t?.key === "demo") || VIP_CATALOG_TREES[0] || null;
+    demoFile._kfTreeMeta = {
+      source_kind: "catalog",
+      catalog_key: "demo",
+      tree_uuid: demoMeta?.tree_uuid || null,
+      owner_email: demoMeta?.owner_email || null,
+      relation: demoMeta?.relation || "public",
+      common_name: "DEMO",
+    };
     _kfSkipNextSeed = true;
     await processFile(demoFile);
     const loaded = _kfLoadedSources.get(sourceName);
@@ -1481,6 +1495,8 @@ async function processFile(file) {
   const contentHash = sourceMeta.content_hash || await _kfTreeContentHash(individuals, families);
   const loadedSourceSnapshot = {
     source_id: browserSourceId,
+    source_kind: sourceMeta.source_kind || null,
+    catalog_key: sourceMeta.catalog_key || null,
     tree_uuid: sourceMeta.tree_uuid || null,
     content_hash: contentHash,
     content_changed_at: sourceMeta.content_changed_at || null,
@@ -1517,7 +1533,7 @@ async function processFile(file) {
 
   rootwrap.style.display = "";
   $("clusterSection").classList.remove("hidden");
-  $("quickChips").classList.remove("hidden");
+  $("quickChips")?.classList.remove("hidden");
   $("mapLegend").classList.remove("hidden");
   updateMapLegend();
   _kfBuildSurnameTopN(12);
