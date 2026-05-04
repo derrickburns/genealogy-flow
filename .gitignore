@@ -41,3 +41,4 @@ dist/
 /public/index.html
 /public/app.js
 /public/styles/app.css
+/public/workers/

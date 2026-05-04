@@ -1115,20 +1115,67 @@ function appendError(text) {
   chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
 }
 
+const _KF_STANDARD_AI_QUESTIONS = [
+  {
+    label: "Immigration waves",
+    text: "Summarize the waves of immigration in my family. Cite important surnames, transition years, and people with source-marked historical significance.",
+  },
+  {
+    label: "Farthest-moving surnames",
+    text: "Which surnames moved the farthest across generations? Cite example people, routes, and approximate distances.",
+  },
+  {
+    label: "Rural to city",
+    text: "When did my family shift from rural places to cities? Identify the biggest transition decades and branches.",
+  },
+  {
+    label: "Family crossroads",
+    text: "Which places acted as family crossroads? Explain which surnames and branches repeatedly appear there.",
+  },
+  {
+    label: "Stable branches",
+    text: "Which branches stayed geographically stable the longest? Cite the dominant places and year ranges.",
+  },
+  {
+    label: "Moved together",
+    text: "Which families or surnames repeatedly migrated together? Cite shared routes and example people.",
+  },
+  {
+    label: "History overlaps",
+    text: "Which ancestors were alive during slavery, wars, or major historical transitions? Make clear that overlap does not prove participation.",
+  },
+  {
+    label: "Distant marriages",
+    text: "Which marriages joined geographically distant branches? Cite spouse names, places, and approximate distance.",
+  },
+  {
+    label: "Deepest branches",
+    text: "Which branch has the deepest documented ancestry? Rank the deepest people and surnames by generation depth.",
+  },
+  {
+    label: "Migration jumps",
+    text: "Where are the biggest unexplained migration jumps? Flag jumps with large time gaps between records.",
+  },
+];
+
+function _kfStandardAiQuestions() {
+  return _KF_STANDARD_AI_QUESTIONS.map(q => q.text);
+}
+
 function _kfChatScopeQuestions(root, selected, visible) {
   const y = Math.floor(curYear);
   const questions = [
     `Explain this year in plain language.`,
     `Why are these people visible in ${y}?`,
     `Summarize the migration story for the visible people in ${y}.`,
-    `Summarize the waves of immigration in my family. Cite important surnames, transition years, and people with source-marked historical significance.`,
     `Explain the biggest place or cluster pattern in ${y}.`,
+    ..._kfStandardAiQuestions(),
   ];
   if (_kfShowDataQualityConcerns) questions.push(`Find the weakest location evidence in the checked trees at ${y}.`);
   if (selected?.name) questions.unshift(`Why is ${selected.name} shown here in ${y}?`);
   else if (root?.name) questions.unshift(`What should I notice about ${root.name}'s family in ${y}?`);
   if (visible?.count > 500) questions.push(`Give me the simplest way to understand these ${visible.count} visible people.`);
-  return questions.slice(0, 5);
+  return questions.slice(0, 12);
 }
 
 function _kfBindChatScopeQuestions() {

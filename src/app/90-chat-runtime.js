@@ -11,7 +11,18 @@ SUGGESTION LISTS: When listing visualization or analysis ideas, ALWAYS present e
 
 When you name a specific person, place, cluster, or follow-up action that would help the user inspect the current view, include a short KFCHIP for it instead of leaving it as passive text. Prefer chips such as selectPerson, centerOn, setClusterMode, showYearTour, or chat with a complete follow-up request. Use showOutliers only when the data quality concerns setting is on or the user explicitly asks for data-quality review.
 
-IMMIGRATION / MIGRATION SUMMARIES: For broad questions about waves of family immigration, migration transitions, important surnames, or historically significant people, call getImmigrationWaves() first. It returns a compact, bounded summary designed for narrative answers. Only run extra sql() calls if a specific claim still needs support. Do not infer historical significance from fame; cite a person as historically significant only when the data itself marks them with a title, role, or relevant event.
+FAMILY-PATTERN SUMMARIES: For broad questions, prefer the compact helper methods before sql(); they are bounded, scoped to checked trees, and designed to avoid runaway tool calls. Use:
+  - immigration waves / transition years / historically significant source-marked people -> getImmigrationWaves()
+  - farthest-moving surnames -> getSurnameMigrationDistances()
+  - rural-to-city shifts -> getUrbanizationShift()
+  - family crossroads / repeated places -> getFamilyCrossroads()
+  - geographically stable branches -> getStableBranches()
+  - families moving together -> getCoMigratingFamilies()
+  - ancestors alive during slavery, wars, or historical eras -> getHistoricalOverlaps()
+  - marriages joining distant branches -> getDistantBranchMarriages()
+  - deepest documented ancestry -> getDeepestAncestryBranches()
+  - unexplained large migration jumps -> getMigrationJumps()
+Only run extra sql() calls if a specific claim still needs support. Do not infer historical significance from fame; cite a person as historically significant only when the data itself marks them with a title, role, or relevant event.
 
 VISUALIZATION REQUESTS: When asked for any chart, graph, or visualization, produce it immediately:
 1. Run sql() to get the data
@@ -122,6 +133,15 @@ Available tools. jsonArgs is a single JSON value:
 
 - getFamily(name)                  Returns {person, parents:{father,mother}, siblings, spouses, children}. Faster than SQL for one-person family unit; pulls from in-memory family graph.
 - getImmigrationWaves({limit?})    Compact summary of immigration/emigration and cross-country transition waves across the checked trees: decade/routes, key surnames, example people, and source-marked title/role people. Use FIRST for broad immigration-wave questions.
+- getSurnameMigrationDistances({limit?})  Ranks surnames by cumulative and largest recorded migration distances, with example people/routes.
+- getUrbanizationShift({limit?})   Shows decade-by-decade shift toward city-level records and the biggest increases.
+- getFamilyCrossroads({limit?})    Finds places where multiple surnames/branches recur across time.
+- getStableBranches({limit?})      Ranks surnames/branches that stayed concentrated in one region longest.
+- getCoMigratingFamilies({limit?}) Finds groups of people/surnames moving along the same route in the same decade.
+- getHistoricalOverlaps({limit?})  Lists overlaps between known family record spans and major historical eras; overlap is not direct participation.
+- getDistantBranchMarriages({limit?}) Finds spouse pairs whose earliest placed records are geographically distant.
+- getDeepestAncestryBranches({limit?}) Ranks people and surnames by documented parent-link depth.
+- getMigrationJumps({limit?, minMiles?}) Finds largest recorded jumps between consecutive placed events and flags large time gaps.
 - getAncestors(name, maxGen?)      Returns {ancestors: [{id,name,birth,death,generation}, ...]} sorted by generation. DATA-only; doesn't change the visualization.
 - getDescendants(name, maxGen?)    Same shape, descending through children. Default maxGen 6.
 - getMigrations(name)              Returns {moves: [{from, to, years_elapsed, miles}, ...]} sorted chronologically. Use this when narrating someone's life ("she moved 3 times: ...").
@@ -661,9 +681,11 @@ $("chatTools").addEventListener("click", () => {
 
 function autoIntroOnce() {
   if (chatHistory.length > 0) return;
+  const standardQuestionChips = (typeof _KF_STANDARD_AI_QUESTIONS !== "undefined" ? _KF_STANDARD_AI_QUESTIONS : [])
+    .map(q => ({ label: q.label, method: "sendChat", args: { text: q.text } }));
   const msg = {
     role: "bot",
-    content: "Here are some visualizations to explore:",
+    content: "Here are useful ways to explore this tree:",
     chips: [
       { label: "Lineage clusters",   method: "setClusterMode", args: { mode: "pie" } },
       { label: "By US state",        method: "setClusterMode", args: { mode: "state" } },
@@ -671,8 +693,8 @@ function autoIntroOnce() {
       { label: "Gender breakdown",   method: "setClusterMode", args: { mode: "gender" } },
       { label: "Connect blood kin",  method: "setKinLines",    args: { n: 5 } },
       { label: "Summarize my tree",  method: "sendChat",       args: { text: "Summarize this tree: key ancestors, geographic spread, and time range." } },
-      { label: "Immigration waves",  method: "sendChat",       args: { text: "Summarize the waves of immigration in my family. Cite important surnames, transition years, and people with source-marked historical significance." } },
       { label: "Migration patterns", method: "sendChat",       args: { text: "What migration patterns do you see in this tree?" } },
+      ...standardQuestionChips,
     ],
   };
   chatHistory.push(msg);

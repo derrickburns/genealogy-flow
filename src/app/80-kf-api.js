@@ -1114,6 +1114,33 @@ function _kfCollectMigrationJumps(opts = {}) {
   return { ok: true, scope: { selectedTrees: data.sources }, jumps };
 }
 
+function _kfSelectedGenealogyAnalysisPayload(opts = {}) {
+  const data = _kfSelectedGenealogyFacts(opts);
+  return {
+    sources: data.sources,
+    persons: data.persons,
+    facts: data.facts,
+    families: data.families,
+    limit: data.limit,
+  };
+}
+
+async function _kfRunGenealogyAnalysis(kind, opts, fallback) {
+  if (!_kfLoadedSources.size) return { error: "no tree loaded" };
+  if (typeof _kfRunAnalysisInWorker === "function" &&
+      (typeof _kfAnalysisWorkerMayBeAvailable !== "function" || _kfAnalysisWorkerMayBeAvailable())) {
+    try {
+      const payload = _kfSelectedGenealogyAnalysisPayload(opts || {});
+      const result = await _kfRunAnalysisInWorker(kind, payload, opts || {});
+      if (result && !result.error) return result;
+    } catch (e) {
+      console.warn("[kf] analysis worker failed:", e?.message || e);
+    }
+  }
+  const result = fallback(opts || {});
+  return result && typeof result === "object" ? { ...result, computedIn: "main" } : result;
+}
+
 // Page-control API for Claude. Each method returns a small status object that
 // is sent back to Claude as tool-call output. To invoke a method, Claude
 // emits a single line in its response of the form:
@@ -1933,9 +1960,44 @@ window.kfApi = {
 
   // ---- Genealogy data lookups (no map mutation; complement to show*) ----
 
-  getImmigrationWaves(opts) {
-    if (!_kfLoadedSources.size) return { error: "no tree loaded" };
-    return _kfCollectImmigrationWaves(opts || {});
+  async getImmigrationWaves(opts) {
+    return _kfRunGenealogyAnalysis("immigrationWaves", opts, _kfCollectImmigrationWaves);
+  },
+
+  async getSurnameMigrationDistances(opts) {
+    return _kfRunGenealogyAnalysis("surnameMigrationDistances", opts, _kfCollectSurnameMigrationDistances);
+  },
+
+  async getUrbanizationShift(opts) {
+    return _kfRunGenealogyAnalysis("urbanizationShift", opts, _kfCollectUrbanizationShift);
+  },
+
+  async getFamilyCrossroads(opts) {
+    return _kfRunGenealogyAnalysis("familyCrossroads", opts, _kfCollectFamilyCrossroads);
+  },
+
+  async getStableBranches(opts) {
+    return _kfRunGenealogyAnalysis("stableBranches", opts, _kfCollectStableBranches);
+  },
+
+  async getCoMigratingFamilies(opts) {
+    return _kfRunGenealogyAnalysis("coMigratingFamilies", opts, _kfCollectCoMigratingFamilies);
+  },
+
+  async getHistoricalOverlaps(opts) {
+    return _kfRunGenealogyAnalysis("historicalOverlaps", opts, _kfCollectHistoricalOverlaps);
+  },
+
+  async getDistantBranchMarriages(opts) {
+    return _kfRunGenealogyAnalysis("distantBranchMarriages", opts, _kfCollectDistantBranchMarriages);
+  },
+
+  async getDeepestAncestryBranches(opts) {
+    return _kfRunGenealogyAnalysis("deepestAncestryBranches", opts, _kfCollectDeepestAncestryBranches);
+  },
+
+  async getMigrationJumps(opts) {
+    return _kfRunGenealogyAnalysis("migrationJumps", opts, _kfCollectMigrationJumps);
   },
 
   getFamily(query) {
