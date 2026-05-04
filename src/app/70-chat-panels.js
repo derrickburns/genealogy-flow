@@ -17,6 +17,9 @@ let _kfChatArtifactSeq = 0;
 
 const _spEl = $("selectedPerson");
 const _personEmptyEl = $("personEmpty");
+const _peopleControlsToggleEl = $("peopleControlsToggle");
+const _peopleControlsBodyEl = $("peopleControlsBody");
+const _peopleControlsSummaryEl = $("peopleControlsSummary");
 const _clusterEl = $("selectedCluster");
 const _clusterEmptyEl = $("clusterEmpty");
 const _mobileSheetHandleEl = $("mobileSheetHandle");
@@ -24,6 +27,43 @@ const _mobileSheetTabsEl = $("sideTabs");
 const _mobileSheetTitleEl = $("mobileSheetTitle");
 let _kfSuppressSideTabClickUntil = 0;
 let _kfActiveSideTab = "chat";
+
+function _kfPeopleControlsSummaryText() {
+  const show = $("showFilterChoice")?.value || "all";
+  const surnameSel = $("surnameSelect");
+  const sex = $("sexFilterChoice")?.value || "all";
+  const kin = Number($("kinLinesChoice")?.value || kinLinesN || 0);
+  const showLabel = show === "blood" ? "Blood relatives" : show === "ancestors" ? "Direct ancestors" : "Everyone";
+  const surname = surnameSel?.value
+    ? `surname ${surnameSel.options[surnameSel.selectedIndex]?.textContent || surnameSel.value}`
+    : "all surnames";
+  const sexLabel = sex === "M" ? "men" : sex === "F" ? "women" : "all people";
+  const kinLabel = kin > 0 ? `${kin} kin lines` : "no lines";
+  return `${showLabel} · ${surname} · ${sexLabel} · ${kinLabel}`;
+}
+
+function _kfRefreshPeopleControlsDisclosure() {
+  if (_peopleControlsSummaryEl) _peopleControlsSummaryEl.textContent = _kfPeopleControlsSummaryText();
+}
+
+function _kfSetPeopleControlsCollapsed(collapsed) {
+  if (!_peopleControlsToggleEl || !_peopleControlsBodyEl) return;
+  _peopleControlsToggleEl.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  _peopleControlsBodyEl.hidden = !!collapsed;
+  _kfRefreshPeopleControlsDisclosure();
+}
+
+function _kfInitPeopleControlsDisclosure() {
+  if (!_peopleControlsToggleEl || !_peopleControlsBodyEl) return;
+  _peopleControlsToggleEl.addEventListener("click", () => {
+    const collapsed = _peopleControlsToggleEl.getAttribute("aria-expanded") !== "false";
+    _kfSetPeopleControlsCollapsed(collapsed);
+  });
+  _peopleControlsBodyEl.addEventListener("change", _kfRefreshPeopleControlsDisclosure);
+  _kfSetPeopleControlsCollapsed(false);
+}
+
+_kfInitPeopleControlsDisclosure();
 
 function _kfIsSideTabActive(tab) {
   return _kfActiveSideTab === tab;
@@ -776,6 +816,7 @@ function _kfShowPersonCard(di) {
   const idx = dwellIndi[di];
   const ind = lastIndividuals[idx];
   if (!ind) return;
+  _kfSetPeopleControlsCollapsed(true);
 
   const sex = ind.sex === "M" ? "Male" : ind.sex === "F" ? "Female" : "";
   const age = _kfLivingAgeLabel(ind);
@@ -878,6 +919,7 @@ function _kfShowPersonCard(di) {
 function _kfHidePersonCard() {
   if (_spEl) { _spEl.hidden = true; _spEl.innerHTML = ""; }
   if (_personEmptyEl) _personEmptyEl.hidden = false;
+  _kfSetPeopleControlsCollapsed(false);
 }
 let _chatBusy = false;
 let _kfChatDiagramSeq = 0;

@@ -169,7 +169,11 @@
         </span>
       </div>
       <div id="peopleControls" class="peopleControls">
-        <div class="optionSelectorGrid">
+        <button id="peopleControlsToggle" class="paneDisclosureToggle" type="button" aria-expanded="true" aria-controls="peopleControlsBody">
+          <span>Display options</span>
+          <small id="peopleControlsSummary">Everyone · all surnames · all people · no lines</small>
+        </button>
+        <div id="peopleControlsBody" class="paneDisclosureBody optionSelectorGrid">
           <section class="optionCard">
             <label for="showFilterChoice">People shown</label>
             <select id="showFilterChoice">
