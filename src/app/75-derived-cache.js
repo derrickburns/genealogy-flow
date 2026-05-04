@@ -261,6 +261,48 @@ function _kfQuestionChipsHtml(questions) {
     `</div></div>`;
 }
 
+function _kfChatQueueLabel(text) {
+  const label = typeof _kfDisplayAiSuggestionQuestion === "function"
+    ? _kfDisplayAiSuggestionQuestion(text)
+    : String(text || "");
+  const compact = label.replace(/\s+/g, " ").trim();
+  return compact.length > 120 ? compact.slice(0, 117) + "..." : compact || "Question";
+}
+
+function _kfEnqueueChatQuestion(requestText, displayText) {
+  const normalized = String(requestText || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  if (_kfQueuedChatQuestions.some(q => q.normalized === normalized)) return false;
+  _kfQueuedChatQuestions.push({
+    requestText,
+    displayText: displayText || _kfChatQueueLabel(requestText),
+    normalized,
+  });
+  chatHistory.push({
+    role: "bot",
+    kind: "notice",
+    content: `Queued next question: **${_kfChatQueueLabel(displayText || requestText)}**`,
+  });
+  renderChat();
+  return true;
+}
+
+function _kfDrainQueuedChatQuestions() {
+  if (_chatBusy || !_kfQueuedChatQuestions.length) return;
+  const next = _kfQueuedChatQuestions.shift();
+  setTimeout(() => {
+    if (_chatBusy) {
+      _kfQueuedChatQuestions.unshift(next);
+      return;
+    }
+    Promise.resolve(_kfAskQuestion(next.requestText, {
+      displayText: next.displayText,
+      queueIfBusy: true,
+      fromQueue: true,
+    })).catch(e => appendError(e?.message || String(e)));
+  }, 0);
+}
+
 async function _kfAskQuestion(text, opts = {}) {
   const requestText = String(text || "").trim();
   if (!requestText) return { error: "text required" };
@@ -274,6 +316,10 @@ async function _kfAskQuestion(text, opts = {}) {
     _kfSetSideTab("chat");
   }
   if (_chatBusy) {
+    if (opts.queueIfBusy) {
+      const queued = _kfEnqueueChatQuestion(requestText, displayText || requestText);
+      return { queued: true, duplicate: !queued };
+    }
     chatInputEl.value = displayText || requestText;
     chatInputEl.focus();
     return { error: "Claude is already answering a question" };
@@ -293,7 +339,12 @@ async function _kfAskQuestion(text, opts = {}) {
     appendError(message);
     return { error: message };
   }
-  finally { _chatBusy = false; chatSendBtn.disabled = false; chatSendBtn.textContent = "Send"; }
+  finally {
+    _chatBusy = false;
+    chatSendBtn.disabled = false;
+    chatSendBtn.textContent = "Send";
+    if (!opts.skipQueueDrain) _kfDrainQueuedChatQuestions();
+  }
 }
 
 function _kfBindQuestionChips(root) {
@@ -303,7 +354,7 @@ function _kfBindQuestionChips(root) {
       const text = btn.dataset.question || "";
       _kfAskQuestion(
         typeof _kfAugmentAiSuggestionQuestion === "function" ? _kfAugmentAiSuggestionQuestion(text) : text,
-        { displayText: text }
+        { displayText: text, queueIfBusy: true }
       );
     };
     if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(btn, handler);

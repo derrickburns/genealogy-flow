@@ -932,6 +932,7 @@ function _kfHidePersonCard() {
   _kfSetPeopleControlsCollapsed(false);
 }
 let _chatBusy = false;
+const _kfQueuedChatQuestions = [];
 let _kfChatDiagramSeq = 0;
 const _kfChatDiagramSpecs = new Map();
 
@@ -1925,7 +1926,7 @@ function _kfBindChatScopeQuestions() {
   chatScopeEl.dataset.kfQuestionDelegate = "1";
   const buttonFrom = target => target?.closest?.("[data-chat-scope-question]");
   const clearPending = () => { _kfChatScopePendingTap = null; };
-  const dispatch = async (text, button = null) => {
+  const dispatch = (text, button = null) => {
     text = String(text || "").trim();
     if (!text || _kfChatScopeDispatching) return;
     _kfChatScopeDispatching = true;
@@ -1935,14 +1936,7 @@ function _kfBindChatScopeQuestions() {
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
     }
-    try {
-      if (typeof _kfAskQuestion === "function") {
-        await _kfAskQuestion(_kfAugmentAiSuggestionQuestion(text), { displayText: text });
-      } else {
-        chatInputEl.value = text;
-        chatInputEl.focus();
-      }
-    } finally {
+    const finish = () => {
       _kfChatScopeDispatching = false;
       if (button?.isConnected) {
         button.disabled = false;
@@ -1950,6 +1944,19 @@ function _kfBindChatScopeQuestions() {
         button.removeAttribute("aria-busy");
       }
       _kfRefreshChatScope(true);
+    };
+    try {
+      if (typeof _kfAskQuestion === "function") {
+        Promise.resolve(_kfAskQuestion(_kfAugmentAiSuggestionQuestion(text), { displayText: text, queueIfBusy: true }))
+          .catch(e => appendError(e?.message || String(e)));
+      } else {
+        chatInputEl.value = text;
+        chatInputEl.focus();
+      }
+    } catch (e) {
+      appendError(e?.message || String(e));
+    } finally {
+      setTimeout(finish, 120);
     }
   };
   chatScopeEl.addEventListener("pointerdown", e => {
