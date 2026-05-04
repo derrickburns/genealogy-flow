@@ -75,9 +75,17 @@ function livingBirthPlace(ind: Record<string, any>): string {
   return String(birth?.place ?? ind.birth_place ?? ind.birthPlace ?? "").trim();
 }
 
+function livingBirthYear(ind: Record<string, any>): number | null {
+  const direct = numberOrNull(ind.birth_year ?? ind.birthYear);
+  if (direct != null) return direct;
+  const birth = records(ind.events).find(event => String(event.tag ?? event.type ?? "").toUpperCase() === "BIRT");
+  return numberOrNull(birth?.year ?? birth?.year_end ?? birth?.yearEnd);
+}
+
 function cleanLivingBirthPlaceEvent(ind: Record<string, any>): Record<string, any>[] {
   const place = livingBirthPlace(ind);
-  return place ? [{ tag: "BIRT", type: "BIRT", place, sources: [] }] : [];
+  const year = livingBirthYear(ind);
+  return place ? [{ tag: "BIRT", type: "BIRT", year, year_end: year, place, sources: [] }] : [];
 }
 
 function cleanFamilyEvent(event: unknown): Record<string, any> | null {
@@ -108,7 +116,7 @@ function sanitizePublicDemo(json: any): any {
       id: safeId,
       name: living ? "" : (ind.name ?? id),
       sex: living ? "U" : (ind.sex ?? "U"),
-      birth_year: living ? null : (numberOrNull(ind.birth_year ?? ind.birthYear)),
+      birth_year: living ? livingBirthYear(ind) : (numberOrNull(ind.birth_year ?? ind.birthYear)),
       birth_place: living ? livingBirthPlace(ind) || null : (ind.birth_place ?? ind.birthPlace ?? null),
       death_year: living ? null : (numberOrNull(ind.death_year ?? ind.deathYear)),
       famc: living ? null : (ind.famc ?? ind.family_child ?? null),
@@ -141,7 +149,7 @@ function sanitizePublicDemo(json: any): any {
     privacy: {
       tier: "public-demo",
       living_people: "anonymized",
-      living_details: "birth_location_only",
+      living_details: "birth_year_and_location_only",
       living_names: "removed",
     },
   };
@@ -168,7 +176,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "public, max-age=3600",
-      "X-Demo-Privacy": "living-anonymized-birth-location-only",
+      "X-Demo-Privacy": "living-anonymized-birth-year-location-only",
     },
   });
 };

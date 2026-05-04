@@ -117,9 +117,16 @@ function _kfDemoLivingBirthPlace(ind) {
   });
   return String(birth?.place ?? ind?.birth_place ?? ind?.birthPlace ?? "").trim();
 }
+function _kfDemoLivingBirthYear(ind) {
+  const direct = _kfDemoNumberOrNull(ind?.birth_year ?? ind?.birthYear);
+  if (direct != null) return direct;
+  const birth = _kfCatalogRecords(ind?.events).find(event => String(event.tag ?? event.type ?? "").toUpperCase() === "BIRT");
+  return _kfDemoNumberOrNull(birth?.year ?? birth?.year_end ?? birth?.yearEnd);
+}
 function _kfDemoLivingBirthPlaceEvents(ind) {
   const place = _kfDemoLivingBirthPlace(ind);
-  return place ? [{ tag: "BIRT", type: "BIRT", place, sources: [] }] : [];
+  const year = _kfDemoLivingBirthYear(ind);
+  return place ? [{ tag: "BIRT", type: "BIRT", year, year_end: year, place, sources: [] }] : [];
 }
 function _kfSanitizePublicDemoJson(json) {
   const currentYear = new Date().getUTCFullYear();
@@ -138,7 +145,7 @@ function _kfSanitizePublicDemoJson(json) {
       id: safeId,
       name: isPrivate ? "" : (ind.name || id),
       sex: isPrivate ? "U" : (ind.sex || "U"),
-      birth_year: isPrivate ? null : _kfDemoNumberOrNull(ind.birth_year ?? ind.birthYear),
+      birth_year: isPrivate ? _kfDemoLivingBirthYear(ind) : _kfDemoNumberOrNull(ind.birth_year ?? ind.birthYear),
       birth_place: isPrivate ? (_kfDemoLivingBirthPlace(ind) || null) : (ind.birth_place ?? ind.birthPlace ?? null),
       death_year: isPrivate ? null : _kfDemoNumberOrNull(ind.death_year ?? ind.deathYear),
       famc: isPrivate ? null : (ind.famc || ind.family_child || null),
@@ -172,7 +179,7 @@ function _kfSanitizePublicDemoJson(json) {
     privacy: {
       tier: "public-demo",
       living_people: "anonymized",
-      living_details: "birth_location_only",
+      living_details: "birth_year_and_location_only",
       living_names: "removed",
     },
   };

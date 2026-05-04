@@ -8,6 +8,19 @@
   .splashMobileNote { padding:10px 12px; border:1px solid #d7e3f5; border-radius:12px; background:#f8fbff; }
   #splashDismiss { margin-top:14px; width:100%; min-height:42px; border:0; border-radius:12px; background:#183b7a; color:#fff; font:inherit; font-weight:900; cursor:pointer; }
   #splashDismiss:hover { background:#102b5d; }
+  .termsModal { position:fixed; inset:0; z-index:10020; display:flex; align-items:center; justify-content:center; padding:22px; background:rgba(15,23,42,0.62); box-sizing:border-box; }
+  .termsCard { width:min(720px, 100%); max-height:min(760px, 92dvh); display:flex; flex-direction:column; background:#fff; border:1px solid #d7e3f5; border-radius:20px; box-shadow:0 26px 90px rgba(15,23,42,0.36); padding:24px; color:#142033; box-sizing:border-box; }
+  .termsCard h2 { margin:12px 0 8px; font-size:24px; line-height:1.1; letter-spacing:-0.03em; color:#0f172a; }
+  .termsCard p { margin:0 0 10px; color:#475569; font-size:13px; line-height:1.48; }
+  .termsScroll { min-height:180px; max-height:42dvh; overflow:auto; border:1px solid #d7e3f5; border-radius:14px; background:#f8fbff; padding:14px; margin:8px 0 12px; }
+  .termsScroll h3 { margin:14px 0 4px; font-size:13px; line-height:1.2; color:#12203a; text-transform:uppercase; letter-spacing:0.06em; }
+  .termsScroll h3:first-child { margin-top:0; }
+  .termsAccept { display:flex; align-items:flex-start; gap:8px; margin:0 0 12px; color:#1f2a44; font-weight:800; font-size:13px; line-height:1.35; }
+  .termsAccept input { margin-top:2px; }
+  #termsAcceptBtn { width:100%; min-height:42px; border:0; border-radius:12px; background:#183b7a; color:#fff; font:inherit; font-weight:900; cursor:pointer; }
+  #termsAcceptBtn:disabled { opacity:0.45; cursor:not-allowed; }
+  #termsAcceptBtn:not(:disabled):hover { background:#102b5d; }
+  .termsFoot { margin-top:10px !important; font-size:11px !important; color:#64748b !important; }
   .uploadPolicyModal { position:fixed; inset:0; z-index:9990; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(15,23,42,0.28); box-sizing:border-box; }
   .uploadPolicyCard { width:min(420px, 100%); background:#fff; border:1px solid #d7e3f5; border-radius:16px; box-shadow:0 18px 60px rgba(15,23,42,0.24); padding:22px; color:#142033; }
   .uploadPolicyCard h2 { margin:0 0 8px; font-size:18px; line-height:1.15; color:#0f172a; }
@@ -595,6 +608,10 @@
     .splashCard { padding:22px; border-radius:20px; max-height:88dvh; overflow-y:auto; }
     .splash h1 { font-size:24px; }
     .splash p { font-size:13px; }
+    .termsModal { padding:12px; align-items:flex-end; }
+    .termsCard { padding:18px; border-radius:18px; max-height:92dvh; }
+    .termsCard h2 { font-size:21px; }
+    .termsScroll { max-height:46dvh; }
 
     #title { gap:5px; padding:0; font-size:12px; border-radius:0; flex-wrap:nowrap; min-height:0; height:0; box-sizing:border-box; }
     #title b { display:none; }

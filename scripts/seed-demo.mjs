@@ -86,9 +86,18 @@ function livingBirthPlace(ind) {
   return String(birth?.place || ind.birth_place || ind.birthPlace || "").trim();
 }
 
+function livingBirthYear(ind) {
+  if (Number.isFinite(Number(ind.birth_year))) return Number(ind.birth_year);
+  if (Number.isFinite(Number(ind.birthYear))) return Number(ind.birthYear);
+  const birth = (ind.events || []).find(event => String(event.tag || event.type || "").toUpperCase() === "BIRT");
+  const year = Number(birth?.year ?? birth?.year_end ?? birth?.yearEnd);
+  return Number.isFinite(year) ? year : null;
+}
+
 function livingBirthPlaceEvents(ind) {
   const place = livingBirthPlace(ind);
-  return place ? [{ tag: "BIRT", type: "BIRT", place, sources: [] }] : [];
+  const year = livingBirthYear(ind);
+  return place ? [{ tag: "BIRT", type: "BIRT", year, year_end: year, place, sources: [] }] : [];
 }
 
 function sanitizePublicDemo(input) {
@@ -107,7 +116,7 @@ function sanitizePublicDemo(input) {
       id: safeId,
       name: living ? "" : ind.name,
       sex: living ? "U" : ind.sex,
-      birth_year: living ? null : ind.birth_year,
+      birth_year: living ? livingBirthYear(ind) : ind.birth_year,
       birth_place: living ? livingBirthPlace(ind) || null : (ind.birth_place || null),
       death_year: living ? null : ind.death_year,
       famc: living ? null : ind.famc,
@@ -136,7 +145,7 @@ function sanitizePublicDemo(input) {
     privacy: {
       tier: "public-demo",
       living_people: "anonymized",
-      living_details: "birth_location_only",
+      living_details: "birth_year_and_location_only",
       living_names: "removed",
     },
   };

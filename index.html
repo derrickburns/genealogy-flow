@@ -24,6 +24,32 @@
     <button type="button" id="splashDismiss">Enter Kindred Flow</button>
   </div>
 </div>
+<div id="termsModal" class="termsModal hidden" role="dialog" aria-modal="true" aria-labelledby="termsTitle">
+  <div class="termsCard">
+    <div class="splashKicker">Terms of Service</div>
+    <h2 id="termsTitle">Before using Kindred Flow</h2>
+    <p>Kindred Flow is provided by Parthenian, LLC for exploratory genealogy visualization. You must accept these terms to continue.</p>
+    <div class="termsScroll" tabindex="0">
+      <h3>Use at your own risk</h3>
+      <p>The service, maps, visualizations, geocoding, AI responses, and data-quality workarounds are provided "as is" and "as available" without warranties of any kind. Genealogy records can be incomplete, incorrect, ambiguous, or private. AI responses can be wrong.</p>
+      <h3>No professional advice</h3>
+      <p>Kindred Flow does not provide legal, medical, financial, historical-certification, or professional genealogy advice. You are responsible for independently verifying any conclusion before relying on it.</p>
+      <h3>Your data and permissions</h3>
+      <p>You are responsible for ensuring that you have the right to upload, store, process, and share any family-tree data you provide. Shared or saved tree data is stored on Kindred servers while it is available to you or people you share it with, subject to the app's retention controls.</p>
+      <h3>Privacy of living people</h3>
+      <p>You should not upload or share sensitive information about living people unless you have appropriate permission. The public DEMO tree anonymizes living people for privacy.</p>
+      <h3>Third-party services</h3>
+      <p>The app may use third-party services for authentication, hosting, geocoding, maps, issue reporting, email delivery, and AI. Their services may fail, change, or process data under their own terms.</p>
+      <h3>Limitation of liability</h3>
+      <p>To the maximum extent permitted by law, Parthenian, LLC and its owners, employees, contractors, and affiliates are not liable for indirect, incidental, consequential, special, exemplary, punitive, or data-loss damages, or for decisions made from app output.</p>
+      <h3>Indemnity</h3>
+      <p>You agree to defend and hold harmless Parthenian, LLC from claims arising from your uploaded data, your sharing choices, your misuse of the service, or your violation of these terms.</p>
+    </div>
+    <label class="termsAccept"><input type="checkbox" id="termsAcceptCheck"> I have read and agree to these Terms of Service.</label>
+    <button type="button" id="termsAcceptBtn" disabled>I agree and continue</button>
+    <p class="termsFoot">Effective May 3, 2026. If you do not agree, do not use Kindred Flow. These terms do not limit rights that cannot be waived under applicable law.</p>
+  </div>
+</div>
 <div id="uploadPolicyModal" class="uploadPolicyModal hidden" role="dialog" aria-modal="true" aria-labelledby="uploadPolicyTitle">
   <div class="uploadPolicyCard">
     <h2 id="uploadPolicyTitle">Before you upload a tree</h2>

@@ -93,6 +93,30 @@ function _kfOpenTreesPanelAfterSplashIfMobile() {
   });
 }
 
+const KF_TERMS_VERSION = "2026-05-03";
+function _kfInitTermsAgreement() {
+  const modal = $("termsModal");
+  const check = $("termsAcceptCheck");
+  const btn = $("termsAcceptBtn");
+  if (!modal || !check || !btn) {
+    _kfSetCookie("kf_terms_accepted", KF_TERMS_VERSION, 3650);
+    return;
+  }
+  if (_kfCookieValue("kf_terms_accepted") === KF_TERMS_VERSION) {
+    modal.classList.add("hidden");
+    return;
+  }
+  modal.classList.remove("hidden");
+  check.checked = false;
+  btn.disabled = true;
+  check.addEventListener("change", () => { btn.disabled = !check.checked; });
+  btn.addEventListener("click", () => {
+    if (!check.checked) return;
+    _kfSetCookie("kf_terms_accepted", KF_TERMS_VERSION, 3650);
+    modal.classList.add("hidden");
+  });
+}
+
 function _kfInitSplash() {
   const splash = $("splash");
   const btn = $("splashDismiss");
@@ -161,6 +185,7 @@ function _kfInitDataQualityToggle() {
   _kfSetDataQualityVisibility(toggle.checked, { skipRefresh: true });
 }
 
+_kfInitTermsAgreement();
 _kfInitSplash();
 _kfInitDataQualityToggle();
 

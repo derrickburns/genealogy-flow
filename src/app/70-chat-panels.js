@@ -1383,7 +1383,7 @@ function buildChatContext() {
     const sources = _kfSelectedVizSourceList();
     if (sources.length) lines.push(`Selected trees: ${sources.map(s => s.name).join("; ")}.`);
     if (sources.some(s => _kfIsPublicDemoSourceName(s.name))) {
-      lines.push("DEMO privacy note: living people are anonymized and retain birth locations only; names, relationships, dates, and other living-person details are intentionally removed.");
+      lines.push("DEMO privacy note: living people are anonymized and retain birth years and birth locations only; names, relationships, full dates, and other living-person details are intentionally removed.");
     }
   }
   lines.push(`Data quality concerns setting: ${_kfShowDataQualityConcerns ? "on" : "off"}. This indicates ${_kfShowDataQualityConcerns ? "interest" : "lack of current interest"} in weak evidence, chronology warnings, and data-quality visualizations.`);
