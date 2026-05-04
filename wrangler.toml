@@ -28,4 +28,5 @@ VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@
 # Optional vars:
 #   GITHUB_REPO             (defaults to derrickburns/genealogy-flow)
 #   INVITE_FROM_EMAIL       (defaults to Kindred Flow <onboarding@resend.dev>)
+#   NEW_LOGIN_NOTIFY_EMAIL  (defaults to derrick.burns@parthenian.com)
 #   APP_ORIGIN              (defaults to https://flow.kindredsearch.com)

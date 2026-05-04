@@ -31,6 +31,7 @@ export interface Env {
   RESEND_API_KEY?: string;
   INVITE_FROM_EMAIL?: string;
   REPORT_FROM_EMAIL?: string;
+  NEW_LOGIN_NOTIFY_EMAIL?: string;
   APP_ORIGIN?: string;
 }
 
@@ -106,25 +107,120 @@ async function ensureSession(
 async function upsertAuthenticatedUser(
   userId: string,
   email: string,
-  env: Env
+  env: Env,
+  userType: UserContext["type"] = "regular"
 ): Promise<void> {
   await ensureUserIdentitySchema(env);
   const now = Math.floor(Date.now() / 1000);
-  await env.DB.prepare(
+  const ownerUuid = crypto.randomUUID();
+  const inserted = await env.DB.prepare(
     `INSERT INTO users (user_id, email, owner_uuid, last_login, gedcom_expires_at, created_at)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(user_id) DO UPDATE SET
-       email = excluded.email,
-       last_login = excluded.last_login,
-       gedcom_expires_at = excluded.gedcom_expires_at,
-       owner_uuid = COALESCE(users.owner_uuid, excluded.owner_uuid)`
+     ON CONFLICT(user_id) DO NOTHING`
   )
-    .bind(userId, email, crypto.randomUUID(), now, now + 7 * 86400, now)
+    .bind(userId, email, ownerUuid, now, now + 7 * 86400, now)
     .run();
+  const created = Number(inserted.meta?.changes ?? 0) > 0;
+  if (!created) {
+    await env.DB.prepare(
+      `UPDATE users
+       SET email = ?, last_login = ?, gedcom_expires_at = ?, owner_uuid = COALESCE(owner_uuid, ?)
+       WHERE user_id = ?`
+    )
+      .bind(email, now, now + 7 * 86400, ownerUuid, userId)
+      .run();
+    return;
+  }
+  await sendNewLoginNotification(env, { userId, email, userType, createdAt: now });
 }
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch] ?? ch));
+}
+
+function configuredEmailSender(env: Env): string {
+  if (typeof env.INVITE_FROM_EMAIL === "string" && env.INVITE_FROM_EMAIL.trim()) {
+    return env.INVITE_FROM_EMAIL.trim();
+  }
+  if (typeof env.REPORT_FROM_EMAIL === "string" && env.REPORT_FROM_EMAIL.trim()) {
+    return env.REPORT_FROM_EMAIL.trim();
+  }
+  return "";
+}
+
+function newLoginNotifyEmail(env: Env): string {
+  return typeof env.NEW_LOGIN_NOTIFY_EMAIL === "string" && env.NEW_LOGIN_NOTIFY_EMAIL.trim()
+    ? env.NEW_LOGIN_NOTIFY_EMAIL.trim()
+    : "derrick.burns@parthenian.com";
+}
+
+function appOrigin(env: Env): string {
+  const origin = typeof env.APP_ORIGIN === "string" && env.APP_ORIGIN.trim()
+    ? env.APP_ORIGIN.trim()
+    : "https://flow.kindredsearch.com";
+  return origin.replace(/\/+$/, "");
+}
+
+async function sendNewLoginNotification(
+  env: Env,
+  params: { userId: string; email: string; userType: UserContext["type"]; createdAt: number }
+): Promise<void> {
+  const apiKey = typeof env.RESEND_API_KEY === "string" ? env.RESEND_API_KEY.trim() : "";
+  if (!apiKey) {
+    console.warn("[auth] new-login email skipped: RESEND_API_KEY is not configured");
+    return;
+  }
+  const from = configuredEmailSender(env);
+  if (!from) {
+    console.warn("[auth] new-login email skipped: INVITE_FROM_EMAIL or REPORT_FROM_EMAIL is not configured");
+    return;
+  }
+  const to = newLoginNotifyEmail(env);
+  const createdIso = new Date(params.createdAt * 1000).toISOString();
+  const subject = `New Kindred Flow login: ${params.email}`;
+  const text = [
+    "A new Kindred Flow login was created.",
+    "",
+    `Email: ${params.email}`,
+    `Clerk user ID: ${params.userId}`,
+    `Tier: ${params.userType}`,
+    `Created: ${createdIso}`,
+    `App: ${appOrigin(env)}`,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#142033">
+      <h2 style="margin:0 0 12px">New Kindred Flow login</h2>
+      <p>A new signed-in user record was created.</p>
+      <table style="border-collapse:collapse">
+        <tr><td style="padding:4px 10px 4px 0;color:#64748b">Email</td><td style="padding:4px 0"><strong>${escHtml(params.email)}</strong></td></tr>
+        <tr><td style="padding:4px 10px 4px 0;color:#64748b">Clerk user ID</td><td style="padding:4px 0"><code>${escHtml(params.userId)}</code></td></tr>
+        <tr><td style="padding:4px 10px 4px 0;color:#64748b">Tier</td><td style="padding:4px 0">${escHtml(params.userType)}</td></tr>
+        <tr><td style="padding:4px 10px 4px 0;color:#64748b">Created</td><td style="padding:4px 0">${escHtml(createdIso)}</td></tr>
+      </table>
+      <p><a href="${escHtml(appOrigin(env))}" style="color:#183b7a">Open Kindred Flow</a></p>
+    </div>`;
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from, to, subject, text, html }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`Resend ${resp.status}${body ? `: ${body.slice(0, 300)}` : ""}`);
+  }
 }
 
 function extractEmailFromSessionClaims(claims: unknown): string {
@@ -212,8 +308,8 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
         ctx.data.user = { type, id: userId, email };
         if (email) {
           ctx.waitUntil(
-            upsertAuthenticatedUser(userId, email, env).catch((e) => {
-              console.error("[auth] user upsert failed:", errorMessage(e));
+            upsertAuthenticatedUser(userId, email, env, type).catch((e) => {
+              console.error("[auth] user upsert/new-login notification failed:", errorMessage(e));
             })
           );
         }
