@@ -22,22 +22,30 @@ function _kfReportVisibleMessageText(m) {
   return _kfPlainEnglishEventText(_kfHideToolMarkersInChatText(String(m?.content || "")));
 }
 
-function _kfReportHasSignal(m) {
-  const raw = _kfReportVisibleMessageText(m).trim();
-  if (!raw) return false;
-  if (m?.role !== "bot") return raw !== "_thinking..._";
-  const normalized = raw
+function _kfReportNormalizedText(value) {
+  return String(value || "")
     .replace(/[`*_]+/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+const _KF_REPORT_NON_ANSWER_TEXTS = new Set([
+  "thinking...",
+  "thinking",
+  "using the data...",
+  "using the data",
+  "choose a suggestion above or ask your own question about the selected trees, people, clusters, or migration story.",
+  "restoring your trees...",
+]);
+
+function _kfReportHasSignal(m) {
+  const raw = _kfReportVisibleMessageText(m).trim();
+  if (!raw) return false;
+  if (m?.role !== "bot") return raw !== "_thinking..._";
+  const normalized = _kfReportNormalizedText(raw);
   if (!normalized) return false;
-  return !new Set([
-    "thinking...",
-    "thinking",
-    "using the data...",
-    "using the data",
-  ]).has(normalized);
+  return !_KF_REPORT_NON_ANSWER_TEXTS.has(normalized);
 }
 
 function _kfReportTranscriptMessages() {
