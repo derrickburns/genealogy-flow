@@ -138,6 +138,10 @@ function _kfSetSideTab(tab) {
   let next = tab === "map" || tab === "person" || tab === "cluster" || tab === "trees" || tab === "tour" ? tab : "chat";
   if (next === "map" && !_kfIsMobileLayout()) next = "chat";
   if (next === "tour" && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
+  if (_kfIsMobileLayout() && next !== "map" && playing) {
+    playing = false;
+    if (typeof _kfSetPlayButtonLabel === "function") _kfSetPlayButtonLabel();
+  }
   _kfActiveSideTab = next;
   _kfSyncSideTabChrome(next);
   if (next === "chat" && typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
@@ -1411,6 +1415,11 @@ const _KF_STANDARD_AI_QUESTIONS = [
   },
 ];
 
+let _kfChatScopePendingTap = null;
+let _kfChatScopeDispatching = false;
+let _kfChatScopeLastHandledAt = 0;
+let _kfChatScopeLastRenderKey = "";
+
 function _kfStandardAiQuestions() {
   return _KF_STANDARD_AI_QUESTIONS.map(q => q.text);
 }
@@ -1448,34 +1457,73 @@ function _kfChatScopeQuestions(root, selected, visible) {
 
 function _kfBindChatScopeQuestions() {
   if (!chatScopeEl) return;
-  chatScopeEl.querySelectorAll("[data-chat-scope-question]").forEach(btn => {
-    _kfBindTapOrClick(btn, async () => {
-      const text = btn.getAttribute("data-chat-scope-question") || "";
-      if (!text) return;
-      btn.classList.add("running");
-      btn.disabled = true;
-      btn.setAttribute("aria-busy", "true");
+  if (chatScopeEl.dataset.kfQuestionDelegate === "1") return;
+  chatScopeEl.dataset.kfQuestionDelegate = "1";
+  const buttonFrom = target => target?.closest?.("[data-chat-scope-question]");
+  const clearPending = () => { _kfChatScopePendingTap = null; };
+  const dispatch = async (text, button = null) => {
+    text = String(text || "").trim();
+    if (!text || _kfChatScopeDispatching) return;
+    _kfChatScopeDispatching = true;
+    _kfChatScopeLastHandledAt = Date.now();
+    if (button?.isConnected) {
+      button.classList.add("running");
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+    try {
       if (typeof _kfAskQuestion === "function") {
         await _kfAskQuestion(_kfAugmentAiSuggestionQuestion(text), { displayText: text });
-      }
-      else {
+      } else {
         chatInputEl.value = text;
         chatInputEl.focus();
       }
-      if (btn.isConnected) {
-        btn.disabled = false;
-        btn.classList.remove("running");
-        btn.removeAttribute("aria-busy");
+    } finally {
+      _kfChatScopeDispatching = false;
+      if (button?.isConnected) {
+        button.disabled = false;
+        button.classList.remove("running");
+        button.removeAttribute("aria-busy");
       }
-    });
+      _kfRefreshChatScope(true);
+    }
+  };
+  chatScopeEl.addEventListener("pointerdown", e => {
+    const btn = buttonFrom(e.target);
+    if (!btn || btn.disabled) return;
+    _kfChatScopePendingTap = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      text: btn.getAttribute("data-chat-scope-question") || "",
+      button: btn,
+    };
+  });
+  window.addEventListener("pointerup", e => {
+    const tap = _kfChatScopePendingTap;
+    if (!tap || tap.pointerId !== e.pointerId) return;
+    clearPending();
+    if (Math.abs(e.clientX - tap.x) > 10 || Math.abs(e.clientY - tap.y) > 10) return;
+    e.preventDefault();
+    dispatch(tap.text, tap.button);
+  });
+  window.addEventListener("pointercancel", clearPending);
+  chatScopeEl.addEventListener("click", e => {
+    const btn = buttonFrom(e.target);
+    if (!btn) return;
+    e.preventDefault();
+    if (Date.now() - _kfChatScopeLastHandledAt < 500) return;
+    dispatch(btn.getAttribute("data-chat-scope-question") || "", btn);
   });
 }
 
-function _kfRefreshChatScope() {
+function _kfRefreshChatScope(force = false) {
   if (!chatScopeEl) return;
+  if (_kfChatScopePendingTap || _kfChatScopeDispatching) return;
   if (!timelineLoaded || !lastIndividuals) {
     chatScopeEl.hidden = true;
     chatScopeEl.innerHTML = "";
+    _kfChatScopeLastRenderKey = "";
     return;
   }
   chatScopeEl.hidden = false;
@@ -1483,6 +1531,9 @@ function _kfRefreshChatScope() {
   const root = lastRootId && lastIndiById ? lastIndiById.get(lastRootId) : null;
   const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
   const questions = _kfChatScopeQuestions(root, selected, visible);
+  const key = questions.map(q => `${q.label}:${q.text}`).join("|");
+  if (!force && key === _kfChatScopeLastRenderKey) return;
+  _kfChatScopeLastRenderKey = key;
   chatScopeEl.innerHTML = questions.length
     ? `<div class="chatChips chat-scope-actions" aria-label="Suggested questions">${questions.map(q => `<button type="button" class="chatChip chat-scope-question" data-chat-scope-question="${escChat(q.text)}" title="${escChat(q.text)}">${escChat(q.label)}</button>`).join("")}</div>`
     : "";
