@@ -85,6 +85,13 @@ function _kfSetCookie(name, value, days = 365) {
   document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
 }
 
+function _kfSetDialogOpen(el, open) {
+  if (!el) return;
+  el.hidden = !open;
+  el.classList.toggle("hidden", !open);
+  el.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
 function _kfOpenTreesPanelAfterSplashIfMobile() {
   if (typeof _kfIsMobileLayout !== "function" || !_kfIsMobileLayout()) return;
   requestAnimationFrame(() => {
@@ -103,17 +110,17 @@ function _kfInitTermsAgreement() {
     return;
   }
   if (_kfCookieValue("kf_terms_accepted") === KF_TERMS_VERSION) {
-    modal.classList.add("hidden");
+    _kfSetDialogOpen(modal, false);
     return;
   }
-  modal.classList.remove("hidden");
+  _kfSetDialogOpen(modal, true);
   check.checked = false;
   btn.disabled = true;
   check.addEventListener("change", () => { btn.disabled = !check.checked; });
   btn.addEventListener("click", () => {
     if (!check.checked) return;
     _kfSetCookie("kf_terms_accepted", KF_TERMS_VERSION, 3650);
-    modal.classList.add("hidden");
+    _kfSetDialogOpen(modal, false);
   });
 }
 
@@ -122,13 +129,13 @@ function _kfInitSplash() {
   const btn = $("splashDismiss");
   if (!splash || !btn) return;
   if (_kfCookieValue("kf_splash_seen") === "1") {
-    splash.classList.add("hidden");
+    _kfSetDialogOpen(splash, false);
     return;
   }
-  splash.classList.remove("hidden");
+  _kfSetDialogOpen(splash, true);
   btn.addEventListener("click", () => {
     _kfSetCookie("kf_splash_seen", "1");
-    splash.classList.add("hidden");
+    _kfSetDialogOpen(splash, false);
     _kfOpenTreesPanelAfterSplashIfMobile();
   });
 }
@@ -142,10 +149,10 @@ function _kfConfirmUploadPolicy() {
     _kfSetCookie("kf_upload_policy_seen", "1");
     return Promise.resolve(true);
   }
-  modal.classList.remove("hidden");
+  _kfSetDialogOpen(modal, true);
   return new Promise(resolve => {
     const close = accepted => {
-      modal.classList.add("hidden");
+      _kfSetDialogOpen(modal, false);
       modal.removeEventListener("click", onBackdrop);
       cancel.removeEventListener("click", onCancel);
       cont.removeEventListener("click", onContinue);
