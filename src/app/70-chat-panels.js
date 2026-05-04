@@ -214,7 +214,7 @@ document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
   });
 });
 if (_kfIsMobileLayout()) _kfMarkMapTabActive();
-else _kfUpdateMobileSheetTitle("chat");
+else _kfSetSideTab("chat");
 _kfSetMobileSheetState("peek");
 _kfSyncMobileControlHeight();
 window.addEventListener("resize", () => {
