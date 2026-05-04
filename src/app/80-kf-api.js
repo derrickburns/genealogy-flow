@@ -1205,6 +1205,15 @@ function _kfFindIndi(query) {
   }
   return null;
 }
+function _kfMapZoomForGeoLevel(level) {
+  switch (String(level || "").toLowerCase()) {
+    case "city": return 9;
+    case "county": return 7;
+    case "admin1": return 5;
+    case "country": return 3;
+    default: return 8;
+  }
+}
 function _kfLatestDwellOf(ind) {
   if (!ind || !lastIndiIdxById) return -1;
   const idx = lastIndiIdxById.get(ind.id);
@@ -1632,7 +1641,7 @@ window.kfApi = {
       const g = geocoder(query);
       if (g && Number.isFinite(g.lat) && Number.isFinite(g.lon)) {
         pushHistory();
-        centerOnGeo(g.lon, g.lat);
+        centerOnGeo(g.lon, g.lat, { zoom: _kfMapZoomForGeoLevel(g.level) });
         return { ok: true, place: query, lat: g.lat, lon: g.lon, level: g.level };
       }
     }
@@ -1999,7 +2008,8 @@ window.kfApi = {
         kind: "route",
         title: "Lineage path",
         subtitle: `${a.name} to ${b.name}`,
-        action: "map",
+        action: "traceLineage",
+        args: { from: a.id, to: b.id, opts: { color } },
         key: `traceLineage:${a.id}:${b.id}`,
       });
     }
@@ -2061,7 +2071,8 @@ window.kfApi = {
         kind: "route",
         title: routeLabel || "Map route",
         subtitle: `${points.length} points`,
-        action: "map",
+        action: "addRoute",
+        args: { points, label: routeLabel, color: routeColor },
         key: `route:${routeLabel}:${points.map(p => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`).join("|")}`,
       });
     }
@@ -2089,7 +2100,8 @@ window.kfApi = {
         kind: "pin",
         title: label || "Map pin",
         subtitle: `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
-        action: "map",
+        action: "addPin",
+        args: { lat, lon, label: label || "", color: color || null },
         key: `pin:${label || ""}:${lat.toFixed(4)}:${lon.toFixed(4)}`,
       });
     }

@@ -1112,6 +1112,7 @@ function autoIntroOnce() {
 }
 $("chatClear").addEventListener("click", async () => {
   chatHistory.length = 0;
+  if (typeof _kfActiveChatTurnKey !== "undefined") _kfActiveChatTurnKey = "";
   _chatNewSession = true;
   renderChat();
   // Best-effort: tell the proxy to drop its session id too.

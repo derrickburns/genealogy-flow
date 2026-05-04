@@ -209,9 +209,14 @@ function backOneStep() {
   restoreView(s);
 }
 
-function centerOnGeo(lon, lat) {
+function centerOnGeo(lon, lat, opts = {}) {
   if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
-  if (_kfMap) _kfMap.flyTo({ center: [lon, lat], duration: 600, essential: true });
+  if (_kfMap) {
+    const target = { center: [lon, lat], duration: 600, essential: true };
+    const zoom = Number(typeof opts === "number" ? opts : opts.zoom);
+    if (Number.isFinite(zoom)) target.zoom = Math.max(0, Math.min(18, zoom));
+    _kfMap.flyTo(target);
+  }
 }
 
 let staticLabelRects = [];

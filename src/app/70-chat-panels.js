@@ -4,6 +4,9 @@ const chatInputEl = $("chatInput");
 const chatFormEl = $("chatForm");
 const chatSendBtn = $("chatSend");
 const chatScopeEl = $("chatScope");
+const chatQuestionRailEl = $("chatQuestionRail");
+const chatAnswerEl = $("chatAnswer");
+const chatHistoryDrawerEl = $("chatHistoryDrawer");
 const chatInsightHeaderEl = $("chatInsightHeader");
 const chatInsightScopeEl = $("chatInsightScope");
 const chatInsightModeEl = $("chatInsightMode");
@@ -14,6 +17,8 @@ const chatHistory = []; // [{ role, content }]
 const CHAT_KEY_LS = "kf-anthropic-key";
 const chatArtifacts = [];
 let _kfChatArtifactSeq = 0;
+let _kfActiveChatTurnKey = "";
+let _kfRenderedChatChipRefs = [];
 
 const _spEl = $("selectedPerson");
 const _personEmptyEl = $("personEmpty");
@@ -947,9 +952,29 @@ function _kfChatAddPersonAlias(map, alias, canonical) {
   if (key.length >= 5 && key.includes(" ") && !map.has(key)) map.set(key, canonical);
 }
 
-function _kfChatAddPlaceAlias(map, alias, target) {
+function _kfChatCanCenterPerson(ind) {
+  if (!ind) return false;
+  const di = typeof _kfLatestDwellOf === "function" ? _kfLatestDwellOf(ind) : -1;
+  return di >= 0 && Number.isFinite(dwellLat?.[di]) && Number.isFinite(dwellLon?.[di]);
+}
+
+function _kfChatCanCenterPlace(place) {
+  if (!geocoder) return false;
+  const g = geocoder(place);
+  return !!(g && Number.isFinite(g.lat) && Number.isFinite(g.lon));
+}
+
+function _kfChatAddPlaceAlias(map, alias, target, geoMemo) {
   const key = _kfChatEntityKey(alias);
-  if (key.length >= 4 && !map.has(key)) map.set(key, target);
+  if (key.length < 4 || map.has(key)) return;
+  const resolvedTarget = String(target || alias || "").trim();
+  if (!resolvedTarget) return;
+  let canCenter = geoMemo?.get(resolvedTarget);
+  if (canCenter == null) {
+    canCenter = _kfChatCanCenterPlace(resolvedTarget);
+    geoMemo?.set(resolvedTarget, canCenter);
+  }
+  if (canCenter) map.set(key, resolvedTarget);
 }
 
 function _kfChatBuildEntityCache() {
@@ -958,12 +983,15 @@ function _kfChatBuildEntityCache() {
     : "";
   const selectedKey = _kfSelectedSourceIds ? [..._kfSelectedSourceIds].join(",") : "";
   const lastIdx = lastIndividuals && lastIndividuals.length ? lastIndividuals.length - 1 : -1;
-  const sourceKey = `${loadedKey}::${selectedKey}::${lastIndividuals?.length || 0}:${lastIndividuals?.[0]?.id || ""}:${lastIdx >= 0 ? lastIndividuals[lastIdx]?.id || "" : ""}`;
+  const geoKey = geocoder ? "geo1" : "geo0";
+  const sourceKey = `${loadedKey}::${selectedKey}::${geoKey}::${lastIndividuals?.length || 0}:${lastIndividuals?.[0]?.id || ""}:${lastIdx >= 0 ? lastIndividuals[lastIdx]?.id || "" : ""}`;
   if (sourceKey === _kfChatEntityCacheKey) return _kfChatEntityCache;
   const people = new Map();
   const places = new Map();
+  const placeGeoMemo = new Map();
   if (lastIndividuals) {
     for (const ind of lastIndividuals) {
+      if (!_kfChatCanCenterPerson(ind)) continue;
       const name = String(ind?.name || "").trim();
       if (!name || name === "?") continue;
       _kfChatAddPersonAlias(people, name, name);
@@ -977,10 +1005,12 @@ function _kfChatBuildEntityCache() {
         for (const ev of (ind.events || [])) {
           const place = String(ev?.place || "").trim();
           if (!place) continue;
-          _kfChatAddPlaceAlias(places, place, place);
+          _kfChatAddPlaceAlias(places, place, place, placeGeoMemo);
           const parts = place.split(",").map(p => p.trim()).filter(Boolean);
-          for (const part of parts) _kfChatAddPlaceAlias(places, part, part);
-          if (parts.length >= 2) _kfChatAddPlaceAlias(places, `${parts[0]}, ${parts[parts.length - 1]}`, place);
+          parts.forEach((part, idx) => {
+            _kfChatAddPlaceAlias(places, part, idx === 0 ? place : part, placeGeoMemo);
+          });
+          if (parts.length >= 2) _kfChatAddPlaceAlias(places, `${parts[0]}, ${parts[parts.length - 1]}`, place, placeGeoMemo);
         }
       }
     }
@@ -994,7 +1024,7 @@ function _kfChatEntityForText(text) {
   const { people, places } = _kfChatBuildEntityCache();
   const key = _kfChatEntityKey(text);
   if (people.has(key)) return { type: "person", value: people.get(key) };
-  if (places.has(key)) return { type: "place", value: places.get(key) };
+  if (places.has(key) && _kfChatCanCenterPlace(places.get(key))) return { type: "place", value: places.get(key) };
   return null;
 }
 
@@ -1269,7 +1299,7 @@ function _kfShowMapFromArtifact() {
   if (typeof _kfSetSideTab === "function" && _kfIsMobileLayout()) _kfSetSideTab("map");
 }
 
-function _kfOpenAiArtifact(id) {
+async function _kfOpenAiArtifact(id) {
   const artifact = chatArtifacts.find(a => a.id === Number(id));
   if (!artifact) return;
   if (artifact.action === "showVizById" && window.kfApi?.showVizById) {
@@ -1285,12 +1315,31 @@ function _kfOpenAiArtifact(id) {
     return;
   }
   if (artifact.action === "activateGroupSet" && window.kfApi?.activateGroupSet) {
-    window.kfApi.activateGroupSet(artifact.args?.id || artifact.args);
+    await window.kfApi.activateGroupSet(artifact.args?.id || artifact.args);
+    _kfShowMapFromArtifact();
+    return;
+  }
+  if (artifact.action === "traceLineage" && window.kfApi?.traceLineage) {
+    const args = artifact.args || {};
+    const result = await window.kfApi.traceLineage(args.from, args.to, args.opts || {});
+    if (result?.error && typeof appendError === "function") appendError(`Could not open artifact: ${result.error}`);
+    _kfShowMapFromArtifact();
+    return;
+  }
+  if (artifact.action === "addRoute" && window.kfApi?.addRoute) {
+    const result = await window.kfApi.addRoute(artifact.args || {});
+    if (result?.error && typeof appendError === "function") appendError(`Could not open artifact: ${result.error}`);
+    _kfShowMapFromArtifact();
+    return;
+  }
+  if (artifact.action === "addPin" && window.kfApi?.addPin) {
+    const result = await window.kfApi.addPin(artifact.args || {});
+    if (result?.error && typeof appendError === "function") appendError(`Could not open artifact: ${result.error}`);
     _kfShowMapFromArtifact();
     return;
   }
   if (artifact.action === "exportAiReport" && window.kfApi?.exportAiReport) {
-    window.kfApi.exportAiReport();
+    await window.kfApi.exportAiReport();
     return;
   }
   _kfShowMapFromArtifact();
@@ -1313,7 +1362,9 @@ function _kfRenderChatArtifacts() {
   }).join("");
   chatArtifactsEl.innerHTML = `<div class="chatRailHead">Artifacts</div><div class="chatArtifactRail">${cards}</div>`;
   chatArtifactsEl.querySelectorAll("[data-artifact-id]").forEach(btn => {
-    btn.addEventListener("click", () => _kfOpenAiArtifact(btn.dataset.artifactId));
+    _kfBindTapOrClick(btn, () => {
+      _kfOpenAiArtifact(btn.dataset.artifactId).catch(e => appendError(`Could not open artifact: ${e?.message || e}`));
+    });
   });
 }
 
@@ -1364,38 +1415,189 @@ function _kfRenderChatEvidence() {
   }).join("");
 }
 
-function renderChat() {
-  _kfRefreshChatInsightHeader();
-  _kfRenderChatArtifacts();
-  _kfRenderChatEvidence();
-  if (chatHistory.length === 0) {
-    chatHistoryEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
+function _kfChatContentSignal(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  const normalized = raw
+    .replace(/<<KFCALL:[\s\S]*$/g, "")
+    .replace(/<<KFCALL:\w+\((.*?)\)>>/gs, "")
+    .replace(/<<KFCHIP:[\s\S]*?>>/gs, "")
+    .replace(/[`*_]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return !!normalized && !new Set([
+    "thinking...",
+    "thinking",
+    "using the data...",
+    "using the data",
+    "summarizing evidence gathered so far...",
+  ]).has(normalized);
+}
+
+function _kfChatMessageHasSignal(m) {
+  if (!m || m.kind === "tool" || m.kind === "action") return false;
+  if (m.role === "user") return _kfChatContentSignal(m.content);
+  return _kfChatContentSignal(_kfHideToolMarkersInChatText(m.content || ""));
+}
+
+function _kfBuildChatTurns() {
+  const turns = [];
+  let current = null;
+  for (let i = 0; i < chatHistory.length; i++) {
+    const m = chatHistory[i];
+    if (!m) continue;
+    if (m.role === "user") {
+      current = {
+        key: `turn-${i}`,
+        userIndex: i,
+        question: String(m.content || "").trim(),
+        user: m,
+        messages: [],
+        chips: [],
+        answered: false,
+        pending: false,
+      };
+      turns.push(current);
+      continue;
+    }
+    if (!current) {
+      current = {
+        key: "system",
+        userIndex: -1,
+        question: "Status",
+        user: null,
+        messages: [],
+        chips: [],
+        answered: false,
+        pending: false,
+      };
+      turns.push(current);
+    }
+    current.messages.push(m);
+    if (m.chips?.length) {
+      for (const chip of m.chips) current.chips.push({ message: m, chip });
+    }
+    if (_kfChatMessageHasSignal(m) && m.role !== "user" && m.kind !== "notice") current.answered = true;
+    if (String(m.content || "").trim() === "_thinking..._" || String(m.content || "").trim() === "_summarizing evidence gathered so far..._") current.pending = true;
+  }
+  return turns;
+}
+
+function _kfQuestionChipLabel(text) {
+  const s = _kfPlainEnglishEventText(String(text || "")).replace(/\s+/g, " ").trim();
+  return s.length > 74 ? s.slice(0, 71) + "..." : s || "Question";
+}
+
+function _kfRenderQuestionRail(turns) {
+  if (!chatQuestionRailEl) return;
+  const questionTurns = turns.filter(t => t.user);
+  if (!questionTurns.length) {
+    chatQuestionRailEl.hidden = true;
+    chatQuestionRailEl.innerHTML = "";
     return;
   }
-  const visible = _chatShowTools ? chatHistory : chatHistory.filter(m => m.kind !== "tool" && m.kind !== "action");
-  if (visible.length === 0) {
+  chatQuestionRailEl.hidden = false;
+  chatQuestionRailEl.innerHTML = `<div class="chatRailHead">Questions</div><div class="chatQuestionChips">` +
+    questionTurns.map((turn, idx) => {
+      const cls = [
+        "chatQuestionChip",
+        turn.answered ? "answered" : "unanswered",
+        turn.pending && !turn.answered ? "pending" : "",
+        turn.key === _kfActiveChatTurnKey ? "active" : "",
+      ].filter(Boolean).join(" ");
+      const state = turn.answered ? "Answered" : turn.pending ? "Researching" : "Unanswered";
+      return `<button type="button" class="${cls}" data-chat-turn="${escChat(turn.key)}" title="${escChat(turn.question)}">` +
+        `<span>${idx + 1}. ${escChat(_kfQuestionChipLabel(turn.question))}</span><b>${state}</b></button>`;
+    }).join("") + `</div>`;
+  chatQuestionRailEl.querySelectorAll("[data-chat-turn]").forEach(btn => {
+    _kfBindTapOrClick(btn, () => {
+      _kfActiveChatTurnKey = btn.dataset.chatTurn || "";
+      renderChat();
+    });
+  });
+}
+
+function _kfChatMessageHtml(m, opts = {}) {
+  const rawContent = m.role === "user" ? m.content : _kfHideToolMarkersInChatText(m.content);
+  const body = m.role === "user" ? escChat(rawContent) : renderMd(_kfPlainEnglishEventText(rawContent));
+  const kindClass = m.kind === "tool" ? " tool" : m.kind === "action" ? " action" : m.kind === "notice" ? " notice" : m.kind === "error" ? " err" : "";
+  const who = opts.who || (m.role === "user" ? "you" : m.kind === "tool" ? "tool" : m.kind === "action" ? "action" : m.kind === "notice" ? "app" : "claude");
+  return `<div class="msg ${m.role}${kindClass}"><span class="who">${escChat(who)}</span><div class="body">${body}</div></div>`;
+}
+
+function _kfActivityCard(turn) {
+  const toolRounds = turn.messages.filter(m => m.kind === "tool").length;
+  const actions = turn.messages.filter(m => m.kind === "action" || m.kind === "notice").length;
+  const phase = toolRounds >= MAX_TOOL_ROUNDS ? "Summarizing evidence" :
+    toolRounds > 0 ? "Researching with tree data" :
+    "Reading the selected trees";
+  const stats = [
+    toolRounds ? `${toolRounds} tool ${toolRounds === 1 ? "round" : "rounds"}` : "",
+    actions ? `${actions} action ${actions === 1 ? "event" : "events"}` : "",
+  ].filter(Boolean).join(" · ");
+  return `<div class="chatActivityCard" aria-live="polite">` +
+    `<div class="chatActivityTrack"><span></span><span></span><span></span><span></span></div>` +
+    `<b>${phase}</b><p>${stats || "Preparing the first evidence pass."}</p>` +
+  `</div>`;
+}
+
+function _kfAnswerMessagesForTurn(turn) {
+  const candidates = turn.messages.filter(m => m.kind !== "tool" && m.kind !== "action");
+  const signal = candidates.filter(m => _kfChatMessageHasSignal(m));
+  if (signal.length) return signal;
+  const errors = candidates.filter(m => /\[error\]|\berror\b/i.test(String(m.content || "")));
+  if (errors.length) return errors;
+  return [];
+}
+
+function _kfRenderActiveAnswer(turns) {
+  if (!chatAnswerEl) return;
+  if (!turns.length) {
+    chatAnswerEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
+    return;
+  }
+  let turn = turns.find(t => t.key === _kfActiveChatTurnKey);
+  if (!turn) {
+    turn = turns[turns.length - 1];
+    _kfActiveChatTurnKey = turn.key;
+  }
+  _kfRenderedChatChipRefs = [];
+  const answerMessages = _kfAnswerMessagesForTurn(turn);
+  const answerHtml = answerMessages.length
+    ? answerMessages.map(m => _kfChatMessageHtml(m, { who: m.kind === "notice" ? "app" : "answer" })).join("")
+    : _kfActivityCard(turn);
+  const chipsHtml = turn.chips.length
+    ? `<div class="chatChips chatAnswerChips">${turn.chips.map(({ chip }, i) => {
+        _kfRenderedChatChipRefs.push(turn.chips[i]);
+        return `<button type="button" class="chatChip${chip._spent ? " spent" : ""}" data-chip-ref="${i}" title="${escChat(_kfPlainEnglishEventText(chip.label || "(chip)"))}">${escChat(_kfPlainEnglishEventText(chip.label || "(chip)"))}</button>`;
+      }).join("")}</div>`
+    : "";
+  chatAnswerEl.innerHTML =
+    `<section class="chatActiveAnswer">` +
+      (turn.user ? `<div class="chatActiveQuestion"><span>Question</span><p>${escChat(turn.question || "Question")}</p></div>` : "") +
+      `<div class="chatActiveBody">${answerHtml}${chipsHtml}</div>` +
+    `</section>`;
+  _kfBindChatAnswerControls(chatAnswerEl);
+}
+
+function _kfRenderHistoryDrawer(visible) {
+  if (!chatHistoryEl) return;
+  if (chatHistoryDrawerEl) {
+    chatHistoryDrawerEl.hidden = chatHistory.length === 0;
+    const summary = chatHistoryDrawerEl.querySelector("summary");
+    if (summary) summary.textContent = `History (${visible.length})`;
+  }
+  if (!visible.length) {
     chatHistoryEl.innerHTML = `<div class="empty">Tool calls hidden. Toggle "tools" to show them.</div>`;
     return;
   }
-  // Sticky-scroll: only follow the bottom if the user was already there.
-  // If they've scrolled up (e.g., to click a chip from an earlier message),
-  // preserve their position so the click doesn't yank them to the bottom.
-  const stickThreshold = 30;
-  const wasAtBottom =
-    chatHistoryEl.scrollHeight - chatHistoryEl.scrollTop - chatHistoryEl.clientHeight < stickThreshold;
-  const prevScrollTop = chatHistoryEl.scrollTop;
-  chatHistoryEl.innerHTML = visible.map((m, mi) => {
-    const rawContent = m.role === "user" ? m.content : _kfHideToolMarkersInChatText(m.content);
-    const body = m.role === "user" ? escChat(rawContent) : renderMd(_kfPlainEnglishEventText(rawContent));
-    const chips = (m.chips && m.chips.length)
-      ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}" title="${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}">${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}</button>`).join("")}</div>`
-      : "";
-    const kindClass = m.kind === "tool" ? " tool" : m.kind === "action" ? " action" : m.kind === "notice" ? " notice" : "";
-    const who = m.role === "user" ? "you" : m.kind === "tool" ? "tool" : m.kind === "action" ? "action" : m.kind === "notice" ? "app" : "claude";
-    return `<div class="msg ${m.role}${kindClass}"><span class="who">${who}</span><div class="body">${body}</div>${chips}</div>`;
-  }).join("");
-  chatHistoryEl.querySelectorAll(".msg.bot:not(.tool):not(.action) .body").forEach(_kfAutoLinkChatBody);
-  chatHistoryEl.querySelectorAll(".chatInlineLink[data-chat-link-type]").forEach(btn => {
+  chatHistoryEl.innerHTML = visible.map(m => _kfChatMessageHtml(m)).join("");
+}
+
+function _kfBindChatAnswerControls(root) {
+  root.querySelectorAll(".msg.bot:not(.tool):not(.action) .body").forEach(_kfAutoLinkChatBody);
+  root.querySelectorAll(".chatInlineLink[data-chat-link-type]").forEach(btn => {
     btn.addEventListener("click", () => {
       const value = btn.dataset.chatLinkValue || "";
       if (!value || !window.kfApi) return;
@@ -1407,38 +1609,51 @@ function renderChat() {
       }
     });
   });
-  // Wire chip clicks. Each chip carries an action (kfApi method + args) that
-  // fires once on click, mirroring how KFCALL markers work but via UI.
-  chatHistoryEl.querySelectorAll(".chatChip").forEach(btn => {
+  root.querySelectorAll(".chatChip[data-chip-ref]").forEach(btn => {
     _kfBindTapOrClick(btn, async () => {
-      const mi = Number(btn.dataset.mi);
-      const ci = Number(btn.dataset.ci);
-      const m = visible[mi];
-      const chip = m && m.chips && m.chips[ci];
+      const ref = _kfRenderedChatChipRefs[Number(btn.dataset.chipRef)];
+      const chip = ref?.chip;
       if (!chip) return;
       btn.classList.add("running");
       btn.disabled = true;
       const orig = btn.textContent;
       btn.textContent = "...";
+      let spentChanged = false;
       try {
         const ok = await _kfDispatchChip(chip);
-        if (ok !== false) chip._spent = true;
-      }
-      finally {
+        if (ok !== false) {
+          chip._spent = true;
+          spentChanged = true;
+        }
+      } finally {
         if (btn.isConnected) {
           btn.disabled = !!chip._spent;
           btn.classList.toggle("spent", !!chip._spent);
           btn.classList.remove("running");
           btn.textContent = orig;
+        } else if (spentChanged) {
+          renderChat();
         }
       }
     });
   });
-  chatHistoryEl.querySelectorAll(".chatDiagramOpen[data-mermaid-id]").forEach(btn => {
+  root.querySelectorAll(".chatDiagramOpen[data-mermaid-id]").forEach(btn => {
     btn.addEventListener("click", () => _kfOpenChatMermaid(btn.dataset.mermaidId));
   });
-  if (wasAtBottom) chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
-  else chatHistoryEl.scrollTop = prevScrollTop;
+}
+
+function renderChat() {
+  _kfRefreshChatInsightHeader();
+  _kfRenderChatArtifacts();
+  _kfRenderChatEvidence();
+  const turns = _kfBuildChatTurns();
+  if (!_kfActiveChatTurnKey || !turns.some(t => t.key === _kfActiveChatTurnKey)) {
+    _kfActiveChatTurnKey = turns.length ? turns[turns.length - 1].key : "";
+  }
+  _kfRenderQuestionRail(turns);
+  _kfRenderActiveAnswer(turns);
+  const visible = _chatShowTools ? chatHistory : chatHistory.filter(m => m.kind !== "tool" && m.kind !== "action");
+  _kfRenderHistoryDrawer(visible);
 }
 
 async function _kfDispatchChip(chip) {
@@ -1580,14 +1795,14 @@ function _kfReportChipResult(chip, r) {
   // to Claude as if Claude said it.
   chatHistory.push({ role: "bot", kind: "notice", content: summary });
   renderChat();
-  const last = chatHistoryEl.lastElementChild;
+  const last = chatAnswerEl?.lastElementChild || chatHistoryEl?.lastElementChild;
   if (last && last.scrollIntoView) {
     last.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 }
 function appendError(text) {
-  chatHistoryEl.insertAdjacentHTML("beforeend", `<div class="msg bot err"><span class="who">error</span><div class="body">${escChat(_kfPlainEnglishEventText(text))}</div></div>`);
-  chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+  chatHistory.push({ role: "bot", kind: "error", content: `*[error]* ${String(text || "")}` });
+  renderChat();
 }
 
 const _KF_STANDARD_AI_QUESTIONS = [
@@ -1710,7 +1925,6 @@ function _kfBindChatScopeQuestions() {
   if (chatScopeEl.dataset.kfQuestionDelegate === "1") return;
   chatScopeEl.dataset.kfQuestionDelegate = "1";
   const buttonFrom = target => target?.closest?.("[data-chat-scope-question]");
-  const moreFrom = target => target?.closest?.("[data-chat-more]");
   const clearPending = () => { _kfChatScopePendingTap = null; };
   const dispatch = async (text, button = null) => {
     text = String(text || "").trim();
@@ -1760,19 +1974,29 @@ function _kfBindChatScopeQuestions() {
   });
   window.addEventListener("pointercancel", clearPending);
   chatScopeEl.addEventListener("click", e => {
-    const more = moreFrom(e.target);
-    if (more) {
-      e.preventDefault();
-      _kfChatMoreQuestionsOpen = !_kfChatMoreQuestionsOpen;
-      _kfChatScopeLastRenderKey = "";
-      _kfRefreshChatScope(true);
-      return;
-    }
     const btn = buttonFrom(e.target);
     if (!btn) return;
     e.preventDefault();
     if (Date.now() - _kfChatScopeLastHandledAt < 500) return;
     dispatch(btn.getAttribute("data-chat-scope-question") || "", btn);
+  });
+}
+
+function _kfToggleChatMoreQuestions(e) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  _kfChatScopePendingTap = null;
+  _kfChatMoreQuestionsOpen = !_kfChatMoreQuestionsOpen;
+  _kfChatScopeLastRenderKey = "";
+  _kfRefreshChatScope(true);
+}
+
+function _kfBindChatMoreToggle() {
+  if (!chatScopeEl) return;
+  chatScopeEl.querySelectorAll("[data-chat-more]").forEach(btn => {
+    if (btn.dataset.kfMoreBound === "1") return;
+    btn.dataset.kfMoreBound = "1";
+    _kfBindTapOrClick(btn, _kfToggleChatMoreQuestions);
   });
 }
 
@@ -1811,6 +2035,7 @@ function _kfRefreshChatScope(force = false) {
           (_kfChatMoreQuestionsOpen ? `<div class="chatMoreQuestions"><div class="chatChips">${secondary.map(renderQuestion).join("")}</div></div>` : "")
         : "")
     : "";
+  _kfBindChatMoreToggle();
   _kfBindChatScopeQuestions();
 }
 

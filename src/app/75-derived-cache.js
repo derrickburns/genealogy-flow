@@ -277,6 +277,7 @@ async function _kfAskQuestion(text, opts = {}) {
     chatInputEl.focus();
     return { error: "Claude is already answering a question" };
   }
+  if (typeof _kfActiveChatTurnKey !== "undefined") _kfActiveChatTurnKey = "";
   chatHistory.push({ role: "user", content: displayText || requestText });
   renderChat();
   _chatBusy = true;
