@@ -4,8 +4,16 @@ const chatInputEl = $("chatInput");
 const chatFormEl = $("chatForm");
 const chatSendBtn = $("chatSend");
 const chatScopeEl = $("chatScope");
+const chatInsightHeaderEl = $("chatInsightHeader");
+const chatInsightScopeEl = $("chatInsightScope");
+const chatInsightModeEl = $("chatInsightMode");
+const chatArtifactsEl = $("chatArtifacts");
+const chatEvidenceEl = $("chatEvidence");
+const chatEvidenceBodyEl = $("chatEvidenceBody");
 const chatHistory = []; // [{ role, content }]
 const CHAT_KEY_LS = "kf-anthropic-key";
+const chatArtifacts = [];
+let _kfChatArtifactSeq = 0;
 
 const _spEl = $("selectedPerson");
 const _personEmptyEl = $("personEmpty");
@@ -1175,7 +1183,140 @@ window.addEventListener("message", e => {
 const CHAT_TOOLS_LS = "kf-chat-show-tools";
 const _chatToolsPref = localStorage.getItem(CHAT_TOOLS_LS);
 let _chatShowTools = _chatToolsPref === "1";
+
+function _kfChatTreeScopeLabel() {
+  if (typeof _kfSelectedVizSourceList !== "function") return "No selected trees";
+  const sources = _kfSelectedVizSourceList();
+  if (!sources.length) return "No selected trees";
+  const names = sources.map(s => String(s.common_name || s.name || "Tree").replace(/\.(ged|gedcom|json)$/i, ""));
+  if (names.length <= 2) return names.join(" + ");
+  return `${names.slice(0, 2).join(" + ")} + ${names.length - 2} more`;
+}
+
+function _kfRefreshChatInsightHeader() {
+  if (!chatInsightHeaderEl) return;
+  const parts = [];
+  if (timelineLoaded && Number.isFinite(curYear)) parts.push(String(Math.floor(curYear)));
+  parts.push(_kfChatTreeScopeLabel());
+  if (highlightedDwell >= 0 && lastIndividuals) {
+    const ind = lastIndividuals[dwellIndi[highlightedDwell]];
+    if (ind?.name) parts.push(`selected: ${ind.name}`);
+  } else if (_kfLastClusterContext?.title) {
+    parts.push(`cluster: ${_kfLastClusterContext.title}`);
+  }
+  if (chatInsightScopeEl) chatInsightScopeEl.textContent = parts.filter(Boolean).join(" | ");
+  if (chatInsightModeEl) {
+    const toolCount = chatHistory.filter(m => m.kind === "tool" || m.kind === "action").length;
+    chatInsightModeEl.textContent = toolCount
+      ? `${toolCount} evidence item${toolCount === 1 ? "" : "s"}`
+      : "Evidence first";
+  }
+}
+
+function _kfArtifactKindLabel(kind) {
+  return kind === "viz" ? "VIZ" :
+    kind === "group" ? "GROUP" :
+    kind === "route" ? "ROUTE" :
+    kind === "pin" ? "PIN" :
+    kind === "report" ? "PDF" :
+    "MAP";
+}
+
+function _kfShowMapFromArtifact() {
+  if (typeof _kfShowVizPane === "function") _kfShowVizPane(false);
+  if (typeof _kfSetSideTab === "function" && _kfIsMobileLayout()) _kfSetSideTab("map");
+}
+
+function _kfOpenAiArtifact(id) {
+  const artifact = chatArtifacts.find(a => a.id === Number(id));
+  if (!artifact) return;
+  if (artifact.action === "showVizById" && window.kfApi?.showVizById) {
+    window.kfApi.showVizById(artifact.args?.id || artifact.args);
+    return;
+  }
+  if (artifact.action === "activateGroupSet" && window.kfApi?.activateGroupSet) {
+    window.kfApi.activateGroupSet(artifact.args?.id || artifact.args);
+    _kfShowMapFromArtifact();
+    return;
+  }
+  if (artifact.action === "exportAiReport" && window.kfApi?.exportAiReport) {
+    window.kfApi.exportAiReport();
+    return;
+  }
+  _kfShowMapFromArtifact();
+}
+
+function _kfRenderChatArtifacts() {
+  if (!chatArtifactsEl) return;
+  if (!chatArtifacts.length) {
+    chatArtifactsEl.hidden = true;
+    chatArtifactsEl.innerHTML = "";
+    return;
+  }
+  chatArtifactsEl.hidden = false;
+  const cards = chatArtifacts.slice(0, 8).map(a => {
+    const title = escChat(a.title || "Artifact");
+    const subtitle = a.subtitle ? `<span>${escChat(a.subtitle)}</span>` : "";
+    return `<button type="button" class="chatArtifact" data-artifact-id="${a.id}">` +
+      `<b>${_kfArtifactKindLabel(a.kind)}</b><span class="chatArtifactText"><strong>${title}</strong>${subtitle}</span>` +
+    `</button>`;
+  }).join("");
+  chatArtifactsEl.innerHTML = `<div class="chatRailHead">Artifacts</div><div class="chatArtifactRail">${cards}</div>`;
+  chatArtifactsEl.querySelectorAll("[data-artifact-id]").forEach(btn => {
+    btn.addEventListener("click", () => _kfOpenAiArtifact(btn.dataset.artifactId));
+  });
+}
+
+function _kfRecordAiArtifact(input = {}) {
+  if (!input || typeof input !== "object") return null;
+  const title = String(input.title || input.label || input.kind || "Artifact").trim();
+  if (!title) return null;
+  const action = input.action || "map";
+  const key = input.key || `${input.kind || "map"}:${action}:${title}:${JSON.stringify(input.args || null)}`;
+  const existing = chatArtifacts.find(a => a.key === key);
+  if (existing) {
+    existing.subtitle = input.subtitle || existing.subtitle;
+    existing.updated_at = Date.now();
+    _kfRenderChatArtifacts();
+    return existing;
+  }
+  const artifact = {
+    id: ++_kfChatArtifactSeq,
+    key,
+    kind: input.kind || "map",
+    title,
+    subtitle: input.subtitle || "",
+    action,
+    args: input.args || null,
+    created_at: Date.now(),
+  };
+  chatArtifacts.unshift(artifact);
+  while (chatArtifacts.length > 24) chatArtifacts.pop();
+  _kfRenderChatArtifacts();
+  return artifact;
+}
+
+function _kfRenderChatEvidence() {
+  if (!chatEvidenceEl || !chatEvidenceBodyEl) return;
+  const evidence = chatHistory.filter(m => m.kind === "tool" || m.kind === "action");
+  if (!evidence.length) {
+    chatEvidenceEl.hidden = true;
+    chatEvidenceBodyEl.innerHTML = "";
+    return;
+  }
+  chatEvidenceEl.hidden = false;
+  const summary = chatEvidenceEl.querySelector("summary");
+  if (summary) summary.textContent = `Evidence (${evidence.length})`;
+  chatEvidenceBodyEl.innerHTML = evidence.slice(-10).map(m => {
+    const label = m.kind === "tool" ? "Tool result" : "Action";
+    return `<div class="chatEvidenceItem"><b>${label}</b><div>${renderMd(_kfPlainEnglishEventText(_kfHideToolMarkersInChatText(m.content || "")))}</div></div>`;
+  }).join("");
+}
+
 function renderChat() {
+  _kfRefreshChatInsightHeader();
+  _kfRenderChatArtifacts();
+  _kfRenderChatEvidence();
   if (chatHistory.length === 0) {
     chatHistoryEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
     return;
@@ -1573,8 +1714,15 @@ function _kfRefreshChatScope(force = false) {
       : escChat(q.label);
     return `<button type="button" class="${cls}" data-chat-scope-question="${escChat(q.text)}" title="${escChat(q.text)}">${label}</button>`;
   };
+  const primaryCount = _kfIsMobileLayout() ? 3 : 4;
+  const primary = questions.slice(0, primaryCount);
+  const secondary = questions.slice(primaryCount);
   chatScopeEl.innerHTML = questions.length
-    ? `<div class="chatChips chat-scope-actions" aria-label="Suggested questions">${questions.map(renderQuestion).join("")}</div>`
+    ? `<div class="chatScopeHead">Suggested questions</div>` +
+      `<div class="chatChips chat-scope-actions" aria-label="Suggested questions">${primary.map(renderQuestion).join("")}</div>` +
+      (secondary.length
+        ? `<details class="chatMoreQuestions"><summary>More ideas</summary><div class="chatChips">${secondary.map(renderQuestion).join("")}</div></details>`
+        : "")
     : "";
   _kfBindChatScopeQuestions();
 }

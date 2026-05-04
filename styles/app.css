@@ -336,6 +336,32 @@
   #selectedPerson .sp-ask:hover { background:#1c3669; }
   #selectedPerson .sp-dismiss { background:none; border:1px solid #c0ccd8; border-radius:5px; padding:4px 8px; font:inherit; font-size:11px; color:#566480; cursor:pointer; }
   #selectedPerson .sp-dismiss:hover { background:#f0f4f8; }
+  #chatInsightHeader {
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:9px 12px;
+    border-bottom:1px solid #dbe4ef;
+    background:linear-gradient(135deg,#f8fbff 0%,#eef5ff 100%);
+    color:#334155;
+  }
+  .chatInsightTitle { color:#0f172a; font-size:12px; font-weight:900; letter-spacing:0.02em; }
+  #chatInsightScope { margin-top:1px; color:#64748b; font-size:10.5px; line-height:1.25; max-width:34ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #chatInsightMode {
+    flex:0 0 auto;
+    border:1px solid #c8d6eb;
+    border-radius:999px;
+    background:#fff;
+    color:#1f3a78;
+    padding:3px 8px;
+    font-size:9.5px;
+    font-weight:900;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
   #chatHistory { flex:1; min-height:0; overflow-y:auto; padding:10px 12px; font-size:12px; line-height:1.5; color:#1c2433; }
   #chatHistory .msg { margin-bottom:10px; }
   #chatHistory .msg.user { color:#1c2433; }
@@ -415,6 +441,74 @@
   #chatSend { margin-left:auto; background:#2a4a8c !important; color:#fff !important; border-color:#1c3669 !important; padding:5px 14px !important; }
   #chatSend:hover { background:#1c3669 !important; }
   #chatSend:disabled { background:#9aa6bc !important; cursor:default; border-color:#7c8aa3 !important; }
+  #chatArtifacts {
+    flex:0 0 auto;
+    border-bottom:1px solid #e0e6ee;
+    background:#fbfdff;
+    padding:7px 10px;
+  }
+  .chatRailHead, .chatScopeHead {
+    color:#64748b;
+    font-size:9.5px;
+    font-weight:900;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    margin-bottom:5px;
+  }
+  .chatArtifactRail { display:flex; gap:7px; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }
+  .chatArtifact {
+    flex:0 0 170px;
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr);
+    align-items:center;
+    gap:7px;
+    border:1px solid #cbd8ea;
+    border-radius:10px;
+    background:#fff;
+    color:#102033;
+    padding:7px 8px;
+    text-align:left;
+    cursor:pointer;
+    font:inherit;
+    min-width:0;
+  }
+  .chatArtifact:hover { border-color:#7190c5; background:#f3f7ff; }
+  .chatArtifact > b {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:38px;
+    min-height:24px;
+    border-radius:999px;
+    background:#e8eef9;
+    color:#1f3a78;
+    font-size:8.5px;
+    font-weight:900;
+    letter-spacing:0.06em;
+  }
+  .chatArtifactText { display:grid; gap:1px; min-width:0; }
+  .chatArtifactText strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:#0f172a; }
+  .chatArtifactText span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:#64748b; }
+  #chatEvidence {
+    flex:0 0 auto;
+    border-bottom:1px solid #e0e6ee;
+    background:#fff;
+    color:#334155;
+    font-size:11px;
+  }
+  #chatEvidence summary {
+    cursor:pointer;
+    padding:6px 10px;
+    color:#64748b;
+    font-weight:900;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+  }
+  #chatEvidenceBody { max-height:160px; overflow-y:auto; padding:0 10px 8px; display:grid; gap:6px; }
+  .chatEvidenceItem { border:1px solid #e0e6ee; border-radius:8px; background:#f8fafc; padding:6px 7px; }
+  .chatEvidenceItem > b { display:block; color:#64748b; font-size:9px; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:2px; }
+  .chatEvidenceItem p { margin:0 0 4px; }
+  .chatEvidenceItem p:last-child { margin-bottom:0; }
   #panel {
     background:rgba(255,255,255,0.98); border:1px solid #c0ccd8; border-radius:10px;
     box-shadow:0 2px 12px rgba(0,0,0,0.08);
@@ -457,6 +551,9 @@
   #chatScope { flex:0 0 auto; border-bottom:1px solid #e0e6ee; background:#fff; color:#334155; padding:6px 10px; font-size:11px; line-height:1.35; }
   #chatScope[hidden] { display:none !important; }
   #chatScope .chatChips { margin:0; }
+  .chatMoreQuestions { margin-top:5px; }
+  .chatMoreQuestions summary { cursor:pointer; color:#64748b; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; }
+  .chatMoreQuestions .chatChips { margin-top:5px !important; }
   .chat-scope-actions { display:flex; flex-wrap:wrap; gap:5px; }
   .chat-scope-question { border-color:#b9c8dd; background:#fff; color:#1f3a78; padding:4px 8px; font-size:10.5px; }
   .chat-scope-question.year-dependent { border-style:dashed; background:#fff8e6; border-color:#d7a736; color:#704800; }
@@ -740,12 +837,20 @@
     .mobileConceptCard span { display:block; margin-top:2px; color:#64748b; font-size:10.5px; line-height:1.35; }
     #personPane, #selectedCluster, #tourPane, #chatHistory { -webkit-overflow-scrolling:touch; }
     #selectedPerson { font-size:12px; }
+    #chatInsightHeader { padding:8px 10px; }
+    #chatInsightScope { max-width:52vw; font-size:10px; }
+    #chatInsightMode { font-size:8.5px; padding:2px 6px; }
     #chatInput { min-height:74px; font-size:16px; }
     #chatBar button { min-height:38px; padding:7px 10px; }
-    #chatScope { font-size:11px; max-height:88px; overflow:hidden; padding:6px 8px; }
+    #chatScope { font-size:11px; max-height:128px; overflow-y:auto; padding:6px 8px; }
     .chat-scope-actions { flex-wrap:nowrap; overflow-x:auto; gap:7px; padding-bottom:3px; scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
     .chat-scope-actions::-webkit-scrollbar { display:none; }
     .chat-scope-question { flex:0 0 auto; max-width:72vw; min-height:36px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; touch-action:pan-x; -webkit-tap-highlight-color:transparent; }
+    #chatArtifacts { padding:6px 8px; }
+    .chatArtifactRail { scrollbar-width:none; }
+    .chatArtifactRail::-webkit-scrollbar { display:none; }
+    .chatArtifact { flex-basis:155px; padding:7px; }
+    #chatEvidenceBody { max-height:112px; }
     #welcome { width:calc(100vw - 42px); top:42%; padding:24px 20px; box-sizing:border-box; }
     .year-digest-metrics { grid-template-columns:repeat(2, 1fr); }
   }

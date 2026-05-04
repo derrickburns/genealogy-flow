@@ -346,6 +346,16 @@ function _kfCreateGroupSet(input = {}) {
   if (normalized.activate) active = _kfActivateGroupSetObject(set);
   if (normalized.showTimeline) timeline = _kfOpenGroupSetTimeline(set);
   const total = set.groups.reduce((sum, g) => sum + (g.refs?.length || 0), 0);
+  if (typeof _kfRecordAiArtifact === "function") {
+    _kfRecordAiArtifact({
+      kind: "group",
+      title: set.name,
+      subtitle: `${set.groups.length} groups, ${total} people`,
+      action: "activateGroupSet",
+      args: { id: set.id },
+      key: `group:${set.id}`,
+    });
+  }
   return {
     ok: true,
     id: set.id,

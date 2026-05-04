@@ -221,6 +221,15 @@ function _kfExportAiReport() {
     }
   };
   win.focus();
+  if (typeof _kfRecordAiArtifact === "function") {
+    _kfRecordAiArtifact({
+      kind: "report",
+      title: "AI session report",
+      subtitle: `${messages.filter(m => m.role === "user").length} questions, ${_kfVizList.length} visualizations`,
+      action: "exportAiReport",
+      key: `report:${filename}`,
+    });
+  }
   return { ok: true, questions: messages.filter(m => m.role === "user").length, answers: messages.filter(m => m.role === "bot").length, visualizations: _kfVizList.length, map: !!snapshot };
 }
 

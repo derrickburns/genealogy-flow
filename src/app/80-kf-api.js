@@ -1690,6 +1690,16 @@ window.kfApi = {
     _kfVizList.push(v);
     while (_kfVizList.length > VIZ_MAX) _kfVizList.shift();
     _kfRenderViz(id);
+    if (typeof _kfRecordAiArtifact === "function") {
+      _kfRecordAiArtifact({
+        kind: "viz",
+        title: v.title,
+        subtitle: v.type,
+        action: "showVizById",
+        args: { id },
+        key: `viz:${id}`,
+      });
+    }
     return { ok: true, id, type: v.type, title: v.title };
   },
   // Switch to an existing viz by id, or close the pane (id=null/0).
@@ -1859,6 +1869,15 @@ window.kfApi = {
     const color = opts?.color || [255, 196, 64];
     _kfOverlayPaths.push({ points, color, label: `${a.name} → ${b.name}` });
     _kfRefreshMapActionOverlays();
+    if (typeof _kfRecordAiArtifact === "function") {
+      _kfRecordAiArtifact({
+        kind: "route",
+        title: "Lineage path",
+        subtitle: `${a.name} to ${b.name}`,
+        action: "map",
+        key: `traceLineage:${a.id}:${b.id}`,
+      });
+    }
     return {
       ok: true,
       from: { id: a.id, name: a.name },
@@ -1909,9 +1928,19 @@ window.kfApi = {
       if (resolved.label) labels.push(resolved.label);
     }
     const routeColor = Array.isArray(color) && color.length >= 3 ? color : [255, 140, 40];
-    _kfOverlayPaths.push({ points, color: routeColor, label: label || labels.join(" → ") });
+    const routeLabel = label || labels.join(" → ");
+    _kfOverlayPaths.push({ points, color: routeColor, label: routeLabel });
     _kfRefreshMapActionOverlays();
-    return { ok: true, route: { points: points.length, label: label || labels.join(" → ") } };
+    if (typeof _kfRecordAiArtifact === "function") {
+      _kfRecordAiArtifact({
+        kind: "route",
+        title: routeLabel || "Map route",
+        subtitle: `${points.length} points`,
+        action: "map",
+        key: `route:${routeLabel}:${points.map(p => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`).join("|")}`,
+      });
+    }
+    return { ok: true, route: { points: points.length, label: routeLabel } };
   },
 
   addPin(arg1, arg2, arg3, arg4) {
@@ -1930,6 +1959,15 @@ window.kfApi = {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { error: "lat/lon required" };
     _kfOverlayPins.push({ lat, lon, label: label || "", color: color || null });
     _kfRefreshMapActionOverlays();
+    if (typeof _kfRecordAiArtifact === "function") {
+      _kfRecordAiArtifact({
+        kind: "pin",
+        title: label || "Map pin",
+        subtitle: `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
+        action: "map",
+        key: `pin:${label || ""}:${lat.toFixed(4)}:${lon.toFixed(4)}`,
+      });
+    }
     return { ok: true, pin: { lat, lon, label }, total: _kfOverlayPins.length };
   },
 

@@ -287,7 +287,19 @@
         <button type="button" class="apiKeyHelp" onclick="document.getElementById('apiKeyInput').focus()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Add API key</button>
         <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #c0ccd8; border-radius:5px; background:#fff; color:#2a4a8c; font:inherit; cursor:pointer;">Sign in</button>
       </div>
+      <div id="chatInsightHeader">
+        <div>
+          <div class="chatInsightTitle">AI insight workspace</div>
+          <div id="chatInsightScope">Selected trees and year appear here.</div>
+        </div>
+        <div id="chatInsightMode">Evidence first</div>
+      </div>
       <div id="chatScope">Load GEDCOM data to enable scoped genealogy answers.</div>
+      <div id="chatArtifacts" hidden></div>
+      <details id="chatEvidence" hidden>
+        <summary>Evidence</summary>
+        <div id="chatEvidenceBody"></div>
+      </details>
       <div id="chatHistory"></div>
       <form id="chatForm">
         <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
