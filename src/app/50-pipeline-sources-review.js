@@ -1,9 +1,137 @@
 // ---------- Pipeline ----------
-function jitter(lat, lon, level) {
+let _kfJitterCountryByCode = null;
+let _kfJitterStateByAbbr = null;
+let _kfJitterCache = new Map();
+
+function _kfJitterSlug(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function _kfFeatureBounds(feature) {
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  function visit(coords) {
+    if (!coords) return;
+    if (typeof coords[0] === "number") {
+      const lon = coords[0], lat = coords[1];
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    } else {
+      for (const c of coords) visit(c);
+    }
+  }
+  visit(feature?.geometry?.coordinates);
+  return Number.isFinite(minLon) ? [minLon, minLat, maxLon, maxLat] : null;
+}
+
+function _kfBoundsContains(bounds, lon, lat) {
+  return !bounds || (lon >= bounds[0] && lon <= bounds[2] && lat >= bounds[1] && lat <= bounds[3]);
+}
+
+function _kfEnsureJitterCountryIndex() {
+  if (_kfJitterCountryByCode) return _kfJitterCountryByCode;
+  _kfJitterCountryByCode = new Map();
+  if (!world || !topojson || !world.objects?.countries) return _kfJitterCountryByCode;
+  const fc = topojson.feature(world, world.objects.countries);
+  const byName = new Map();
+  for (const f of fc.features || []) {
+    const name = _kfJitterSlug(f.properties?.name || "");
+    if (name) byName.set(name, { feature: f, bounds: _kfFeatureBounds(f) });
+  }
+  const aliases = {
+    US: ["united states", "united states of america", "usa"],
+    GB: ["united kingdom", "great britain", "england", "scotland", "wales"],
+    RU: ["russia", "russian federation"],
+    KR: ["south korea", "republic of korea"],
+    KP: ["north korea"],
+    CD: ["democratic republic of the congo"],
+    CG: ["republic of the congo"],
+    CZ: ["czech republic", "czechia"],
+  };
+  for (const c of gazetteer?.countries || []) {
+    const names = [_kfJitterSlug(c.name), ...((aliases[c.cc] || []).map(_kfJitterSlug))].filter(Boolean);
+    const hit = names.map(n => byName.get(n)).find(Boolean);
+    if (hit) _kfJitterCountryByCode.set(c.cc, hit);
+  }
+  return _kfJitterCountryByCode;
+}
+
+function _kfEnsureJitterStateIndex() {
+  if (_kfJitterStateByAbbr) return _kfJitterStateByAbbr;
+  _kfJitterStateByAbbr = new Map();
+  if (!usStates || !topojson || !usStates.objects?.states || typeof US_STATE_ABBR === "undefined") return _kfJitterStateByAbbr;
+  const nameToAbbr = new Map();
+  for (const [abbr, name] of Object.entries(US_STATE_ABBR)) nameToAbbr.set(_kfJitterSlug(name), abbr);
+  const fc = topojson.feature(usStates, usStates.objects.states);
+  for (const f of fc.features || []) {
+    const abbr = nameToAbbr.get(_kfJitterSlug(f.properties?.name || ""));
+    if (abbr) _kfJitterStateByAbbr.set(abbr, { feature: f, bounds: _kfFeatureBounds(f) });
+  }
+  return _kfJitterStateByAbbr;
+}
+
+function _kfHash32(value) {
+  let h = 2166136261;
+  const s = String(value || "");
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function _kfJitterRadius(level) {
   // Scale jitter to geocode precision so city-level points don't drift into
   // the ocean. City ~1 km, county ~10 km, state ~30 km.
-  const r = level === "city" ? 0.02 : level === "county" ? 0.15 : 0.4;
-  return [lat + (Math.random() - 0.5) * r, lon + (Math.random() - 0.5) * r];
+  if (level === "city") return 0.02;
+  if (level === "county") return 0.15;
+  if (level === "admin1") return 0.4;
+  return 0.7;
+}
+
+function _kfJitterCandidateAllowed(lat, lon, g) {
+  if (!g) return true;
+  const state = g.cc === "US" && g.st ? _kfEnsureJitterStateIndex().get(g.st) : null;
+  if (state) {
+    return _kfBoundsContains(state.bounds, lon, lat) && d3.geoContains(state.feature, [lon, lat]);
+  }
+  const country = g.cc ? _kfEnsureJitterCountryIndex().get(g.cc) : null;
+  if (country) {
+    return _kfBoundsContains(country.bounds, lon, lat) && d3.geoContains(country.feature, [lon, lat]);
+  }
+  return true;
+}
+
+function jitter(lat, lon, level, key = "", g = null) {
+  const radius = _kfJitterRadius(level);
+  if (!radius) return [lat, lon];
+  const cacheKey = `${lat.toFixed(5)}|${lon.toFixed(5)}|${level}|${g?.cc || ""}|${g?.st || ""}|${key}`;
+  const cached = _kfJitterCache.get(cacheKey);
+  if (cached) return cached;
+  const h = _kfHash32(cacheKey);
+  const baseAngle = (h / 0xffffffff) * Math.PI * 2;
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < 16; i++) {
+    const ring = 0.35 + 0.65 * (((h >>> ((i % 4) * 4)) & 0xf) / 15);
+    const angle = baseAngle + i * golden;
+    const candLat = lat + Math.sin(angle) * radius * ring;
+    const latScale = Math.max(0.25, Math.cos((Math.max(-85, Math.min(85, lat)) * Math.PI) / 180));
+    const candLon = lon + (Math.cos(angle) * radius * ring) / latScale;
+    if (_kfJitterCandidateAllowed(candLat, candLon, g)) {
+      const out = [candLat, candLon];
+      _kfJitterCache.set(cacheKey, out);
+      return out;
+    }
+  }
+  const out = [lat, lon];
+  _kfJitterCache.set(cacheKey, out);
+  return out;
 }
 
 function hasRecordedParent(id, parentsOf) {
@@ -52,7 +180,7 @@ function buildTimeline(individuals, geocode, parentsOf) {
       geocoded++;
       const exact = g.level === "city" ? 1 : 0;
       const levelCode = _kfGeoLevelCode(g.level);
-      const [lat, lon] = jitter(g.lat, g.lon, g.level);
+      const [lat, lon] = jitter(g.lat, g.lon, g.level, `${ind.id}|${e.place}`, g);
       if (exact) {
         const key = g.lat.toFixed(2) + "," + g.lon.toFixed(2);
         let ec = evCities.get(key);
