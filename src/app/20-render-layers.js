@@ -155,10 +155,12 @@ function _kfVizSrcDoc(type, spec) {
     });
   <\/script>`;
   if (type === "svg") {
+    if (!String(spec || "").trim()) return _kfVizMessageSrcDoc("Empty visualization", "The visualization payload was empty.");
     return `<!doctype html><html><head>${head}</head><body><div id="out">${String(spec || "")}</div></body></html>`;
   }
   if (type === "html") {
     const html = String(spec || "");
+    if (!html.trim()) return _kfVizMessageSrcDoc("Empty visualization", "The visualization payload was empty.");
     if (/<(?:!doctype|html)\b/i.test(html)) return html;
     return `<!doctype html><html><head>${head}</head><body><div id="out">${html}</div></body></html>`;
   }
@@ -181,9 +183,14 @@ function _kfVizSrcDoc(type, spec) {
       </head><body><div id="out"></div>
       <script>
         const spec = ${specJson};
-        vegaEmbed('#out', spec, {actions:false, renderer:'svg'}).catch(e => {
-          document.getElementById('out').innerHTML = '<pre class="err">' + (e.message || e) + '</pre>';
-        });
+        const values = Array.isArray(spec?.data?.values) ? spec.data.values : null;
+        if (values && values.length === 0) {
+          document.getElementById('out').innerHTML = '<pre class="err">No rows were returned for this visualization.</pre>';
+        } else {
+          vegaEmbed('#out', spec, {actions:false, renderer:'svg'}).catch(e => {
+            document.getElementById('out').innerHTML = '<pre class="err">' + (e.message || e) + '</pre>';
+          });
+        }
       <\/script></body></html>`;
   }
   if (type === "mermaid") {
@@ -219,6 +226,18 @@ function _kfVizSrcDoc(type, spec) {
   return `<!doctype html><html><body><pre class="err">unknown viz type: ${String(type)}</pre></body></html>`;
 }
 
+function _kfVizMessageSrcDoc(title, message) {
+  const safeTitle = escHtml(title || "Visualization unavailable");
+  const safeMessage = escHtml(message || "The visualization could not be rendered.");
+  return `<!doctype html><html><head><style>
+    html, body { margin:0; padding:0; background:#fff; color:#1c2433; font:13px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { min-height:100vh; display:grid; place-items:center; padding:20px; box-sizing:border-box; }
+    .card { max-width:560px; border:1px solid #d6dde7; border-radius:14px; background:#f8fafc; padding:18px; box-shadow:0 10px 24px rgba(15,23,42,0.06); }
+    h1 { margin:0 0 8px; font-size:16px; }
+    p { margin:0; color:#64748b; }
+  </style></head><body><div class="card"><h1>${safeTitle}</h1><p>${safeMessage}</p></div></body></html>`;
+}
+
 let _kfVizShowSpec = false;
 
 function _kfSpecSrcDoc(type, spec) {
@@ -244,10 +263,15 @@ function _kfSpecSrcDoc(type, spec) {
 
 function _kfRenderViz(id) {
   const v = _kfVizList.find(x => x.id === id);
-  if (!v) return;
+  if (!v) {
+    const frame = $("vizFrame");
+    if (frame) frame.srcdoc = _kfVizMessageSrcDoc("Visualization unavailable", `No visualization exists for artifact id ${id}.`);
+    _kfShowVizPane(true);
+    return false;
+  }
   _kfActiveVizId = id;
   const frame = $("vizFrame");
-  if (!frame) return;
+  if (!frame) return false;
   frame.srcdoc = _kfVizShowSpec
     ? _kfSpecSrcDoc(v.type, v.spec)
     : _kfVizSrcDoc(v.type, v.spec);
@@ -259,6 +283,7 @@ function _kfRenderViz(id) {
     btn.textContent = _kfVizShowSpec ? "viz" : "spec";
   }
   _kfShowVizPane(true);
+  return true;
 }
 
 function _kfRenderVizTabs() {

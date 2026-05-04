@@ -1273,7 +1273,15 @@ function _kfOpenAiArtifact(id) {
   const artifact = chatArtifacts.find(a => a.id === Number(id));
   if (!artifact) return;
   if (artifact.action === "showVizById" && window.kfApi?.showVizById) {
-    window.kfApi.showVizById(artifact.args?.id || artifact.args);
+    const args = artifact.args || {};
+    const result = window.kfApi.showVizById(args?.id || args);
+    if (result?.error && args?.type && args?.spec != null && window.kfApi?.showViz) {
+      const restored = window.kfApi.showViz({ type: args.type, title: args.title || artifact.title, spec: args.spec });
+      if (restored?.error && typeof appendError === "function") appendError(`Could not open artifact: ${restored.error}`);
+    } else if (result?.error && typeof appendError === "function") {
+      appendError(`Could not open artifact: ${result.error}`);
+    }
+    if (typeof _kfSetSideTab === "function" && _kfIsMobileLayout()) _kfSetSideTab("map");
     return;
   }
   if (artifact.action === "activateGroupSet" && window.kfApi?.activateGroupSet) {
@@ -1318,6 +1326,7 @@ function _kfRecordAiArtifact(input = {}) {
   const existing = chatArtifacts.find(a => a.key === key);
   if (existing) {
     existing.subtitle = input.subtitle || existing.subtitle;
+    existing.args = input.args || existing.args;
     existing.updated_at = Date.now();
     _kfRenderChatArtifacts();
     return existing;

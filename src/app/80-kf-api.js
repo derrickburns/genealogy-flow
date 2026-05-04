@@ -1821,7 +1821,7 @@ window.kfApi = {
         title: v.title,
         subtitle: v.type,
         action: "showVizById",
-        args: { id },
+        args: { id, type: v.type, title: v.title, spec: v.spec },
         key: `viz:${id}`,
       });
     }
@@ -1832,8 +1832,8 @@ window.kfApi = {
     if (!id) { _kfShowVizPane(false); return { ok: true, closed: true }; }
     const v = _kfVizList.find(x => x.id === Number(id));
     if (!v) return { error: "no viz with id " + id };
-    _kfRenderViz(v.id);
-    return { ok: true, id: v.id };
+    const rendered = _kfRenderViz(v.id);
+    return rendered ? { ok: true, id: v.id } : { error: "visualization pane is not available" };
   },
   // List currently-rendered visualizations.
   listViz() {
