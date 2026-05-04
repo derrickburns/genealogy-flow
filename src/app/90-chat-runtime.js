@@ -666,6 +666,7 @@ function _kfCreateStreamingMarkerFilter() {
   const stripVisibleMarkers = (text, flush = false) => {
     pending += String(text || "");
     let out = "";
+    const markers = [];
     while (pending) {
       const start = _kfFirstMarkerStart(pending);
       if (start < 0) {
@@ -683,14 +684,49 @@ function _kfCreateStreamingMarkerFilter() {
         if (flush) pending = "";
         break;
       }
+      markers.push(pending.slice(start, end));
       pending = pending.slice(end);
     }
-    return out;
+    return { visible: out, markers };
   };
   return {
     push(delta) { return stripVisibleMarkers(delta, false); },
     flush() { return stripVisibleMarkers("", true); },
   };
+}
+
+function _kfChipIdentity(chip) {
+  return JSON.stringify({
+    label: chip?.label || "",
+    method: chip?.method || "",
+    args: chip?.args ?? null,
+    error: chip?._error || "",
+  });
+}
+
+function _kfMergeChatChips(existing = [], incoming = []) {
+  const merged = Array.isArray(existing) ? existing.slice() : [];
+  const seen = new Set(merged.map(_kfChipIdentity));
+  for (const chip of incoming || []) {
+    const key = _kfChipIdentity(chip);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(chip);
+  }
+  return merged;
+}
+
+function _kfAttachStreamedMarkers(pendingMsg, markers) {
+  if (!pendingMsg || !markers?.length) return false;
+  let changed = false;
+  for (const marker of markers) {
+    if (!String(marker || "").startsWith(KFCHIP_TAG)) continue;
+    const parsed = parseChips(marker);
+    if (!parsed.chips.length) continue;
+    pendingMsg.chips = _kfMergeChatChips(pendingMsg.chips, parsed.chips);
+    changed = true;
+  }
+  return changed;
 }
 
 // Lenient retry: if JSON.parse fails, try replacing raw newlines / tabs
@@ -920,9 +956,10 @@ async function runChatTurn(userText) {
           pending.content = "";
           sawDelta = true;
         }
-        const visibleDelta = markerFilter.push(delta);
-        if (visibleDelta) {
-          pending.content += visibleDelta;
+        const streamed = markerFilter.push(delta);
+        if (_kfAttachStreamedMarkers(pending, streamed.markers)) renderChat();
+        if (streamed.visible) {
+          pending.content += streamed.visible;
           renderChat();
         }
       }, pending, {
@@ -931,9 +968,10 @@ async function runChatTurn(userText) {
         contextQuestion: userText,
         currentUserText: userText,
       });
-      const trailingVisible = markerFilter.flush();
-      if (trailingVisible) {
-        pending.content += trailingVisible;
+      const trailing = markerFilter.flush();
+      if (_kfAttachStreamedMarkers(pending, trailing.markers)) renderChat();
+      if (trailing.visible) {
+        pending.content += trailing.visible;
         renderChat();
       }
     } catch (e) {
@@ -955,7 +993,7 @@ async function runChatTurn(userText) {
     // attach them to the message so renderChat shows clickable buttons.
     const chipParse = parseChips(stripped);
     pending.content = _kfPlainEnglishEventText(chipParse.stripped || (results.length ? "_using the data..._" : ""));
-    if (chipParse.chips.length) pending.chips = chipParse.chips;
+    if (chipParse.chips.length) pending.chips = _kfMergeChatChips(pending.chips, chipParse.chips);
     renderChat();
     if (!results.length) {
       await _kfStoreCachedAiAnswer(cacheContext, pending.content);
