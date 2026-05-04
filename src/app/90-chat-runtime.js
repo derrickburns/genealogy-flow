@@ -30,7 +30,7 @@ VISUALIZATION REQUESTS: When asked for any chart, graph, or visualization, produ
 For multi-page or multi-part visual output, emit one showViz call per page with short distinct titles. The app will create horizontally scrollable tabs for those pages, including on mobile.
 For network/graph visualizations use type "html" — a self-contained HTML page with the visualization library loaded from CDN and ALL data as an inline JavaScript variable (the frame cannot fetch external data). Keep network graphs to ≤200 nodes by focusing on a root person's closest relatives.
 
-Each user message is preceded by a context block describing what they're looking at: tree size, year range, root person, current playback year, currently selected person, and people visible at the current year. Use the context to disambiguate ("them", "her", "this place"); use the SQL database for everything beyond what's on screen. If the context includes a capped sample of visible markers, never treat the sample size as the total; use the explicit visible marker total and viewport count lines.
+Each first-pass user message is preceded by a compact context block. It always focuses on checked trees and year range; it includes root person, current playback year, selected-person, cluster, viewport, and marker-sample context only when the question needs that transient view state. Use the context to disambiguate ("them", "her", "this place"); use the SQL database for everything beyond what's on screen. If the context includes a capped sample of visible markers, never treat the sample size as the total; use the explicit visible marker total and viewport count lines.
 
 If the selected tree context mentions DEMO privacy, remember that living people are anonymized and retain birth years and birth locations only; names, relationships, full dates, and other living-person details have been removed for privacy. Do not infer that the source tree lacks living people. If the data quality concerns setting is off, do not recommend weak-evidence, chronology-warning, or data-quality visualizations unless the user explicitly asks for that kind of review; if it is on, the user is interested in those concerns.
 
@@ -196,13 +196,13 @@ Style: keep prose short. After a tool call, you don't need to repeat what you di
 
 let _chatNewSession = true;
 const CHAT_REQUEST_TIMEOUT_MS = 90000;
-const CHAT_HISTORY_MAX_CHARS = 32000;
+const CHAT_HISTORY_MAX_CHARS = 24000;
 const CHAT_MESSAGE_MAX_CHARS = 6000;
-const CHAT_TOOL_RESULT_MAX_CHARS = 12000;
-const CHAT_TOOL_ROUND_MAX_CHARS = 36000;
-const CHAT_TOOL_ROW_LIMIT = 40;
+const CHAT_TOOL_RESULT_MAX_CHARS = 8000;
+const CHAT_TOOL_ROUND_MAX_CHARS = 18000;
+const CHAT_TOOL_ROW_LIMIT = 24;
 const AI_CACHE_MODEL = "claude-sonnet-4-6";
-const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v4";
+const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v5";
 const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v2";
 const AI_CACHE_INDEX_TTL_MS = 5 * 60 * 1000;
 const _kfAiCacheEntries = new Map();
@@ -278,7 +278,6 @@ async function _kfAiCacheContextForQuestion(question) {
     model: AI_CACHE_MODEL,
     prompt_version: AI_CACHE_PROMPT_VERSION,
     analysis_version: AI_CACHE_ANALYSIS_VERSION,
-    app_commit: appCommit,
   }));
   return {
     cache_key: cacheKey,
@@ -326,7 +325,6 @@ async function _kfRefreshAiCacheIndex(opts = {}) {
       model: AI_CACHE_MODEL,
       prompt_version: AI_CACHE_PROMPT_VERSION,
       analysis_version: AI_CACHE_ANALYSIS_VERSION,
-      app_commit: fakeContext.app_commit,
       standard_questions,
       limit: 60,
     });
@@ -437,18 +435,22 @@ function _kfChatMessageIsForClaude(m) {
   return !!text && text !== "_thinking..._";
 }
 
-function _kfBuildClaudeMessages(userMsg, pendingMsg = null) {
-  const ctx = buildChatContext();
-  const dataCtx = buildQuestionDataContext(userMsg);
+function _kfBuildClaudeMessages(userMsg, pendingMsg = null, opts = {}) {
+  const includeViewContext = opts.includeViewContext !== false;
+  const contextQuestion = opts.contextQuestion || userMsg;
+  const ctx = includeViewContext ? buildChatContext(contextQuestion, opts) : "";
+  const dataCtx = includeViewContext ? buildQuestionDataContext(contextQuestion) : "";
   const fullCtx = [ctx, dataCtx].filter(Boolean).join("\n\n");
   const requestText = fullCtx ? `Context for current view:\n${fullCtx}\n\nQuestion: ${userMsg}` : userMsg;
   const prior = [];
   let currentUserIdx = -1;
+  const currentUserText = String(opts.currentUserText ?? userMsg ?? "").trim();
   for (let i = chatHistory.length - 1; i >= 0; i--) {
     const m = chatHistory[i];
     if (m === pendingMsg) continue;
     if (m.role === "user") {
-      if (String(m.content || "").trim() === String(userMsg || "").trim()) currentUserIdx = i;
+      const text = String(m.content || "").trim();
+      if (text === String(userMsg || "").trim() || text === currentUserText) currentUserIdx = i;
       break;
     }
   }
@@ -491,8 +493,8 @@ function _kfTextFromSsePayload(payload) {
   return "";
 }
 
-async function callClaudeStream(userMsg, onDelta, pendingMsg = null) {
-  const messages = _kfBuildClaudeMessages(userMsg, pendingMsg);
+async function callClaudeStream(userMsg, onDelta, pendingMsg = null, opts = {}) {
+  const messages = _kfBuildClaudeMessages(userMsg, pendingMsg, opts);
   const requestBody = JSON.stringify({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
@@ -814,7 +816,12 @@ async function runChatTurn(userText) {
         }
         pending.content += delta;
         renderChat();
-      }, pending);
+      }, pending, {
+        includeViewContext: round === 0,
+        cacheSafe: !!cacheContext,
+        contextQuestion: userText,
+        currentUserText: userText,
+      });
     } catch (e) {
       const message = e?.message || String(e);
       if (typeof _kfRecordClientError === "function") {

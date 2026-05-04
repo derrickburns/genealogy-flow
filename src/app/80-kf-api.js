@@ -408,10 +408,10 @@ function buildQuestionDataContext(userMsg) {
   const living = /\b(living|alive)\b/.test(lower);
   const blocks = [];
   for (const surname of surnames.slice(0, 2)) {
-    const result = _kfFindPeopleRows({ surname, living, placeTerms, limit: 40 });
+    const result = _kfFindPeopleRows({ surname, living, placeTerms, limit: 24 });
     const label = surname.charAt(0).toUpperCase() + surname.slice(1);
     const lines = [
-      `Database lookup for surname ${label} (scoped to checked trees): ${result.total} ${living ? "living/presumed-living " : ""}match${result.total === 1 ? "" : "es"}${result.truncated ? "; showing first 40" : ""}.`,
+      `Database lookup for surname ${label} (scoped to checked trees): ${result.total} ${living ? "living/presumed-living " : ""}match${result.total === 1 ? "" : "es"}${result.truncated ? "; showing first 24" : ""}.`,
     ];
     if (placeTerms.length) lines.push(`Place terms recognized from question: ${placeTerms.join(", ")}.`);
     for (const row of result.rows) {

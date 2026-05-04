@@ -553,6 +553,16 @@ function _kfShowClusterCard(c, opts = {}) {
   const orderText = focusName
     ? `Ordered by relation to ${focusName}${clusterMode === "tree" ? ", grouped by tree" : ""}`
     : "Ordered by relation, evidence quality, and event year";
+  _kfLastClusterContext = {
+    title,
+    year: Math.floor(curYear),
+    mode: _kfClusterModeLabel(),
+    count: rows.length,
+    breakdown: _kfClusterSliceEntries(c)
+      .filter(entry => entry.count)
+      .map(entry => `${entry.label}: ${entry.count}`),
+    people: rows.slice(0, 20).map(r => [r.name, r.rel && r.rel !== "self" ? r.rel : "", r.life, r.place].filter(Boolean).join(" / ")),
+  };
   _kfSetActiveClusterLabel(title);
   _clusterEl.innerHTML =
     `<div class="cluster-head">` +
@@ -1372,9 +1382,81 @@ function _kfLoggedInUserContextLine() {
   return `Logged-in user: ${name ? `${name} <${email}>` : email} (${tierLabel}).`;
 }
 
-function buildChatContext() {
+let _kfLastClusterContext = null;
+
+function _kfChatContextProfile(userMsg = "", opts = {}) {
+  const q = String(userMsg || "").toLowerCase();
+  const cacheSafe = !!opts.cacheSafe;
+  const wantsBroadTree = /\b(immigration|migration waves?|migration patterns?|family story|summari[sz]e|deepest|slavery|war|historical|rural|urban|crossroads|stable branches|distant marriages|moved together|co-?migrat|farthest|jumps?)\b/.test(q);
+  const wantsMap = /\b(map|marker|visible|shown|current view|current year|viewport|screen|where|location|place|state|city|cluster|nearby|around|all over|same time|together)\b/.test(q);
+  const wantsList = /\b(who|which|list|people|persons|markers|visible people|shown|everyone|all|same time|together|all over)\b/.test(q);
+  return {
+    includeUser: !cacheSafe,
+    includeSelected: !cacheSafe && highlightedDwell >= 0 && /\b(selected|this person|this marker|marker|him|her|they|them|relation|relationship|lineage|family|parents|children|spouse|why|where is|who is|show|center)\b/.test(q),
+    includeVisibleCounts: !cacheSafe && timelineLoaded && wantsMap,
+    includeViewport: !cacheSafe && timelineLoaded && /\b(viewport|screen|current map|on map|visible|shown)\b/.test(q),
+    includeTopPlaces: !cacheSafe && timelineLoaded && wantsMap,
+    includeMarkerSample: !cacheSafe && timelineLoaded && wantsMap && wantsList && !wantsBroadTree,
+    includeCluster: !cacheSafe && /\b(cluster|this group|these people|selected group)\b/.test(q),
+    markerSampleLimit: Number.isFinite(Number(opts.markerSampleLimit)) ? Math.max(0, Math.min(40, Number(opts.markerSampleLimit))) : 20,
+  };
+}
+
+function _kfAppendVisibleMarkerContext(lines, profile) {
+  if (!profile.includeVisibleCounts && !profile.includeTopPlaces && !profile.includeMarkerSample) return;
+  const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
+  const visibleRows = visible?.rows || [];
+  const totalVisible = visible?.count ?? visibleRows.length;
+  lines.push(`Visible map marker total after current tree/filter/year: ${totalVisible.toLocaleString()} people.`);
+  if (profile.includeViewport) {
+    const viewportVisible = typeof _kfVisibleMarkerViewportCount === "function"
+      ? _kfVisibleMarkerViewportCount(visibleRows)
+      : totalVisible;
+    if (viewportVisible !== totalVisible) {
+      lines.push(`Current map viewport contains ${viewportVisible.toLocaleString()} of those ${totalVisible.toLocaleString()} people; legend counts are shown as viewport / total.`);
+    }
+  }
+  if (visible?.sourceCounts?.size) {
+    const sources = Array.from(visible.sourceCounts.entries())
+      .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+      .slice(0, 5)
+      .map(([name, n]) => `${String(name || "unknown").replace(/\.ged$/i, "")}: ${n}`);
+    if (sources.length) lines.push(`Visible marker counts by tree: ${sources.join("; ")}.`);
+  }
+  if (profile.includeTopPlaces && typeof _kfVisibleRowsForYear === "function") {
+    const yearly = _kfVisibleRowsForYear(Math.floor(curYear));
+    const places = Array.from(yearly.placeCounts.entries())
+      .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+      .slice(0, 8)
+      .map(([place, n]) => `${place}: ${n}`);
+    if (places.length) lines.push(`Top places among visible markers: ${places.join("; ")}.`);
+  }
+  if (profile.includeMarkerSample && profile.markerSampleLimit > 0) {
+    const showSource = typeof _kfSelectedVizSourceList === "function" && _kfSelectedVizSourceList().length > 1;
+    const values = [];
+    for (const row of visibleRows) {
+      const source = showSource && row.source ? `; ${row.source}` : "";
+      values.push(`${row.ind.name} (${row.year}, ${row.place || "unknown place"}${source})`);
+      if (values.length >= profile.markerSampleLimit) break;
+    }
+    if (values.length > 0) {
+      lines.push(`Small sample of rendered map markers only (first ${values.length.toLocaleString()} of ${totalVisible.toLocaleString()}, not the total): ${values.join("; ")}.`);
+    }
+  }
+}
+
+function _kfAppendClusterContext(lines, profile) {
+  if (!profile.includeCluster || !_kfLastClusterContext) return;
+  const c = _kfLastClusterContext;
+  lines.push(`Selected cluster: ${c.title}; ${c.count.toLocaleString()} people visible in ${c.year}; mode ${c.mode}.`);
+  if (c.breakdown.length) lines.push(`Cluster breakdown: ${c.breakdown.join("; ")}.`);
+  if (c.people.length) lines.push(`Cluster people sample: ${c.people.join("; ")}${c.count > c.people.length ? `; plus ${c.count - c.people.length} more` : ""}.`);
+}
+
+function buildChatContext(userMsg = "", opts = {}) {
+  const profile = _kfChatContextProfile(userMsg, opts);
   const lines = [];
-  lines.push(_kfLoggedInUserContextLine());
+  if (profile.includeUser) lines.push(_kfLoggedInUserContextLine());
   if (lastIndividuals) {
     lines.push(`Tree: ${lastIndividuals.length.toLocaleString()} individuals, ${dwellY ? dwellY.length.toLocaleString() : 0} events.`);
     lines.push(`Year range: ${minYear}-${maxYear}.`);
@@ -1386,58 +1468,23 @@ function buildChatContext() {
       lines.push("DEMO privacy note: living people are anonymized and retain birth years and birth locations only; names, relationships, full dates, and other living-person details are intentionally removed.");
     }
   }
-  lines.push(`Data quality concerns setting: ${_kfShowDataQualityConcerns ? "on" : "off"}. This indicates ${_kfShowDataQualityConcerns ? "interest" : "lack of current interest"} in weak evidence, chronology warnings, and data-quality visualizations.`);
-  if (lastRootId) {
-    const root = lastIndiById?.get(lastRootId);
-    if (root) lines.push(`Root: ${root.name} (${root.birth_year ?? "?"}-${root.death_year ?? "?"}).`);
+  if (!opts.cacheSafe) {
+    lines.push(`Data quality concerns setting: ${_kfShowDataQualityConcerns ? "on" : "off"}. This indicates ${_kfShowDataQualityConcerns ? "interest" : "lack of current interest"} in weak evidence, chronology warnings, and data-quality visualizations.`);
+    if (lastRootId) {
+      const root = lastIndiById?.get(lastRootId);
+      if (root) lines.push(`Root: ${root.name} (${root.birth_year ?? "?"}-${root.death_year ?? "?"}).`);
+    }
+    lines.push(`Currently viewing year: ${Math.floor(curYear)}, year-window: ${dwellWindow}y back.`);
+    if (typeof _kfViewModeLabel === "function") lines.push(`Current map filters: ${_kfViewModeLabel()}.`);
   }
-  lines.push(`Currently viewing year: ${Math.floor(curYear)}, year-window: ${dwellWindow}y back.`);
-  if (typeof _kfViewModeLabel === "function") lines.push(`Current map filters: ${_kfViewModeLabel()}.`);
-  if (highlightedDwell >= 0 && lastIndividuals) {
+  if (profile.includeSelected && highlightedDwell >= 0 && lastIndividuals) {
     const sel = lastIndividuals[dwellIndi[highlightedDwell]];
     if (sel) {
       const place = dwellPlace[highlightedDwell] >= 0 ? placesList[dwellPlace[highlightedDwell]] : "";
       lines.push(`Selected: ${sel.name} (${sel.birth_year ?? "?"}-${sel.death_year ?? "?"})${place ? ", at " + place : ""}, dwell year ${dwellY[highlightedDwell]}.`);
     }
   }
-  // Visible people in the actual map marker set: one marker per person,
-  // using the latest valid dwell at the current year after all filters.
-  if (timelineLoaded) {
-    const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
-    const visibleRows = visible?.rows || [];
-    const totalVisible = visible?.count ?? visibleRows.length;
-    const viewportVisible = typeof _kfVisibleMarkerViewportCount === "function"
-      ? _kfVisibleMarkerViewportCount(visibleRows)
-      : totalVisible;
-    lines.push(`Visible map marker total after current tree/filter/year: ${totalVisible.toLocaleString()} people.`);
-    if (viewportVisible !== totalVisible) {
-      lines.push(`Current map viewport contains ${viewportVisible.toLocaleString()} of those ${totalVisible.toLocaleString()} people; legend counts are shown as viewport / total.`);
-    }
-    if (visible?.sourceCounts?.size) {
-      const sources = Array.from(visible.sourceCounts.entries())
-        .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
-        .slice(0, 5)
-        .map(([name, n]) => `${String(name || "unknown").replace(/\.ged$/i, "")}: ${n}`);
-      if (sources.length) lines.push(`Visible marker counts by tree: ${sources.join("; ")}.`);
-    }
-    if (typeof _kfVisibleRowsForYear === "function") {
-      const yearly = _kfVisibleRowsForYear(Math.floor(curYear));
-      const places = Array.from(yearly.placeCounts.entries())
-        .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
-        .slice(0, 8)
-        .map(([place, n]) => `${place}: ${n}`);
-      if (places.length) lines.push(`Top places among visible markers: ${places.join("; ")}.`);
-    }
-    const showSource = typeof _kfSelectedVizSourceList === "function" && _kfSelectedVizSourceList().length > 1;
-    const values = [];
-    for (const row of visibleRows) {
-      const source = showSource && row.source ? `; ${row.source}` : "";
-      values.push(`${row.ind.name} (${row.year}, ${row.place || "unknown place"}${source})`);
-      if (values.length >= 80) break;
-    }
-    if (values.length > 0) {
-      lines.push(`Sample of rendered map markers only (first ${values.length.toLocaleString()} of ${totalVisible.toLocaleString()}, not the total): ${values.join("; ")}.`);
-    }
-  }
+  _kfAppendVisibleMarkerContext(lines, profile);
+  _kfAppendClusterContext(lines, profile);
   return lines.join("\n");
 }
