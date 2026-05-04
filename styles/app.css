@@ -64,8 +64,8 @@
   #yearWatermark { position:absolute; z-index:3; pointer-events:none; top:10px; left:0; right:0; text-align:center; font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; font-variant-numeric:tabular-nums; font-weight:800; font-size:48px; line-height:1; color:rgba(20,30,55,0.18); user-select:none; letter-spacing:0.05em; }
   .mobileContextStrip { display:none; }
   #ui {
-    background:rgba(255,255,255,0.92); border:1px solid #c0ccd8; border-radius:10px;
-    padding:10px 14px; backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.12);
+    flex:0 0 auto; background:rgba(255,255,255,0.94); border:1px solid #c0ccd8; border-top:0; border-radius:0 0 10px 10px;
+    padding:9px 14px; backdrop-filter:blur(8px); box-shadow:0 -1px 0 rgba(255,255,255,0.72) inset;
     display:flex; flex-direction:column; gap:8px;
   }
   #ui .uirow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
@@ -83,6 +83,8 @@
   .hoverTip .tipChain .step { display:flex; gap:4px; }
   .hoverTip .tipChain .lbl { color:#888; font-style:italic; min-width:50px; }
   .hoverTip .tipChain .nm { color:#1c2433; }
+  #mapLegend { max-width:40ch !important; white-space:normal; overflow-wrap:anywhere; }
+  #mapLegend div { max-width:40ch; white-space:normal; overflow-wrap:anywhere; }
   .rangeWrap { position:relative; flex:1 1 auto; min-width:120px; padding:18px 0 14px; display:flex; align-items:center; }
   #yearHist { position:absolute; left:0; right:0; bottom:14px; height:18px; width:100%; pointer-events:none; opacity:0.55; }
   #quickChips { display:flex; flex-wrap:wrap; gap:4px; padding:2px 4px; align-items:center; font-size:12.75px; }
@@ -368,10 +370,11 @@
   #chatHistory .msg.tool .body p:last-child { margin-bottom:0; }
   #chatHistory .msg.bot .body a { color:#2a4a8c; }
   #chatHistory .empty { color:#888; font-style:italic; padding:18px 4px 0; }
-  #chatHistory .chatChips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
-  #chatHistory .chatChip { padding:5px 10px; border:1px solid #2a4a8c; background:#e8eef9; color:#2a4a8c; border-radius:14px; font:inherit; font-size:11px; font-weight:600; cursor:pointer; line-height:1.2; }
-  #chatHistory .chatChip:hover { background:#2a4a8c; color:#fff; }
-  #chatHistory .chatChip:active { transform:translateY(1px); }
+  .chatChips { display:flex; flex-wrap:wrap; gap:6px; }
+  #chatHistory .chatChips { margin-top:6px; }
+  .chatChip { max-width:100%; box-sizing:border-box; padding:5px 10px; border:1px solid #2a4a8c; background:#e8eef9; color:#2a4a8c; border-radius:14px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; line-height:1.25; text-align:left; white-space:normal; overflow-wrap:anywhere; appearance:none; transition:background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease; }
+  .chatChip:hover { background:#2a4a8c; color:#fff; border-color:#2a4a8c; }
+  .chatChip:active { transform:none; }
   #chatHistory .chatInlineLink { display:inline; border:0; background:transparent; color:#1e40af; font:inherit; font-weight:700; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; padding:0; cursor:pointer; }
   #chatHistory .chatInlineLink:hover { color:#163172; background:transparent; }
   /* "spent" = chip has been clicked at least once. Faded so the user can
@@ -428,9 +431,11 @@
   #chatLock { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:32px 16px; color:#7a8aa0; font-size:13px; text-align:center; flex:1; }
   #chatLock.hidden { display:none; }
   #chatScope { flex:0 0 auto; border-bottom:1px solid #e0e6ee; background:#fff; color:#334155; padding:6px 10px; font-size:11px; line-height:1.35; }
+  #chatScope[hidden] { display:none !important; }
+  #chatScope .chatChips { margin:0; }
   .chat-scope-actions { display:flex; flex-wrap:wrap; gap:5px; }
-  .chat-scope-question { border:1px solid #b9c8dd; border-radius:999px; background:#fff; color:#1f3a78; padding:4px 8px; font:inherit; font-size:10.5px; font-weight:700; cursor:pointer; }
-  .chat-scope-question:hover { background:#e8f0ff; border-color:#7290c8; }
+  .chat-scope-question { border-color:#b9c8dd; background:#fff; color:#1f3a78; padding:4px 8px; font-size:10.5px; }
+  .chat-scope-question:hover { background:#e8f0ff; border-color:#7290c8; color:#14306a; }
   #sideTabs { display:flex; gap:0; border-bottom:1px solid #e0e6ee; background:#f4f6fa; flex-shrink:0; overflow-x:auto; scrollbar-width:none; }
   #sideTabs::-webkit-scrollbar { display:none; }
   #sideTabs button { flex:0 0 auto; padding:8px 10px; border:0; border-right:1px solid #e0e6ee; background:transparent; color:#566480; font:inherit; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; }
@@ -707,13 +712,13 @@
     .mobileConceptCard b { display:block; color:#102033; font-size:11px; line-height:1.2; }
     .mobileConceptCard span { display:block; margin-top:2px; color:#64748b; font-size:10.5px; line-height:1.35; }
     #personPane, #selectedCluster, #tourPane, #chatHistory { -webkit-overflow-scrolling:touch; }
-    #chatScope { display:none !important; }
     #selectedPerson { font-size:12px; }
     #chatInput { min-height:74px; font-size:16px; }
     #chatBar button { min-height:38px; padding:7px 10px; }
-    #chatScope { font-size:11px; max-height:96px; overflow:auto; }
-    .chat-scope-actions { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(170px, 82vw); overflow-x:auto; gap:7px; padding-bottom:2px; scroll-snap-type:x proximity; }
-    .chat-scope-question { min-height:38px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; }
+    #chatScope { font-size:11px; max-height:88px; overflow:hidden; padding:6px 8px; }
+    .chat-scope-actions { flex-wrap:nowrap; overflow-x:auto; gap:7px; padding-bottom:3px; scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+    .chat-scope-actions::-webkit-scrollbar { display:none; }
+    .chat-scope-question { flex:0 0 auto; max-width:72vw; min-height:36px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; }
     #welcome { width:calc(100vw - 42px); top:42%; padding:24px 20px; box-sizing:border-box; }
     .year-digest-metrics { grid-template-columns:repeat(2, 1fr); }
   }

@@ -277,7 +277,10 @@ async function _kfAskQuestion(text) {
 function _kfBindQuestionChips(root) {
   if (!root) return;
   root.querySelectorAll(".ux-question[data-question]").forEach(btn => {
-    btn.addEventListener("click", () => _kfAskQuestion(btn.dataset.question || ""));
+    btn.addEventListener("click", () => {
+      const text = btn.dataset.question || "";
+      _kfAskQuestion(typeof _kfAugmentAiSuggestionQuestion === "function" ? _kfAugmentAiSuggestionQuestion(text) : text);
+    });
   });
 }
 

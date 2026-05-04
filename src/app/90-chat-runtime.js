@@ -8,6 +8,7 @@ HARD CONSTRAINTS — never violate these:
 5. You have NO access to design tools, canvas editors, or diagramming software. Do not mention Pencil, Figma, Miro, or any design/canvas tool. Do not offer to create diagrams outside of KFCALL showViz.
 
 SUGGESTION LISTS: When listing visualization or analysis ideas, ALWAYS present each one as a clickable chip using <<KFCHIP:{"label":"...","method":"chat","args":"..."}>>. The args value must be the complete self-contained request that produces the visualization (e.g., "Show me a family network graph centered on [root person], showing 3 generations of parents, children, and spouses"). Never list suggestions as plain bullet points — every suggestion must be a button the user can click.
+When the user clicks a suggestion chip, assume they want both a short written explanation and a visual aid when the data supports one. Use showViz, setClusterMode, centerOn, or another visual action when it would clarify the answer; if no visual would help, say that briefly.
 
 When you name a specific person, place, cluster, or follow-up action that would help the user inspect the current view, include a short KFCHIP for it instead of leaving it as passive text. Prefer chips such as selectPerson, centerOn, setClusterMode, showYearTour, or chat with a complete follow-up request. Use showOutliers only when the data quality concerns setting is on or the user explicitly asks for data-quality review.
 
@@ -202,7 +203,7 @@ const CHAT_TOOL_RESULT_MAX_CHARS = 8000;
 const CHAT_TOOL_ROUND_MAX_CHARS = 18000;
 const CHAT_TOOL_ROW_LIMIT = 24;
 const AI_CACHE_MODEL = "claude-sonnet-4-6";
-const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v5";
+const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v6";
 const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v2";
 const AI_CACHE_INDEX_TTL_MS = 5 * 60 * 1000;
 const _kfAiCacheEntries = new Map();
@@ -222,7 +223,11 @@ function _kfBuildCommitForCache() {
 }
 
 function _kfNormalizeQuestionForCache(text) {
-  return String(text || "").trim().replace(/\s+/g, " ");
+  let out = String(text || "").trim();
+  if (typeof _KF_AI_VISUALIZATION_SUFFIX !== "undefined" && out.endsWith(_KF_AI_VISUALIZATION_SUFFIX)) {
+    out = out.slice(0, -_KF_AI_VISUALIZATION_SUFFIX.length).trim();
+  }
+  return out.replace(/\s+/g, " ");
 }
 
 function _kfIsStandardAiQuestion(text) {
@@ -903,31 +908,12 @@ $("chatTools").addEventListener("click", () => {
 
 function autoIntroOnce() {
   if (chatHistory.length > 0) return;
-  if (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) {
-    chatHistory.push({
-      role: "bot",
-      content: "Ask a question about the selected trees, people, clusters, or migration story.",
-    });
-    renderChat();
-    return;
-  }
-  const standardQuestionChips = (typeof _KF_STANDARD_AI_QUESTIONS !== "undefined" ? _KF_STANDARD_AI_QUESTIONS : [])
-    .map(q => ({ label: q.label, method: "sendChat", args: { text: q.text } }));
   const msg = {
     role: "bot",
-    content: "Here are useful ways to explore this tree:",
-    chips: [
-      { label: "Lineage clusters",   method: "setClusterMode", args: { mode: "pie" } },
-      { label: "By US state",        method: "setClusterMode", args: { mode: "state" } },
-      { label: "Parent knowledge",   method: "setClusterMode", args: { mode: "parents" } },
-      { label: "Gender breakdown",   method: "setClusterMode", args: { mode: "gender" } },
-      { label: "Connect blood kin",  method: "setKinLines",    args: { n: 5 } },
-      { label: "Summarize my tree",  method: "sendChat",       args: { text: "Summarize this tree: key ancestors, geographic spread, and time range." } },
-      { label: "Migration patterns", method: "sendChat",       args: { text: "What migration patterns do you see in this tree?" } },
-      ...standardQuestionChips,
-    ],
+    content: "Choose a suggestion above or ask your own question about the selected trees, people, clusters, or migration story.",
   };
   chatHistory.push(msg);
+  if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
   renderChat();
 }
 $("chatClear").addEventListener("click", async () => {

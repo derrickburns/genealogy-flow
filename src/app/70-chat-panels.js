@@ -1141,7 +1141,7 @@ function renderChat() {
     const rawContent = m.role === "user" ? m.content : _kfHideToolMarkersInChatText(m.content);
     const body = m.role === "user" ? escChat(rawContent) : renderMd(_kfPlainEnglishEventText(rawContent));
     const chips = (m.chips && m.chips.length)
-      ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}">${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}</button>`).join("")}</div>`
+      ? `<div class="chatChips">${m.chips.map((c, ci) => `<button class="chatChip${c._spent ? " spent" : ""}" data-mi="${mi}" data-ci="${ci}" title="${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}">${escChat(_kfPlainEnglishEventText(c.label || "(chip)"))}</button>`).join("")}</div>`
       : "";
     const kindClass = m.kind === "tool" ? " tool" : m.kind === "action" ? " action" : "";
     const who = m.role === "user" ? "you" : m.kind === "tool" ? "tool" : m.kind === "action" ? "action" : "claude";
@@ -1211,7 +1211,7 @@ async function _kfDispatchChip(chip) {
     return;
   }
   try {
-    const args = chip.args;
+    const args = _kfChipDispatchArgs(chip);
     const r = Array.isArray(args)
       ? await fn.apply(window.kfApi, args)
       : await fn.call(window.kfApi, args);
@@ -1227,6 +1227,28 @@ async function _kfDispatchChip(chip) {
   } catch (e) {
     _kfReportChipResult(chip, { error: e?.message || String(e) });
   }
+}
+
+const _KF_AI_VISUALIZATION_SUFFIX =
+  "Answer in concise prose. When a map view, chart, timeline, network, or diagram would make the answer clearer, also create it as a visualization tab or activate the appropriate map view. If no visualization would help, say so briefly.";
+
+function _kfAugmentAiSuggestionQuestion(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (raw.includes(_KF_AI_VISUALIZATION_SUFFIX)) return raw;
+  return `${raw}\n\n${_KF_AI_VISUALIZATION_SUFFIX}`;
+}
+
+function _kfChipDispatchArgs(chip) {
+  const method = String(chip?.method || "");
+  const args = chip?.args;
+  if (method !== "chat" && method !== "sendChat") return args;
+  if (typeof args === "string") return _kfAugmentAiSuggestionQuestion(args);
+  if (args && typeof args === "object" && !Array.isArray(args)) {
+    const text = typeof args.text === "string" ? args.text : "";
+    return text ? { ...args, text: _kfAugmentAiSuggestionQuestion(text) } : args;
+  }
+  return args;
 }
 
 // Surface chip dispatch outcomes inline in the chat so the user knows
@@ -1320,20 +1342,35 @@ function _kfStandardAiQuestions() {
   return _KF_STANDARD_AI_QUESTIONS.map(q => q.text);
 }
 
+function _kfQuestionDef(label, text) {
+  return { label, text };
+}
+
 function _kfChatScopeQuestions(root, selected, visible) {
   const y = Math.floor(curYear);
   const questions = [
-    `Explain this year in plain language.`,
-    `Why are these people visible in ${y}?`,
-    `Summarize the migration story for the visible people in ${y}.`,
-    `Explain the biggest place or cluster pattern in ${y}.`,
+    _kfQuestionDef("This year", `Explain this year in plain language.`),
+    _kfQuestionDef("Visible people", `Why are these people visible in ${y}?`),
+    _kfQuestionDef("Migration story", `Summarize the migration story for the visible people in ${y}.`),
+    _kfQuestionDef("Cluster pattern", `Explain the biggest place or cluster pattern in ${y}.`),
     ..._kfStandardAiQuestions(),
   ];
-  if (_kfShowDataQualityConcerns) questions.push(`Find the weakest location evidence in the checked trees at ${y}.`);
-  if (selected?.name) questions.unshift(`Why is ${selected.name} shown here in ${y}?`);
-  else if (root?.name) questions.unshift(`What should I notice about ${root.name}'s family in ${y}?`);
-  if (visible?.count > 500) questions.push(`Give me the simplest way to understand these ${visible.count} visible people.`);
-  return questions.slice(0, 12);
+  if (_kfShowDataQualityConcerns) questions.push(_kfQuestionDef("Weak evidence", `Find the weakest location evidence in the checked trees at ${y}.`));
+  if (selected?.name) questions.unshift(_kfQuestionDef("Selected person", `Why is ${selected.name} shown here in ${y}?`));
+  else if (root?.name) questions.unshift(_kfQuestionDef("Home person", `What should I notice about ${root.name}'s family in ${y}?`));
+  if (visible?.count > 500) questions.push(_kfQuestionDef("Simplify view", `Give me the simplest way to understand these ${visible.count} visible people.`));
+  const out = [];
+  const seen = new Set();
+  for (const q of questions) {
+    const item = typeof q === "string"
+      ? (_KF_STANDARD_AI_QUESTIONS.find(s => s.text === q) || _kfQuestionDef(q, q))
+      : q;
+    const text = String(item.text || "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push({ label: item.label || text, text });
+  }
+  return out.slice(0, 12);
 }
 
 function _kfBindChatScopeQuestions() {
@@ -1342,7 +1379,7 @@ function _kfBindChatScopeQuestions() {
     btn.addEventListener("click", () => {
       const text = btn.getAttribute("data-chat-scope-question") || "";
       if (!text) return;
-      if (typeof _kfAskQuestion === "function") _kfAskQuestion(text);
+      if (typeof _kfAskQuestion === "function") _kfAskQuestion(_kfAugmentAiSuggestionQuestion(text));
       else {
         chatInputEl.value = text;
         chatInputEl.focus();
@@ -1353,7 +1390,7 @@ function _kfBindChatScopeQuestions() {
 
 function _kfRefreshChatScope() {
   if (!chatScopeEl) return;
-  if (_kfIsMobileLayout() || !timelineLoaded || !lastIndividuals) {
+  if (!timelineLoaded || !lastIndividuals) {
     chatScopeEl.hidden = true;
     chatScopeEl.innerHTML = "";
     return;
@@ -1364,7 +1401,7 @@ function _kfRefreshChatScope() {
   const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
   const questions = _kfChatScopeQuestions(root, selected, visible);
   chatScopeEl.innerHTML = questions.length
-    ? `<div class="chat-scope-actions" aria-label="Suggested questions">${questions.map(q => `<button type="button" class="chat-scope-question" data-chat-scope-question="${escChat(q)}">${escChat(q)}</button>`).join("")}</div>`
+    ? `<div class="chatChips chat-scope-actions" aria-label="Suggested questions">${questions.map(q => `<button type="button" class="chatChip chat-scope-question" data-chat-scope-question="${escChat(q.text)}" title="${escChat(q.text)}">${escChat(q.label)}</button>`).join("")}</div>`
     : "";
   _kfBindChatScopeQuestions();
 }
