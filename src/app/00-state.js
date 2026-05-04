@@ -22,6 +22,10 @@ function _kfSetPlayButtonLabel() {
 // path (Upload Tree button, drag-drop). Empty disables.
 const DEMO_GED_URL = "/api/demo";
 let _chatProxyOk = null; // hoisted early; detectChatProxy() is called before its declaration site
+let _clerkToken = null;
+let _clerkUserTier = "anon";
+let _clerkInstance = null;
+let _kfDerivedCacheReady = false;
 const _kfClientErrors = [];
 function _kfRecordClientError(entry) {
   _kfClientErrors.push({ at: new Date().toISOString(), ...entry });

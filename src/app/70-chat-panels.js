@@ -32,6 +32,11 @@ const _mobileSheetTabsEl = $("sideTabs");
 const _mobileSheetTitleEl = $("mobileSheetTitle");
 let _kfSuppressSideTabClickUntil = 0;
 let _kfActiveSideTab = "chat";
+let _kfChatScopePendingTap = null;
+let _kfChatScopeDispatching = false;
+let _kfChatScopeLastHandledAt = 0;
+let _kfChatScopeLastRenderKey = "";
+let _kfChatMoreQuestionsOpen = false;
 
 function _kfPeopleControlsSummaryText() {
   const show = $("showFilterChoice")?.value || "all";
@@ -190,7 +195,7 @@ function _kfBumpMobileSheetForTab(tab) {
 function _kfSetSideTab(tab) {
   let next = tab === "map" || tab === "person" || tab === "cluster" || tab === "trees" || tab === "tour" ? tab : "chat";
   if (next === "map" && !_kfIsMobileLayout()) next = "chat";
-  if (next === "tour" && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
+  if (next === "tour" && _kfDerivedCacheReady && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
   if (_kfIsMobileLayout() && next !== "map" && playing) {
     if (typeof _kfSetPlayback === "function") _kfSetPlayback(false, { clearStop: true });
     else {
@@ -214,7 +219,7 @@ document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
   });
 });
 if (_kfIsMobileLayout()) _kfMarkMapTabActive();
-else _kfSetSideTab("chat");
+else _kfUpdateMobileSheetTitle("chat");
 _kfSetMobileSheetState("peek");
 _kfSyncMobileControlHeight();
 window.addEventListener("resize", () => {
@@ -1847,12 +1852,6 @@ const _KF_STANDARD_AI_QUESTIONS = [
     text: "Where are the biggest unexplained migration jumps? Flag jumps with large time gaps between records and avoid implying continuous travel across the whole gap.",
   },
 ];
-
-let _kfChatScopePendingTap = null;
-let _kfChatScopeDispatching = false;
-let _kfChatScopeLastHandledAt = 0;
-let _kfChatScopeLastRenderKey = "";
-let _kfChatMoreQuestionsOpen = false;
 
 function _kfStandardAiQuestions() {
   return _KF_STANDARD_AI_QUESTIONS.map(q => q.text);

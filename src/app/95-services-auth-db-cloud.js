@@ -146,9 +146,6 @@ requestAnimationFrame(() => {
 });
 
 // ---- Clerk auth integration ----
-let _clerkToken = null;
-let _clerkUserTier = "anon";
-let _clerkInstance = null;
 let _kfAuthTokenRetryCount = 0;
 let _kfAuthTokenRetryTimer = 0;
 
@@ -741,6 +738,38 @@ function _kfRequireNamesForUpload(trees, opts = {}) {
   return named;
 }
 
+async function _kfBeginClerkSignIn() {
+  if (!_clerkReady) {
+    alert("Authentication is not available. Check the browser console for errors.");
+    return;
+  }
+  if (!_clerkInstance) {
+    alert("Authentication is still loading. Try again in a moment.");
+    return;
+  }
+  const returnUrl = window.location.href;
+  const opts = {
+    redirectUrl: returnUrl,
+    afterSignInUrl: returnUrl,
+    afterSignUpUrl: returnUrl,
+    fallbackRedirectUrl: returnUrl,
+  };
+  try {
+    if (typeof _clerkInstance.openSignIn === "function") {
+      await _clerkInstance.openSignIn(opts);
+      return;
+    }
+    if (typeof _clerkInstance.redirectToSignIn === "function") {
+      await _clerkInstance.redirectToSignIn(opts);
+      return;
+    }
+    throw new Error("Clerk sign-in method is unavailable");
+  } catch (e) {
+    console.error("[kf] Clerk sign-in failed:", e);
+    alert(`Could not start sign-in: ${e?.message || e}`);
+  }
+}
+
 document.getElementById("authBtn").addEventListener("click", async () => {
   if (!_clerkReady) {
     alert("Authentication is not available. Check the browser console for errors.");
@@ -750,13 +779,13 @@ document.getElementById("authBtn").addEventListener("click", async () => {
     _kfSetAccountMenuOpen(false);
     await _clerkInstance.signOut();
   } else {
-    _clerkInstance.redirectToSignIn({ redirectUrl: window.location.href });
+    await _kfBeginClerkSignIn();
   }
 });
 
-document.getElementById("accountBtn")?.addEventListener("click", () => {
+document.getElementById("accountBtn")?.addEventListener("click", async () => {
   if (!_clerkInstance?.user) {
-    document.getElementById("authBtn")?.click();
+    await _kfBeginClerkSignIn();
     return;
   }
   const menu = document.getElementById("accountMenu");

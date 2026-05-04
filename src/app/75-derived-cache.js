@@ -17,6 +17,7 @@ const _kfDerivedCache = {
   lastChromeKey: "",
   lastDigestRenderKey: "",
 };
+_kfDerivedCacheReady = true;
 
 function _kfNameShort(name) {
   return String(name || "?").replace(/\s+/g, " ").trim();
