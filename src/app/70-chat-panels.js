@@ -1216,17 +1216,21 @@ function renderChat() {
       const m = visible[mi];
       const chip = m && m.chips && m.chips[ci];
       if (!chip) return;
-      // Persist "spent" on the chip data so it survives re-renders that
-      // happen when _kfReportChipResult pushes a tool message back.
-      chip._spent = true;
-      btn.classList.add("spent");
+      btn.classList.add("running");
       btn.disabled = true;
       const orig = btn.textContent;
       btn.textContent = "...";
-      try { await _kfDispatchChip(chip); }
+      try {
+        const ok = await _kfDispatchChip(chip);
+        if (ok !== false) chip._spent = true;
+      }
       finally {
-        // Re-render will have replaced this DOM node; the .spent class is
-        // re-applied from chip._spent so we don't need to touch the new btn.
+        if (btn.isConnected) {
+          btn.disabled = !!chip._spent;
+          btn.classList.toggle("spent", !!chip._spent);
+          btn.classList.remove("running");
+          btn.textContent = orig;
+        }
       }
     });
   });
@@ -1250,12 +1254,12 @@ async function _kfDispatchChip(chip) {
       content: `\u2717 **broken chip**: ${err}${preview}\n\n*The most common cause is multi-line SQL in \`args\` with raw newlines instead of \`\\n\`. Ask Claude to re-emit chips with single-line JSON or compact SQL.*`,
     });
     renderChat();
-    return;
+    return false;
   }
   const fn = window.kfApi && window.kfApi[chip.method];
   if (typeof fn !== "function") {
     _kfReportChipResult(chip, { error: `no kfApi method: ${chip.method}` });
-    return;
+    return false;
   }
   try {
     const args = _kfChipDispatchArgs(chip);
@@ -1266,13 +1270,20 @@ async function _kfDispatchChip(chip) {
     if (chip.method === "saveLens" && r && r.ok && r.lens && window.kfApi.activateLens) {
       const a = await window.kfApi.activateLens(r.lens);
       _kfReportChipResult(chip, { saved: r.lens, activated: a });
+      return true;
     } else if ((chip.method === "sendChat" || chip.method === "chat") && r && r.ok) {
-      return;
+      return true;
+    } else if ((chip.method === "sendChat" || chip.method === "chat") && r && r.error) {
+      chatHistory.push({ role: "bot", content: `*[error]* ${r.error}` });
+      renderChat();
+      return false;
     } else {
       _kfReportChipResult(chip, r);
+      return !(r && r.error);
     }
   } catch (e) {
     _kfReportChipResult(chip, { error: e?.message || String(e) });
+    return false;
   }
 }
 

@@ -886,20 +886,7 @@ chatFormEl.addEventListener("submit", async e => {
   const text = chatInputEl.value.trim();
   if (!text) return;
   chatInputEl.value = "";
-  chatHistory.push({ role: "user", content: text });
-  renderChat();
-  _chatBusy = true;
-  chatSendBtn.disabled = true;
-  chatSendBtn.textContent = "...";
-  try {
-    await runChatTurn(text);
-  } catch (err) {
-    appendError(err.message || String(err));
-  } finally {
-    _chatBusy = false;
-    chatSendBtn.disabled = false;
-    chatSendBtn.textContent = "Send";
-  }
+  await _kfAskQuestion(text);
 });
 chatInputEl.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) {

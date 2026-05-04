@@ -53,6 +53,19 @@ function _kfReportTranscriptHtml(messages) {
   }).join("") + `</section>`;
 }
 
+function _kfReportPlainText(messages) {
+  const lines = ["Kindred Flow AI Report", ""];
+  for (const m of messages) {
+    const label = m.role === "user" ? "Question" : "Answer";
+    const raw = m.role === "user"
+      ? String(m.content || "")
+      : _kfPlainEnglishEventText(_kfHideToolMarkersInChatText(String(m.content || "")));
+    lines.push(`${label}:`, raw.replace(/\s+/g, " ").trim(), "");
+  }
+  lines.push("Open the attached report in a browser, then print or save as PDF.");
+  return lines.join("\n");
+}
+
 function _kfReportMapHtml(snapshot) {
   const title = `Map at ${Math.floor(curYear)}`;
   if (!snapshot?.dataUrl) {
@@ -75,10 +88,21 @@ function _kfReportVizHtml() {
   }).join("") + `</section>`;
 }
 
-function _kfReportHtml({ messages, snapshot }) {
+function _kfReportFilename() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `kindred-flow-ai-report-${y}-${m}-${day}.html`;
+}
+
+function _kfReportHtml({ messages, snapshot, email = "" }) {
   const trees = _kfReportTreeNames();
   const generated = new Date().toLocaleString();
   const dateRange = (Number.isFinite(minYear) && Number.isFinite(maxYear)) ? `${minYear}-${maxYear}` : "";
+  const emailTools = email
+    ? `<button id="emailReportBtn" onclick="window.__kfEmailReport && window.__kfEmailReport()">Email to me</button><span id="emailStatus">Sends a print-ready attachment to ${_kfReportEsc(email)}.</span>`
+    : `<span id="emailStatus">Sign in to email this report to yourself.</span>`;
   return `<!doctype html>
 <html>
 <head>
@@ -90,6 +114,7 @@ function _kfReportHtml({ messages, snapshot }) {
     body { margin:0; padding:32px; background:var(--soft); color:var(--ink); font:14px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .toolbar { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:12px; margin:-32px -32px 24px; padding:14px 32px; background:rgba(244,247,251,0.96); border-bottom:1px solid var(--line); backdrop-filter:blur(8px); }
     .toolbar button { border:0; border-radius:10px; background:#294c8f; color:#fff; font-weight:800; padding:10px 14px; cursor:pointer; }
+    .toolbar button:disabled { opacity:0.5; cursor:not-allowed; }
     .toolbar span { color:var(--muted); font-size:13px; }
     header { margin-bottom:22px; }
     h1 { margin:0 0 6px; font-size:28px; letter-spacing:-0.03em; }
@@ -121,7 +146,7 @@ function _kfReportHtml({ messages, snapshot }) {
   </style>
 </head>
 <body>
-  <div class="toolbar"><button onclick="window.print()">Save as PDF</button><span>Use the print dialog's "Save as PDF" destination to write a local file.</span></div>
+  <div class="toolbar"><button onclick="window.print()">Save as PDF</button>${emailTools}</div>
   <header>
     <h1>Kindred Flow AI Report</h1>
     <div class="meta">
@@ -141,12 +166,41 @@ function _kfReportHtml({ messages, snapshot }) {
 function _kfExportAiReport() {
   const messages = _kfReportTranscriptMessages();
   const snapshot = _kfReportMapSnapshot();
-  const html = _kfReportHtml({ messages, snapshot });
+  const email = typeof _kfCurrentAuthEmail === "function" ? _kfCurrentAuthEmail() : "";
+  const html = _kfReportHtml({ messages, snapshot, email });
+  const emailHtml = _kfReportHtml({ messages, snapshot, email: "" });
+  const subject = `Kindred Flow AI report - ${new Date().toLocaleDateString()}`;
+  const filename = _kfReportFilename();
+  const text = _kfReportPlainText(messages);
   const win = window.open("", "_blank", "width=1100,height=900");
   if (!win) return { error: "popup blocked; allow popups to create the printable report" };
   win.document.open();
   win.document.write(html);
   win.document.close();
+  win.__kfEmailReport = async () => {
+    const btn = win.document.getElementById("emailReportBtn");
+    const status = win.document.getElementById("emailStatus");
+    if (!email) {
+      if (status) status.textContent = "Sign in to email this report to yourself.";
+      return;
+    }
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = `Sending to ${email}...`;
+    try {
+      const headers = { "Content-Type": "application/json", ...(typeof _kfAuthHeaders === "function" ? _kfAuthHeaders() : {}) };
+      const resp = await fetch("/api/reports/email", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ subject, html: emailHtml, text, filename }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || `email failed (${resp.status})`);
+      if (status) status.textContent = `Sent to ${data.to || email}. Open the attachment to print.`;
+    } catch (e) {
+      if (status) status.textContent = `Could not email report: ${e.message || e}`;
+      if (btn) btn.disabled = false;
+    }
+  };
   win.focus();
   return { ok: true, questions: messages.filter(m => m.role === "user").length, answers: messages.filter(m => m.role === "bot").length, visualizations: _kfVizList.length, map: !!snapshot };
 }

@@ -262,7 +262,7 @@ function _kfQuestionChipsHtml(questions) {
 
 async function _kfAskQuestion(text, opts = {}) {
   const requestText = String(text || "").trim();
-  if (!requestText) return;
+  if (!requestText) return { error: "text required" };
   const displayText = String(
     opts.displayText ||
     (typeof _kfDisplayAiSuggestionQuestion === "function" ? _kfDisplayAiSuggestionQuestion(requestText) : requestText)
@@ -272,14 +272,25 @@ async function _kfAskQuestion(text, opts = {}) {
   } else {
     _kfSetSideTab("chat");
   }
-  if (_chatBusy) { chatInputEl.value = displayText || requestText; chatInputEl.focus(); return; }
+  if (_chatBusy) {
+    chatInputEl.value = displayText || requestText;
+    chatInputEl.focus();
+    return { error: "Claude is already answering a question" };
+  }
   chatHistory.push({ role: "user", content: displayText || requestText });
   renderChat();
   _chatBusy = true;
   chatSendBtn.disabled = true;
   chatSendBtn.textContent = "...";
-  try { await runChatTurn(requestText); }
-  catch (err) { appendError(err.message || String(err)); }
+  try {
+    await runChatTurn(requestText);
+    return { ok: true };
+  }
+  catch (err) {
+    const message = err.message || String(err);
+    appendError(message);
+    return { error: message };
+  }
   finally { _chatBusy = false; chatSendBtn.disabled = false; chatSendBtn.textContent = "Send"; }
 }
 

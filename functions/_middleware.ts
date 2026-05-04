@@ -30,6 +30,7 @@ export interface Env {
   GITHUB_REPO?: string;
   RESEND_API_KEY?: string;
   INVITE_FROM_EMAIL?: string;
+  REPORT_FROM_EMAIL?: string;
   APP_ORIGIN?: string;
 }
 
