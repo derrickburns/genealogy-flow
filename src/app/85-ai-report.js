@@ -52,9 +52,11 @@ function _kfReportTreeNames() {
   return _kfSelectedVizSourceList().map(src => String(src.name || "").replace(/\.ged$/i, "")).filter(Boolean);
 }
 
-function _kfReportMapSnapshot() {
+async function _kfReportMapSnapshot() {
   try {
-    const shot = window.kfApi?.capturePng?.();
+    const shot = window.kfApi?.capturePngForReport
+      ? await window.kfApi.capturePngForReport()
+      : window.kfApi?.capturePng?.();
     if (shot?.ok && shot.dataUrl) return shot;
   } catch (e) {
     console.warn("[kf] report map snapshot:", e?.message || e);
@@ -182,9 +184,9 @@ function _kfReportHtml({ messages, snapshot, email = "" }) {
 </html>`;
 }
 
-function _kfExportAiReport() {
+async function _kfExportAiReport() {
   const messages = _kfReportTranscriptMessages();
-  const snapshot = _kfReportMapSnapshot();
+  const snapshot = await _kfReportMapSnapshot();
   const email = typeof _kfCurrentAuthEmail === "function" ? _kfCurrentAuthEmail() : "";
   const html = _kfReportHtml({ messages, snapshot, email });
   const emailHtml = _kfReportHtml({ messages, snapshot, email: "" });
@@ -233,4 +235,6 @@ function _kfExportAiReport() {
   return { ok: true, questions: messages.filter(m => m.role === "user").length, answers: messages.filter(m => m.role === "bot").length, visualizations: _kfVizList.length, map: !!snapshot };
 }
 
-$("chatPdf")?.addEventListener("click", () => _kfExportAiReport());
+$("chatPdf")?.addEventListener("click", () => {
+  _kfExportAiReport().catch(e => appendError(`Could not create PDF report: ${e?.message || e}`));
+});

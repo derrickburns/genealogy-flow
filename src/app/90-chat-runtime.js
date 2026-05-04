@@ -963,6 +963,7 @@ async function runChatTurn(userText) {
   let nextInput = cacheContext
     ? `${userText}\n\n[Cache-safe instruction: for named people and family-specific claims, use only selected tree data and tool results. Label broader background as Historical context, not tree evidence. Do not mention the logged-in user's name, email, account tier, selected person, viewport, or other transient UI state unless the user explicitly asked about it.]`
     : userText;
+  const toolLogs = [];
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const pending = { role: "bot", content: "_thinking..._" };
     chatHistory.push(pending);
@@ -1032,11 +1033,47 @@ async function runChatTurn(userText) {
     if (log.length > CHAT_TOOL_ROUND_MAX_CHARS) {
       log = log.slice(0, CHAT_TOOL_ROUND_MAX_CHARS) + `\n[tool round truncated ${log.length - CHAT_TOOL_ROUND_MAX_CHARS} characters]`;
     }
+    toolLogs.push(`Round ${round + 1}:\n${log}`);
     chatHistory.push({ role: "bot", kind: "tool", content: "*[tool calls]*\n" + log });
     renderChat();
     nextInput = "Tool results:\n" + log + "\n\nIf you have enough to answer, write the final answer now without further tool calls. Otherwise issue more tool calls.";
   }
-  chatHistory.push({ role: "bot", content: `*[stopped after ${MAX_TOOL_ROUNDS} tool rounds — ask Claude to summarize what it has so far]*` });
+  const pending = { role: "bot", content: "_summarizing evidence gathered so far..._" };
+  chatHistory.push(pending);
+  renderChat();
+  try {
+    let sawDelta = false;
+    const markerFilter = _kfCreateStreamingMarkerFilter();
+    const evidence = _kfTruncateForClaude(toolLogs.join("\n\n"), CHAT_MESSAGE_MAX_CHARS * 2);
+    const finalInput =
+      `The tool-round limit has been reached for this question. Do not issue any more KFCALL or KFCHIP markers. ` +
+      `Do not tell the user to ask for a summary. Instead, write the best concise answer possible from the evidence already gathered. ` +
+      `If evidence is incomplete, say what is incomplete after the summary.\n\nOriginal question:\n${userText}\n\nEvidence gathered:\n${evidence}`;
+    const reply = await callClaudeStream(finalInput, delta => {
+      if (!sawDelta) {
+        pending.content = "";
+        sawDelta = true;
+      }
+      const streamed = markerFilter.push(delta);
+      if (streamed.visible) {
+        pending.content += streamed.visible;
+        renderChat();
+      }
+    }, pending, {
+      includeViewContext: false,
+      cacheSafe: !!cacheContext,
+      contextQuestion: userText,
+      currentUserText: userText,
+    });
+    const trailing = markerFilter.flush();
+    if (trailing.visible) pending.content += trailing.visible;
+    const withoutCalls = String(reply || "").replace(KFCALL_RE, "").replace(/<<KFCALL:[\s\S]*$/g, "");
+    const chipParse = parseChips(withoutCalls);
+    pending.content = _kfPlainEnglishEventText(chipParse.stripped || pending.content || "*Tool limit reached before a usable summary could be produced.*");
+    await _kfStoreCachedAiAnswer(cacheContext, pending.content);
+  } catch (e) {
+    pending.content = `*[tool limit reached]* I gathered evidence but could not generate the final summary: ${e?.message || e}`;
+  }
   renderChat();
 }
 

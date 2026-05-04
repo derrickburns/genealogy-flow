@@ -1449,6 +1449,131 @@ function _kfTryFastMapChatCommand(text) {
   return centered?.ok ? { ...centered, fast: true, action: "showOnMap" } : null;
 }
 
+const _KF_REPORT_TILE_URLS = [
+  "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+  "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+  "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+  "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+];
+const _KF_MERCATOR_LAT_MAX = 85.05112878;
+
+function _kfClampMercatorLat(lat) {
+  return Math.max(-_KF_MERCATOR_LAT_MAX, Math.min(_KF_MERCATOR_LAT_MAX, Number(lat) || 0));
+}
+
+function _kfLngToTileX(lon, z) {
+  return ((Number(lon) + 180) / 360) * (1 << z);
+}
+
+function _kfLatToTileY(lat, z) {
+  const clamped = _kfClampMercatorLat(lat) * Math.PI / 180;
+  return (1 - Math.log(Math.tan(clamped) + 1 / Math.cos(clamped)) / Math.PI) / 2 * (1 << z);
+}
+
+function _kfTileXToLng(x, z) {
+  return x / (1 << z) * 360 - 180;
+}
+
+function _kfTileYToLat(y, z) {
+  const n = Math.PI - 2 * Math.PI * y / (1 << z);
+  return 180 / Math.PI * Math.atan(Math.sinh(n));
+}
+
+function _kfLoadReportTile(url) {
+  return new Promise(resolve => {
+    const img = new Image();
+    let done = false;
+    const finish = value => {
+      if (done) return;
+      done = true;
+      resolve(value);
+    };
+    img.crossOrigin = "anonymous";
+    img.onload = () => finish(img);
+    img.onerror = () => finish(null);
+    setTimeout(() => finish(null), 4500);
+    img.src = url;
+  });
+}
+
+function _kfTileUrl(x, y, z) {
+  const n = 1 << z;
+  const wrappedX = ((x % n) + n) % n;
+  const template = _KF_REPORT_TILE_URLS[Math.abs(x + y) % _KF_REPORT_TILE_URLS.length];
+  return template
+    .replace("{z}", String(z))
+    .replace("{x}", String(wrappedX))
+    .replace("{y}", String(y));
+}
+
+async function _kfDrawReportTileBasemap(ctx) {
+  if (!_kfMap || !W || !H) return false;
+  const bounds = _kfMap.getBounds?.();
+  if (!bounds) return false;
+  const z = Math.max(0, Math.min(18, Math.floor(_kfMap.getZoom?.() ?? 1)));
+  const n = 1 << z;
+  let west = bounds.getWest();
+  let east = bounds.getEast();
+  if (east < west) east += 360;
+  const north = _kfClampMercatorLat(bounds.getNorth());
+  const south = _kfClampMercatorLat(bounds.getSouth());
+  let x0 = Math.floor(_kfLngToTileX(west, z)) - 1;
+  let x1 = Math.floor(_kfLngToTileX(east, z)) + 1;
+  let y0 = Math.floor(Math.min(_kfLatToTileY(north, z), _kfLatToTileY(south, z))) - 1;
+  let y1 = Math.floor(Math.max(_kfLatToTileY(north, z), _kfLatToTileY(south, z))) + 1;
+  y0 = Math.max(0, y0);
+  y1 = Math.min(n - 1, y1);
+  const maxTiles = 96;
+  const tiles = [];
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      tiles.push({ x, y, z, url: _kfTileUrl(x, y, z) });
+    }
+  }
+  if (!tiles.length || tiles.length > maxTiles) return false;
+  let drawn = 0;
+  await Promise.all(tiles.map(async tile => {
+    const img = await _kfLoadReportTile(tile.url);
+    if (!img) return;
+    try {
+      const lon0 = _kfTileXToLng(tile.x, tile.z);
+      const lon1 = _kfTileXToLng(tile.x + 1, tile.z);
+      const lat0 = _kfTileYToLat(tile.y, tile.z);
+      const lat1 = _kfTileYToLat(tile.y + 1, tile.z);
+      const p0 = _kfMap.project([lon0, lat0]);
+      const p1 = _kfMap.project([lon1, lat1]);
+      const dx = Math.floor(Math.min(p0.x, p1.x));
+      const dy = Math.floor(Math.min(p0.y, p1.y));
+      const dw = Math.ceil(Math.abs(p1.x - p0.x)) + 1;
+      const dh = Math.ceil(Math.abs(p1.y - p0.y)) + 1;
+      if (dw <= 0 || dh <= 0 || dx > W || dy > H || dx + dw < 0 || dy + dh < 0) return;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      drawn++;
+    } catch (_) {}
+  }));
+  return drawn > 0;
+}
+
+function _kfDrawReadableCanvas(ctx, canvas, wrapRect) {
+  try {
+    const rect = canvas.getBoundingClientRect();
+    const x = wrapRect ? rect.left - wrapRect.left : 0;
+    const y = wrapRect ? rect.top - wrapRect.top : 0;
+    const w = rect.width || W;
+    const h = rect.height || H;
+    const tmp = document.createElement("canvas");
+    tmp.width = W; tmp.height = H;
+    const tctx = tmp.getContext("2d");
+    tctx.drawImage(canvas, x, y, w, h);
+    // This throws if the source canvas tainted the temporary canvas.
+    tmp.toDataURL("image/png");
+    ctx.drawImage(tmp, 0, 0);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 window.kfApi = {
   setYear(year) {
     const y = Math.max(minYear, Math.min(maxYear, Number(year)));
@@ -2101,8 +2226,6 @@ window.kfApi = {
   },
 
   capturePng() {
-    // Composite every visible map canvas (MapLibre, deck.gl overlays, and
-    // fxCanvas) into one offscreen canvas and return a base64 PNG.
     const out = document.createElement("canvas");
     out.width = W; out.height = H;
     const ctx = out.getContext("2d");
@@ -2132,6 +2255,47 @@ window.kfApi = {
     }
     const dataUrl = out.toDataURL("image/png");
     return { ok: true, dataUrl, width: W, height: H, bytes: Math.round(dataUrl.length * 0.75) };
+  },
+
+  async capturePngForReport() {
+    // PDF/report export cannot rely on copying MapLibre's WebGL canvas:
+    // cross-origin raster tiles can make it unreadable while deck overlays
+    // still copy successfully. Repaint the visible raster basemap from its
+    // CORS-safe tile URLs, then composite only overlay canvases on top.
+    const out = document.createElement("canvas");
+    out.width = W; out.height = H;
+    const ctx = out.getContext("2d");
+    ctx.fillStyle = "#cfe2ec";
+    ctx.fillRect(0, 0, W, H);
+    let basemap = false;
+    try { basemap = await _kfDrawReportTileBasemap(ctx); } catch (_) { basemap = false; }
+    if (!basemap) {
+      const mapCanvas = _kfMap?.getCanvas?.();
+      if (mapCanvas) _kfDrawReadableCanvas(ctx, mapCanvas, document.getElementById("mapWrap")?.getBoundingClientRect?.());
+    }
+    const wrap = document.getElementById("mapWrap");
+    const wrapRect = wrap?.getBoundingClientRect?.();
+    const mapCanvas = _kfMap?.getCanvas?.();
+    const canvases = wrap
+      ? Array.from(wrap.querySelectorAll("canvas"))
+        .filter(c => c !== mapCanvas)
+        .filter(c => {
+          const cs = getComputedStyle(c);
+          return cs.display !== "none" && cs.visibility !== "hidden" && c.width > 0 && c.height > 0;
+        })
+      : [fxCanvas].filter(Boolean);
+    for (const canvas of canvases) {
+      try {
+        const rect = canvas.getBoundingClientRect();
+        const x = wrapRect ? rect.left - wrapRect.left : 0;
+        const y = wrapRect ? rect.top - wrapRect.top : 0;
+        const w = rect.width || W;
+        const h = rect.height || H;
+        ctx.drawImage(canvas, x, y, w, h);
+      } catch (_) {}
+    }
+    const dataUrl = out.toDataURL("image/png");
+    return { ok: true, dataUrl, width: W, height: H, bytes: Math.round(dataUrl.length * 0.75), basemap };
   },
 
   exportAiReport() {
