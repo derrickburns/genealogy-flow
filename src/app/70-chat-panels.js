@@ -21,6 +21,43 @@ function _kfIsSideTabActive(tab) {
   return _kfActiveSideTab === tab;
 }
 
+function _kfBindTapOrClick(el, handler) {
+  if (!el || typeof handler !== "function") return;
+  let tap = null;
+  el.addEventListener("pointerdown", e => {
+    if (e.pointerType === "mouse" || el.disabled) return;
+    tap = { x: e.clientX, y: e.clientY, canceled: false };
+  });
+  el.addEventListener("pointermove", e => {
+    if (!tap) return;
+    if (Math.abs(e.clientX - tap.x) > 10 || Math.abs(e.clientY - tap.y) > 10) {
+      tap.canceled = true;
+    }
+  });
+  el.addEventListener("pointercancel", () => { tap = null; });
+  el.addEventListener("pointerup", e => {
+    if (e.pointerType === "mouse" || !tap || tap.canceled || el.disabled) {
+      tap = null;
+      return;
+    }
+    tap = null;
+    el.dataset.kfTapHandled = "1";
+    e.preventDefault();
+    e.stopPropagation();
+    handler(e);
+    setTimeout(() => { delete el.dataset.kfTapHandled; }, 500);
+  });
+  el.addEventListener("click", e => {
+    if (el.dataset.kfTapHandled === "1" || el.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    e.preventDefault();
+    handler(e);
+  });
+}
+
 function _kfUpdateMobileSheetTitle(tab) {
   if (!_mobileSheetTitleEl) return;
   _mobileSheetTitleEl.textContent =
@@ -1163,7 +1200,7 @@ function renderChat() {
   // Wire chip clicks. Each chip carries an action (kfApi method + args) that
   // fires once on click, mirroring how KFCALL markers work but via UI.
   chatHistoryEl.querySelectorAll(".chatChip").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    _kfBindTapOrClick(btn, async () => {
       const mi = Number(btn.dataset.mi);
       const ci = Number(btn.dataset.ci);
       const m = visible[mi];
@@ -1239,14 +1276,29 @@ function _kfAugmentAiSuggestionQuestion(text) {
   return `${raw}\n\n${_KF_AI_VISUALIZATION_SUFFIX}`;
 }
 
+function _kfDisplayAiSuggestionQuestion(text) {
+  let raw = String(text || "").trim();
+  if (raw.endsWith(_KF_AI_VISUALIZATION_SUFFIX)) {
+    raw = raw.slice(0, -_KF_AI_VISUALIZATION_SUFFIX.length).trim();
+  }
+  return raw;
+}
+
 function _kfChipDispatchArgs(chip) {
   const method = String(chip?.method || "");
   const args = chip?.args;
   if (method !== "chat" && method !== "sendChat") return args;
-  if (typeof args === "string") return _kfAugmentAiSuggestionQuestion(args);
+  if (typeof args === "string") return {
+    text: _kfAugmentAiSuggestionQuestion(args),
+    displayText: _kfDisplayAiSuggestionQuestion(args),
+  };
   if (args && typeof args === "object" && !Array.isArray(args)) {
     const text = typeof args.text === "string" ? args.text : "";
-    return text ? { ...args, text: _kfAugmentAiSuggestionQuestion(text) } : args;
+    return text ? {
+      ...args,
+      text: _kfAugmentAiSuggestionQuestion(text),
+      displayText: args.displayText || _kfDisplayAiSuggestionQuestion(text),
+    } : args;
   }
   return args;
 }
@@ -1376,13 +1428,23 @@ function _kfChatScopeQuestions(root, selected, visible) {
 function _kfBindChatScopeQuestions() {
   if (!chatScopeEl) return;
   chatScopeEl.querySelectorAll("[data-chat-scope-question]").forEach(btn => {
-    btn.addEventListener("click", () => {
+    _kfBindTapOrClick(btn, async () => {
       const text = btn.getAttribute("data-chat-scope-question") || "";
       if (!text) return;
-      if (typeof _kfAskQuestion === "function") _kfAskQuestion(_kfAugmentAiSuggestionQuestion(text));
+      btn.classList.add("running");
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      if (typeof _kfAskQuestion === "function") {
+        await _kfAskQuestion(_kfAugmentAiSuggestionQuestion(text), { displayText: text });
+      }
       else {
         chatInputEl.value = text;
         chatInputEl.focus();
+      }
+      if (btn.isConnected) {
+        btn.disabled = false;
+        btn.classList.remove("running");
+        btn.removeAttribute("aria-busy");
       }
     });
   });

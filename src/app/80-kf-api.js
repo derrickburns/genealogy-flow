@@ -1662,26 +1662,16 @@ window.kfApi = {
   // so suggestion buttons trigger a real chat turn rather than a kfApi call.
   async sendChat(input) {
     const text = (typeof input === "string" ? input : input && input.text) || "";
+    const displayText = (typeof input === "object" && input && input.displayText) ||
+      (typeof _kfDisplayAiSuggestionQuestion === "function" ? _kfDisplayAiSuggestionQuestion(text) : text);
     if (!text) return { error: "text required" };
-    const fast = _kfTryFastMapChatCommand(text);
+    const fast = _kfTryFastMapChatCommand(displayText);
     if (fast) return fast;
-    if (_chatBusy) return { error: "chat busy" };
-    chatHistory.push({ role: "user", content: text });
-    renderChat();
-    _chatBusy = true;
-    chatSendBtn.disabled = true;
-    chatSendBtn.textContent = "...";
-    try {
-      await runChatTurn(text);
+    if (typeof _kfAskQuestion === "function") {
+      await _kfAskQuestion(String(text), { displayText: displayText || text });
       return { ok: true };
-    } catch (err) {
-      appendError(err.message || String(err));
-      return { error: err.message || String(err) };
-    } finally {
-      _chatBusy = false;
-      chatSendBtn.disabled = false;
-      chatSendBtn.textContent = "Send";
     }
+    return { error: "chat not ready" };
   },
   back() { backOneStep(); return { ok: true }; },
   setZoom(k) {
@@ -2282,11 +2272,14 @@ window.kfApi = {
     return { ok: false, error: "no GEDCOM loaded — drop a .ged file to enable SQL queries" };
   },
   // Submit a message to the chat programmatically (used by KFCHIP suggestion buttons)
-  chat(text) {
-    const fast = _kfTryFastMapChatCommand(text);
+  chat(input) {
+    const text = (typeof input === "string" ? input : input && input.text) || "";
+    const displayText = (typeof input === "object" && input && input.displayText) ||
+      (typeof _kfDisplayAiSuggestionQuestion === "function" ? _kfDisplayAiSuggestionQuestion(text) : text);
+    const fast = _kfTryFastMapChatCommand(displayText);
     if (fast) return fast;
     if (typeof _kfAskQuestion === "function" && text) {
-      return _kfAskQuestion(String(text)).then(() => ({ ok: true }));
+      return _kfAskQuestion(String(text), { displayText: displayText || text }).then(() => ({ ok: true }));
     }
     return { ok: false, error: "chat not ready" };
   },

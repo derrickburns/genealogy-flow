@@ -375,6 +375,8 @@
   .chatChip { max-width:100%; box-sizing:border-box; padding:5px 10px; border:1px solid #2a4a8c; background:#e8eef9; color:#2a4a8c; border-radius:14px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; line-height:1.25; text-align:left; white-space:normal; overflow-wrap:anywhere; appearance:none; transition:background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease; }
   .chatChip:hover { background:#2a4a8c; color:#fff; border-color:#2a4a8c; }
   .chatChip:active { transform:none; }
+  .chatChip:disabled { cursor:wait; opacity:0.7; }
+  .chatChip.running { background:#2a4a8c; color:#fff; border-color:#2a4a8c; }
   #chatHistory .chatInlineLink { display:inline; border:0; background:transparent; color:#1e40af; font:inherit; font-weight:700; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; padding:0; cursor:pointer; }
   #chatHistory .chatInlineLink:hover { color:#163172; background:transparent; }
   /* "spent" = chip has been clicked at least once. Faded so the user can
@@ -718,7 +720,7 @@
     #chatScope { font-size:11px; max-height:88px; overflow:hidden; padding:6px 8px; }
     .chat-scope-actions { flex-wrap:nowrap; overflow-x:auto; gap:7px; padding-bottom:3px; scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
     .chat-scope-actions::-webkit-scrollbar { display:none; }
-    .chat-scope-question { flex:0 0 auto; max-width:72vw; min-height:36px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; }
+    .chat-scope-question { flex:0 0 auto; max-width:72vw; min-height:36px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; touch-action:pan-x; -webkit-tap-highlight-color:transparent; }
     #welcome { width:calc(100vw - 42px); top:42%; padding:24px 20px; box-sizing:border-box; }
     .year-digest-metrics { grid-template-columns:repeat(2, 1fr); }
   }

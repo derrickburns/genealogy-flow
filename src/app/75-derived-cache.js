@@ -260,16 +260,25 @@ function _kfQuestionChipsHtml(questions) {
     `</div></div>`;
 }
 
-async function _kfAskQuestion(text) {
-  if (!text) return;
-  _kfSetSideTab("chat");
-  if (_chatBusy) { chatInputEl.value = text; chatInputEl.focus(); return; }
-  chatHistory.push({ role: "user", content: text });
+async function _kfAskQuestion(text, opts = {}) {
+  const requestText = String(text || "").trim();
+  if (!requestText) return;
+  const displayText = String(
+    opts.displayText ||
+    (typeof _kfDisplayAiSuggestionQuestion === "function" ? _kfDisplayAiSuggestionQuestion(requestText) : requestText)
+  ).trim();
+  if (typeof _kfIsSideTabActive === "function" && _kfIsSideTabActive("chat")) {
+    if (typeof _kfBumpMobileSheetForTab === "function") _kfBumpMobileSheetForTab("chat");
+  } else {
+    _kfSetSideTab("chat");
+  }
+  if (_chatBusy) { chatInputEl.value = displayText || requestText; chatInputEl.focus(); return; }
+  chatHistory.push({ role: "user", content: displayText || requestText });
   renderChat();
   _chatBusy = true;
   chatSendBtn.disabled = true;
   chatSendBtn.textContent = "...";
-  try { await runChatTurn(text); }
+  try { await runChatTurn(requestText); }
   catch (err) { appendError(err.message || String(err)); }
   finally { _chatBusy = false; chatSendBtn.disabled = false; chatSendBtn.textContent = "Send"; }
 }
@@ -277,10 +286,15 @@ async function _kfAskQuestion(text) {
 function _kfBindQuestionChips(root) {
   if (!root) return;
   root.querySelectorAll(".ux-question[data-question]").forEach(btn => {
-    btn.addEventListener("click", () => {
+    const handler = () => {
       const text = btn.dataset.question || "";
-      _kfAskQuestion(typeof _kfAugmentAiSuggestionQuestion === "function" ? _kfAugmentAiSuggestionQuestion(text) : text);
-    });
+      _kfAskQuestion(
+        typeof _kfAugmentAiSuggestionQuestion === "function" ? _kfAugmentAiSuggestionQuestion(text) : text,
+        { displayText: text }
+      );
+    };
+    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(btn, handler);
+    else btn.addEventListener("click", handler);
   });
 }
 
