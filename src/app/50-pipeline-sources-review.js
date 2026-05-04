@@ -3,6 +3,7 @@ let _kfJitterCountryByCode = null;
 let _kfJitterStateByAbbr = null;
 let _kfJitterLandFeatures = null;
 let _kfJitterLandGrid = null;
+let _kfJitterPoolCache = new Map();
 let _kfJitterCache = new Map();
 
 function _kfJitterSlug(value) {
@@ -102,6 +103,7 @@ function _kfResetJitterIndexes() {
   _kfJitterStateByAbbr = null;
   _kfJitterLandFeatures = null;
   _kfJitterLandGrid = null;
+  _kfJitterPoolCache = new Map();
   _kfJitterCache = new Map();
 }
 
@@ -193,28 +195,36 @@ function _kfJitterCandidateAllowed(lat, lon, g) {
   return true;
 }
 
-function jitter(lat, lon, level, key = "", g = null) {
+function _kfJitterCandidatePool(lat, lon, level, g = null) {
   const radius = _kfJitterRadius(level);
-  if (!radius) return [lat, lon];
-  const cacheKey = `${lat.toFixed(5)}|${lon.toFixed(5)}|${level}|${g?.cc || ""}|${g?.st || ""}|${key}`;
-  const cached = _kfJitterCache.get(cacheKey);
+  if (!radius) return [[lat, lon]];
+  const poolKey = `${lat.toFixed(5)}|${lon.toFixed(5)}|${level}|${g?.cc || ""}|${g?.st || ""}`;
+  const cached = _kfJitterPoolCache.get(poolKey);
   if (cached) return cached;
-  const h = _kfHash32(cacheKey);
+  const h = _kfHash32(poolKey);
   const baseAngle = (h / 0xffffffff) * Math.PI * 2;
   const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < 16; i++) {
+  const pool = [];
+  for (let i = 0; i < 24; i++) {
     const ring = 0.35 + 0.65 * (((h >>> ((i % 4) * 4)) & 0xf) / 15);
     const angle = baseAngle + i * golden;
     const candLat = lat + Math.sin(angle) * radius * ring;
     const latScale = Math.max(0.25, Math.cos((Math.max(-85, Math.min(85, lat)) * Math.PI) / 180));
     const candLon = lon + (Math.cos(angle) * radius * ring) / latScale;
-    if (_kfJitterCandidateAllowed(candLat, candLon, g)) {
-      const out = [candLat, candLon];
-      _kfJitterCache.set(cacheKey, out);
-      return out;
-    }
+    if (_kfJitterCandidateAllowed(candLat, candLon, g)) pool.push([candLat, candLon]);
   }
-  const out = [lat, lon];
+  if (!pool.length) pool.push([lat, lon]);
+  _kfJitterPoolCache.set(poolKey, pool);
+  return pool;
+}
+
+function jitter(lat, lon, level, key = "", g = null) {
+  const cacheKey = `${lat.toFixed(5)}|${lon.toFixed(5)}|${level}|${g?.cc || ""}|${g?.st || ""}|${key}`;
+  const cached = _kfJitterCache.get(cacheKey);
+  if (cached) return cached;
+  const pool = _kfJitterCandidatePool(lat, lon, level, g);
+  const h = _kfHash32(cacheKey);
+  const out = pool[h % pool.length] || [lat, lon];
   _kfJitterCache.set(cacheKey, out);
   return out;
 }

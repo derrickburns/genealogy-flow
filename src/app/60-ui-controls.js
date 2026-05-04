@@ -1141,12 +1141,7 @@ async function fetchJson(url) {
 }
 
 async function fetchWorldTopology() {
-  try {
-    return await fetchJson("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json");
-  } catch (e) {
-    console.warn("high-detail world topology fetch failed; falling back to 50m", e);
-    return fetchJson("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json");
-  }
+  return fetchJson("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json");
 }
 
 async function bootBasemap() {
