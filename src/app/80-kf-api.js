@@ -204,7 +204,7 @@ function _kfRebuildSelectedVisualization(opts = {}) {
   highlightInferredYear = -1;
   highlightInferredSrcYear = -1;
   if (highlightedDwell >= 0 && opts.centerRoot) centerOnGeo(dwellLon[highlightedDwell], dwellLat[highlightedDwell]);
-  if (highlightedDwell >= 0 && opts.selectRoot) updatePanel(true);
+  if (highlightedDwell >= 0 && opts.selectRoot && typeof _kfShowPersonCard === "function") _kfShowPersonCard(highlightedDwell);
 
   _kfBuildSurnameTopN(12);
   _kfRenderSurnameChips();
@@ -665,7 +665,7 @@ window.kfApi = {
     curYear = y;
     range.value = y;
     if (playing) { playing = false; _kfSetPlayButtonLabel(); }
-    updatePanel(true);
+    if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
     return { ok: true, year: Math.floor(y) };
   },
   play() {
@@ -697,7 +697,8 @@ window.kfApi = {
     curYear = dwellY[di];
     range.value = curYear;
     if (playing) { playing = false; _kfSetPlayButtonLabel(); }
-    updatePanel(true);
+    if (typeof _kfShowPersonCard === "function") _kfShowPersonCard(di);
+    if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
     return { ok: true, person: { id: ind.id, name: ind.name }, dwellYear: dwellY[di] };
   },
   centerOn(query) {
@@ -986,10 +987,13 @@ window.kfApi = {
 
   setActiveTree(name) {
     if (!name || typeof name !== "string") return { error: "name required" };
-    let target = _kfTreeCache.has(name) ? name : null;
+    let target = _kfLoadedSources.has(name) || _kfTreeCache.has(name) ? name : null;
     if (!target) {
       const lower = name.toLowerCase();
-      for (const k of _kfTreeCache.keys()) if (k.toLowerCase().includes(lower)) { target = k; break; }
+      for (const k of _kfLoadedSources.keys()) if (k.toLowerCase().includes(lower)) { target = k; break; }
+      if (!target) {
+        for (const k of _kfTreeCache.keys()) if (k.toLowerCase().includes(lower)) { target = k; break; }
+      }
     }
     if (!target) return { error: `tree "${name}" not in browser memory; reload it from disk` };
     if (target === _kfActiveTreeName) {

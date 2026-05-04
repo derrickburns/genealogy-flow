@@ -1084,6 +1084,7 @@ function updateDeckDwellLayer() {
 function buildDeckFlowData() {
   if (!flowFromLat || !flowFromLat.length) {
     _kfFlowSourcePos = _kfFlowTargetPos = _kfFlowColors = _kfFlowYears = null;
+    _kfFlowInterpolators = null;
     _kfFlowsOnDeck = false;
     return;
   }
@@ -1092,6 +1093,7 @@ function buildDeckFlowData() {
   _kfFlowTargetPos = new Float32Array(F * 2);
   _kfFlowColors    = new Uint8Array(F * 4);
   _kfFlowYears     = new Float32Array(F);
+  _kfFlowInterpolators = new Array(F);
   for (let i = 0; i < F; i++) {
     _kfFlowSourcePos[i * 2]     = flowFromLon[i];
     _kfFlowSourcePos[i * 2 + 1] = flowFromLat[i];
@@ -1103,6 +1105,10 @@ function buildDeckFlowData() {
     _kfFlowColors[i * 4 + 1] = c[1];
     _kfFlowColors[i * 4 + 2] = c[2];
     _kfFlowColors[i * 4 + 3] = 160;  // ~0.62 alpha; arcs subtler than dots
+    _kfFlowInterpolators[i] = d3.geoInterpolate(
+      [flowFromLon[i], flowFromLat[i]],
+      [flowToLon[i],   flowToLat[i]],
+    );
   }
   _kfFlowsOnDeck = true;
 }
@@ -1129,6 +1135,7 @@ let _kfFlowArcTargetPositions = new Float32Array(0);
 let _kfFlowArcSourceColors = new Uint8Array(0);
 let _kfFlowArcTargetColors = new Uint8Array(0);
 let _kfFlowArcWidths = new Float32Array(0);
+let _kfFlowInterpolators = null;
 const _kfDeckDataAlwaysDirty = () => false;
 
 function _kfBufferSize(required) {
@@ -1437,7 +1444,7 @@ function makeFlowLayer() {
   // imply the person was physically traveling for the entire undocumented gap.
   const F = flowFromLat.length;
   const y = curYear;
-  const TRAIL_N = 6;     // total particles per in-flight migration (1 head + 5 tail)
+  const TRAIL_N = (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) ? 3 : 6;
   const TRAIL_STEP = 0.07; // t-spacing between successive trail particles
   _kfEnsureFlowParticleCapacity(F * TRAIL_N);
   let count = 0;
@@ -1449,7 +1456,7 @@ function makeFlowLayer() {
     if (curFilter === "blood" && !flowBlood[i]) continue;
     const span = Math.max(0.1, win.end - win.start);
     const t = Math.max(0, Math.min(1, (y - win.start) / span));
-    const interp = d3.geoInterpolate(
+    const interp = _kfFlowInterpolators?.[i] || d3.geoInterpolate(
       [flowFromLon[i], flowFromLat[i]],
       [flowToLon[i],   flowToLat[i]],
     );

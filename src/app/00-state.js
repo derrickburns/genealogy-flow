@@ -116,7 +116,6 @@ let currentHistoricalWorld = null;
 
 let dwellY, dwellLat, dwellLon, dwellSide, dwellSrc, dwellIndi, dwellBlood, dwellCity, dwellExact, dwellType, dwellPlace, dwellSx, dwellSy, dwellOrder;
 let placesList = [];
-let summaryById = new Map();
 let migrationsData = null;
 let highlightedDwell = -1;
 let highlightInferredYear = -1, highlightInferredSrcYear = -1;
@@ -268,6 +267,10 @@ function resize() {
   }
   mapW = W; mapTop = 0; mapBottom = H;
   if (_kfMap) _kfMap.resize();
-  if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
+  if (timelineLoaded) {
+    projectAll();
+    fxCtx.clearRect(0, 0, W, H);
+    if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+  }
 }
 window.addEventListener("resize", resize);

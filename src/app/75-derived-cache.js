@@ -15,6 +15,7 @@ const _kfDerivedCache = {
   activeClusterLabel: "",
   activeDigestMode: "",
   lastChromeKey: "",
+  lastDigestRenderKey: "",
 };
 
 function _kfNameShort(name) {
@@ -390,9 +391,21 @@ function _kfVisibleRowsForYear(yint) {
     });
   }
   const data = { key, y: yint, rows, count: rows.length, exact, weak, sourceCounts, placeCounts };
-  if (_kfDerivedCache.visibleByYear.size > 140) _kfDerivedCache.visibleByYear.clear();
+  _kfTrimDerivedCache(_kfDerivedCache.visibleByYear, _kfDerivedCacheLimit());
   _kfDerivedCache.visibleByYear.set(key, data);
   return data;
+}
+
+function _kfDerivedCacheLimit() {
+  return (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) ? 24 : 80;
+}
+
+function _kfTrimDerivedCache(cache, limit) {
+  while (cache.size > limit) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
 }
 
 function _kfYearDigestPersonLabel(row) {
@@ -436,7 +449,7 @@ function _kfYearDigestData(yint) {
   weak.sort((a, b) => b.evidence.rank - a.evidence.rank || _kfNameShort(a.ind.name).localeCompare(_kfNameShort(b.ind.name)));
   const topPlaces = Array.from(current.placeCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
   const data = { key, y: yint, current, previous, appeared, disappeared, moved, weak, issues, topPlaces };
-  if (_kfDerivedCache.yearDigest.size > 140) _kfDerivedCache.yearDigest.clear();
+  _kfTrimDerivedCache(_kfDerivedCache.yearDigest, _kfDerivedCacheLimit());
   _kfDerivedCache.yearDigest.set(key, data);
   return data;
 }
@@ -552,16 +565,19 @@ function _kfBindYearDigestControls(digestEl) {
   digestEl.querySelector("[data-year-digest-close]")?.addEventListener("click", _kfHideYearDigest);
 }
 
-function _kfRenderActiveYearDigest() {
+function _kfRenderActiveYearDigest(force = false) {
   const digestEl = $("tourPaneContent");
   if (!digestEl) return;
+  const key = `${_kfSourceSelectionKey()}|${lastRootId || ""}|${Math.floor(curYear)}|${_kfFilterKey()}|${_kfDerivedCache.activeDigestMode}|${timelineLoaded ? 1 : 0}`;
+  if (!force && key === _kfDerivedCache.lastDigestRenderKey) return;
+  _kfDerivedCache.lastDigestRenderKey = key;
   digestEl.innerHTML = _kfYearTourHtml();
   _kfBindYearDigestControls(digestEl);
 }
 
 function _kfShowYearTour(selectTab = true) {
   _kfDerivedCache.activeDigestMode = "tour";
-  _kfRenderActiveYearDigest();
+  _kfRenderActiveYearDigest(true);
   if (selectTab && typeof _kfSetSideTab === "function") _kfSetSideTab("tour");
 }
 
@@ -692,12 +708,18 @@ function _kfRefreshViewChrome(force = false) {
     breadEl.textContent = bits.join(" > ");
   }
   if (whyEl) whyEl.hidden = !timelineLoaded || !lastIndividuals;
-  if (digestEl) _kfRenderActiveYearDigest();
+  const tourIsVisible = typeof _kfIsSideTabActive === "function"
+    ? _kfIsSideTabActive("tour")
+    : digestEl?.closest(".sidePane")?.classList.contains("on");
+  if (digestEl && tourIsVisible) _kfRenderActiveYearDigest();
   if (mobileContextEl) {
     mobileContextEl.hidden = false;
     mobileContextEl.innerHTML = _kfMobileContextStripHtml(y, data, sourceCount);
   }
-  if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
+  const chatIsVisible = typeof _kfIsSideTabActive === "function"
+    ? _kfIsSideTabActive("chat")
+    : document.getElementById("chatPane")?.classList.contains("on");
+  if (chatIsVisible && typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
 }
 
 $("viewWhy")?.addEventListener("click", () => _kfExplainCurrentView());
@@ -743,7 +765,7 @@ function _kfClusterDigestHtml(c, rows) {
     if (issueCount) bullets.push(`${issueCount} ${issueCount === 1 ? "person has" : "people have"} data issues worth checking.`);
   }
   const html = `<div class="ux-section cluster-digest"><h4>Most useful things to know</h4><ul class="ux-list">${bullets.map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`;
-  if (_kfDerivedCache.cluster.size > 200) _kfDerivedCache.cluster.clear();
+  _kfTrimDerivedCache(_kfDerivedCache.cluster, (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) ? 40 : 120);
   _kfDerivedCache.cluster.set(key, { ...(cached || {}), digestHtml: html });
   return html;
 }

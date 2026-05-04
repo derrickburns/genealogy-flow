@@ -1461,10 +1461,14 @@ async function processFile(file) {
   eventCities = tl.eventCities || [];
   const sourceNameBase = sourceMeta.common_name || file.name.replace(/\.(ged|gedcom|json)$/i, "") || "genealogy";
   lastFileName = _kfUniqueSourceName(sourceNameBase, sourceMeta);
-  // Cache the raw GEDCOM text so kfApi.setActiveTree(name) can re-activate
-  // a previously-loaded tree without forcing the user to drop the file again.
+  // Desktop can retain raw text for reprocessing. Mobile keeps only the
+  // parsed source snapshot to avoid doubling memory for large trees.
   _kfActiveTreeName = lastFileName;
-  _kfTreeCache.set(lastFileName, text);
+  if (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) {
+    _kfTreeCache.delete(lastFileName);
+  } else {
+    _kfTreeCache.set(lastFileName, text);
+  }
   let browserSourceId = _kfSourceIdByName.get(lastFileName);
   if (!browserSourceId) {
     browserSourceId = _kfNextBrowserSourceId++;
@@ -1536,7 +1540,7 @@ async function processFile(file) {
       highlightedDwell = latest;
       highlightInferredYear = -1;
       highlightInferredSrcYear = -1;
-      updatePanel(true);
+      if (typeof _kfShowPersonCard === "function") _kfShowPersonCard(latest);
     }
   }
   // Start playback from 1900 so the user immediately sees migration in motion.

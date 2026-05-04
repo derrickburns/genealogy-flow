@@ -58,7 +58,6 @@ function _kfPickClusterAt(x, y) {
       if (playing) { playing = false; _kfSetPlayButtonLabel(); }
       _kfShowClusterCard(cluster, { selectedId: selectedFocusId, focusId: selectedFocusId || lastRootId });
       fxCtx.clearRect(0, 0, W, H);
-      applyExpansion();
     }
     return;
   }
@@ -92,7 +91,6 @@ function _kfPickClusterAt(x, y) {
     _kfShowPersonCard(bestI);
   }
   fxCtx.clearRect(0, 0, W, H);
-  applyExpansion();
 });
 
 function hitTestMap(x, y, hitR2 = 14 * 14) {
@@ -194,7 +192,12 @@ function restoreView(s) {
     if (_kfMap && s.mapView) {
       _kfMap.jumpTo({ center: s.mapView.center, zoom: s.mapView.zoom, bearing: s.mapView.bearing || 0 });
     }
-    if (timelineLoaded) { projectAll(); fxCtx.clearRect(0, 0, W, H); updatePanel(true); }
+    if (timelineLoaded) {
+      projectAll();
+      fxCtx.clearRect(0, 0, W, H);
+      if (highlightedDwell >= 0) _kfShowPersonCard(highlightedDwell);
+      if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+    }
     _kfRefreshLoopControls();
   } finally {
     _restoringView = false;
@@ -583,8 +586,6 @@ function frame(activeTrailFade) {
 
   const y = curYear, dw = dwellWindow;
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
-  const labeledNamesFrame = new Set();
-  const dynamicLabelRects = [];
   fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
   const renderClusters = clusterMode !== "none" && clusterMode !== "dispersion";
   const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
@@ -808,7 +809,6 @@ function drawKinLines(lo, hi, y, dw) {
     if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(dwellIndi[i])) continue;
     if (curFilter === "blood" && !dwellBlood[i]) continue;
     if (!typeFilter.has(dwellType[i])) continue;
-    if (!passesStatus(dwellIndi[i])) continue;
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
     const indi = dwellIndi[i];
@@ -1204,17 +1204,38 @@ function pruneInvalidHighlightSelection() {
   }
 }
 
+// Mobile Safari is memory-sensitive during long animations. Cap refresh work at
+// 30fps while preserving playback speed by accumulating elapsed time between
+// rendered ticks instead of slowing the timeline.
+const MOBILE_REFRESH_FPS = 30;
+const MOBILE_REFRESH_INTERVAL_MS = 1000 / MOBILE_REFRESH_FPS;
 let last = 0;
+let _kfLastMobileAnimationFrameAt = 0;
 let _kfLastMobileDeckUpdateAt = 0;
 
+function _kfShouldRunAnimationTick(now) {
+  if (!_kfIsMobileLayout()) return true;
+  if (!_kfLastMobileAnimationFrameAt) {
+    _kfLastMobileAnimationFrameAt = now;
+    return true;
+  }
+  if (now - _kfLastMobileAnimationFrameAt < MOBILE_REFRESH_INTERVAL_MS) return false;
+  _kfLastMobileAnimationFrameAt = now;
+  return true;
+}
+
 function _kfShouldUpdateDeckLayers(now) {
-  if (!_kfIsMobileLayout() || !playing) return true;
-  if (now - _kfLastMobileDeckUpdateAt < 66) return false;
+  if (!_kfIsMobileLayout()) return true;
+  if (now - _kfLastMobileDeckUpdateAt < MOBILE_REFRESH_INTERVAL_MS) return false;
   _kfLastMobileDeckUpdateAt = now;
   return true;
 }
 
 function tick(now) {
+  if (!_kfShouldRunAnimationTick(now)) {
+    requestAnimationFrame(tick);
+    return;
+  }
   const dt = last ? (now - last) / 1000 : 0;
   last = now;
   if (timelineLoaded) {
@@ -1250,7 +1271,6 @@ function tick(now) {
       const pct = (curYear - parseFloat(range.min)) / Math.max(1, parseFloat(range.max) - parseFloat(range.min));
       yearThumbLabelEl.style.left = (pct * 100) + "%";
     }
-    updateStatusLabels(yint);
     updateMapLegend();
     _kfRefreshLoopControls();
     if (_kfIsMobileLayout() && typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome();
@@ -1273,7 +1293,6 @@ function tick(now) {
   if (_kfActiveLens) _kfFetchLensData();
   if (_kfDwellsOnDeck && _kfDeckOverlay && timelineLoaded && _kfShouldUpdateDeckLayers(now)) updateDeckDwellLayer();
   frame(parseFloat(trailSel.value));
-  updatePanel(false);
   updateNowMarker();
   requestAnimationFrame(tick);
 }
@@ -1333,7 +1352,7 @@ function clearHighlight() {
   if (highlightedDwell < 0 && highlightInferredYear < 0) return;
   highlightedDwell = -1; highlightInferredYear = -1; highlightInferredSrcYear = -1;
   fxCtx.clearRect(0, 0, W, H);
-  updatePanel(true);
+  _kfHidePersonCard();
   _kfRefreshViewChrome(true);
 }
 function _kfEndSliderDrag() {

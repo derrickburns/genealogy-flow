@@ -15,6 +15,11 @@ const _mobileSheetHandleEl = $("mobileSheetHandle");
 const _mobileSheetTabsEl = $("sideTabs");
 const _mobileSheetTitleEl = $("mobileSheetTitle");
 let _kfSuppressSideTabClickUntil = 0;
+let _kfActiveSideTab = "chat";
+
+function _kfIsSideTabActive(tab) {
+  return _kfActiveSideTab === tab;
+}
 
 function _kfUpdateMobileSheetTitle(tab) {
   if (!_mobileSheetTitleEl) return;
@@ -74,6 +79,7 @@ function _kfBumpMobileSheetForTab(tab) {
 function _kfSetSideTab(tab) {
   const next = tab === "person" || tab === "cluster" || tab === "options" || tab === "trees" || tab === "tour" ? tab : "chat";
   if (next === "tour" && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
+  _kfActiveSideTab = next;
   document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
     btn.classList.toggle("on", btn.dataset.sideTab === next);
   });
@@ -81,6 +87,7 @@ function _kfSetSideTab(tab) {
     pane.classList.toggle("on", pane.id === `${next}Pane`);
   });
   _kfUpdateMobileSheetTitle(next);
+  if (next === "chat" && typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
   _kfBumpMobileSheetForTab(next);
 }
 document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
@@ -555,7 +562,6 @@ function _kfShowClusterCard(c, opts = {}) {
       if (playing) { playing = false; _kfSetPlayButtonLabel(); }
       _kfShowPersonCard(di);
       fxCtx.clearRect(0, 0, W, H);
-      applyExpansion();
     });
   });
 
@@ -771,7 +777,7 @@ function _kfShowPersonCard(di) {
     highlightInferredYear = -1;
     highlightInferredSrcYear = -1;
     fxCtx.clearRect(0, 0, W, H);
-    updatePanel(true);
+    if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
   });
 }
 
