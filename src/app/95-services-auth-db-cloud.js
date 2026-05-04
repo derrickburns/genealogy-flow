@@ -463,13 +463,13 @@ async function buildBrowserDb() {
     if (_kfBrowserDb) { _kfBrowserDb.close(); _kfBrowserDb = null; }
     const db = new window._sqlJs.Database();
     db.run(`CREATE TABLE base_sources (id INTEGER PRIMARY KEY, name TEXT, loaded_at TEXT, n_individuals INTEGER, n_events INTEGER, n_families INTEGER)`);
-    db.run(`CREATE TABLE base_individuals (source_id INTEGER, id TEXT, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT, PRIMARY KEY (source_id, id))`);
+    db.run(`CREATE TABLE base_individuals (source_id INTEGER, id TEXT, name TEXT, sex TEXT, birth_year INTEGER, birth_place TEXT, death_year INTEGER, famc TEXT, PRIMARY KEY (source_id, id))`);
     db.run(`CREATE TABLE base_events (source_id INTEGER, individual_id TEXT, type TEXT, year INTEGER, place TEXT, lat REAL, lon REAL, geo_level TEXT, geo_cc TEXT, geo_st TEXT)`);
     db.run(`CREATE TABLE base_families (source_id INTEGER, id TEXT, husb_id TEXT, wife_id TEXT, PRIMARY KEY (source_id, id))`);
     db.run(`CREATE TABLE base_family_children (source_id INTEGER, family_id TEXT, child_id TEXT, PRIMARY KEY (source_id, family_id, child_id))`);
     db.run("BEGIN");
     const ss = db.prepare("INSERT INTO base_sources VALUES (?,?,?,?,?,?)");
-    const si = db.prepare("INSERT OR REPLACE INTO base_individuals VALUES (?,?,?,?,?,?,?)");
+    const si = db.prepare("INSERT OR REPLACE INTO base_individuals VALUES (?,?,?,?,?,?,?,?)");
     const se = db.prepare("INSERT INTO base_events VALUES (?,?,?,?,?,?,?,?,?,?)");
     const sf = db.prepare("INSERT OR REPLACE INTO base_families VALUES (?,?,?,?)");
     const sc = db.prepare("INSERT OR REPLACE INTO base_family_children VALUES (?,?,?)");
@@ -483,7 +483,7 @@ async function buildBrowserDb() {
         src.n_families,
       ]);
       for (const ind of src.individuals) {
-        si.run([src.source_id, ind.id, ind.name || null, ind.sex || null, ind.birth_year ?? null, ind.death_year ?? null, ind.famc ?? null]);
+        si.run([src.source_id, ind.id, ind.name || null, ind.sex || null, ind.birth_year ?? null, ind.birth_place || null, ind.death_year ?? null, ind.famc ?? null]);
         for (const e of (ind.events || [])) {
           const g = geocoder ? geocoder(e.place) : null;
           se.run([

@@ -67,6 +67,19 @@ function cleanEvent(event: Record<string, any>): Record<string, any> {
   };
 }
 
+function livingBirthPlace(ind: Record<string, any>): string {
+  const birth = records(ind.events).find(event => {
+    const type = String(event.tag ?? event.type ?? "").toUpperCase();
+    return type === "BIRT" && String(event.place ?? "").trim();
+  });
+  return String(birth?.place ?? ind.birth_place ?? ind.birthPlace ?? "").trim();
+}
+
+function cleanLivingBirthPlaceEvent(ind: Record<string, any>): Record<string, any>[] {
+  const place = livingBirthPlace(ind);
+  return place ? [{ tag: "BIRT", type: "BIRT", place, sources: [] }] : [];
+}
+
 function cleanFamilyEvent(event: unknown): Record<string, any> | null {
   if (!event || typeof event !== "object") return null;
   const row = event as Record<string, any>;
@@ -80,26 +93,27 @@ function cleanFamilyEvent(event: unknown): Record<string, any> | null {
 function sanitizePublicDemo(json: any): any {
   const currentYear = new Date().getUTCFullYear();
   const livingIds = new Set<string>();
-  const livingLabels = new Map<string, string>();
   let livingCount = 0;
 
   const individuals = records(json?.individuals).map(ind => {
     const id = idOf(ind.id ?? ind.xref ?? ind.individual_id);
     const living = isPrivateDemoPerson(ind, currentYear);
+    let safeId = id;
     if (living) {
       livingCount++;
-      livingLabels.set(id, `Living person ${livingCount}`);
       if (id) livingIds.add(id);
+      safeId = `@DEMO_LIVING_${livingCount}@`;
     }
     return {
-      id,
-      name: living ? (livingLabels.get(id) ?? "Living person") : (ind.name ?? id),
+      id: safeId,
+      name: living ? "" : (ind.name ?? id),
       sex: living ? "U" : (ind.sex ?? "U"),
       birth_year: living ? null : (numberOrNull(ind.birth_year ?? ind.birthYear)),
+      birth_place: living ? livingBirthPlace(ind) || null : (ind.birth_place ?? ind.birthPlace ?? null),
       death_year: living ? null : (numberOrNull(ind.death_year ?? ind.deathYear)),
       famc: living ? null : (ind.famc ?? ind.family_child ?? null),
       fams: living ? [] : (Array.isArray(ind.fams) ? ind.fams : []),
-      events: living ? [] : records(ind.events).map(cleanEvent),
+      events: living ? cleanLivingBirthPlaceEvent(ind) : records(ind.events).map(cleanEvent),
       notes: [],
       sources: [],
     };
@@ -127,13 +141,14 @@ function sanitizePublicDemo(json: any): any {
     privacy: {
       tier: "public-demo",
       living_people: "anonymized",
-      living_details: "removed",
+      living_details: "birth_location_only",
+      living_names: "removed",
     },
   };
 }
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
-  const obj = await ctx.env.STORAGE.get(PUBLIC_DEMO_KEY) ?? await ctx.env.STORAGE.get(RAW_FALLBACK_KEY);
+  const obj = await ctx.env.STORAGE.get(RAW_FALLBACK_KEY) ?? await ctx.env.STORAGE.get(PUBLIC_DEMO_KEY);
   if (!obj) {
     return new Response(JSON.stringify({ error: "Demo data not seeded yet" }), {
       status: 503,
@@ -153,7 +168,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "public, max-age=3600",
-      "X-Demo-Privacy": "living-anonymized",
+      "X-Demo-Privacy": "living-anonymized-birth-location-only",
     },
   });
 };

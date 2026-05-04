@@ -78,27 +78,41 @@ function isPrivateDemoPerson(ind, currentYear = new Date().getUTCFullYear()) {
   return currentYear - ind.birth_year < LIVING_MAX_AGE;
 }
 
+function livingBirthPlace(ind) {
+  const birth = (ind.events || []).find(event => {
+    const type = String(event.tag || event.type || "").toUpperCase();
+    return type === "BIRT" && String(event.place || "").trim();
+  });
+  return String(birth?.place || ind.birth_place || ind.birthPlace || "").trim();
+}
+
+function livingBirthPlaceEvents(ind) {
+  const place = livingBirthPlace(ind);
+  return place ? [{ tag: "BIRT", type: "BIRT", place, sources: [] }] : [];
+}
+
 function sanitizePublicDemo(input) {
   const currentYear = new Date().getUTCFullYear();
   const livingIds = new Set();
-  const livingLabels = new Map();
   let livingCount = 0;
   const individuals = input.individuals.map(ind => {
     const living = isPrivateDemoPerson(ind, currentYear);
+    let safeId = ind.id;
     if (living) {
       livingCount++;
       livingIds.add(ind.id);
-      livingLabels.set(ind.id, `Living person ${livingCount}`);
+      safeId = `@DEMO_LIVING_${livingCount}@`;
     }
     return {
-      id: ind.id,
-      name: living ? livingLabels.get(ind.id) : ind.name,
+      id: safeId,
+      name: living ? "" : ind.name,
       sex: living ? "U" : ind.sex,
       birth_year: living ? null : ind.birth_year,
+      birth_place: living ? livingBirthPlace(ind) || null : (ind.birth_place || null),
       death_year: living ? null : ind.death_year,
       famc: living ? null : ind.famc,
       fams: living ? [] : ind.fams,
-      events: living ? [] : (ind.events || []).map(e => ({ ...e, sources: [] })),
+      events: living ? livingBirthPlaceEvents(ind) : (ind.events || []).map(e => ({ ...e, sources: [] })),
       notes: [],
       sources: [],
     };
@@ -122,7 +136,8 @@ function sanitizePublicDemo(input) {
     privacy: {
       tier: "public-demo",
       living_people: "anonymized",
-      living_details: "removed",
+      living_details: "birth_location_only",
+      living_names: "removed",
     },
   };
 }

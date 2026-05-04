@@ -20,15 +20,8 @@
     <h1 id="splashTitle">Kindred Flow maps family history through time.</h1>
     <p>Kindred Flow is a genealogy viewer produced by Parthenian, LLC as part of the Kindred series of products. It turns family-tree data into an interactive map and timeline so you can see where people lived, how families moved, and how branches relate across places and generations.</p>
     <p>You can load GEDCOM family-tree files, select one or more trees, animate migration over time, inspect people and clusters, ask the Kindred AI genealogist questions, and share trees with other signed-in users.</p>
-    <p class="splashMobileNote">On mobile, trees are loaded only when you choose them. To load your own family tree data and share it with friends, use the desktop app and sign in. Signing in creates an account record of the trees you own and the trees shared with you. You can save loaded family tree data on Kindred servers for 7 days free of charge; shared tree data is stored on Kindred servers, and you may delete or update it at any time.</p>
+    <p class="splashMobileNote">On mobile, the DEMO tree loads automatically. To load your own family tree data and share it with friends, use the desktop app and sign in. Signing in creates an account record of the trees you own and the trees shared with you. You can save loaded family tree data on Kindred servers for 7 days free of charge; shared tree data is stored on Kindred servers, and you may delete or update it at any time.</p>
     <button type="button" id="splashDismiss">Enter Kindred Flow</button>
-  </div>
-</div>
-<div id="emptyTreesModal" class="emptyTreesModal hidden" role="dialog" aria-modal="true" aria-labelledby="emptyTreesTitle">
-  <div class="emptyTreesCard">
-    <h2 id="emptyTreesTitle">No trees loaded yet</h2>
-    <p id="emptyTreesBody">Load a shared tree or open a GEDCOM file to start exploring.</p>
-    <button type="button" id="emptyTreesDismiss">OK</button>
   </div>
 </div>
 <div id="uploadPolicyModal" class="uploadPolicyModal hidden" role="dialog" aria-modal="true" aria-labelledby="uploadPolicyTitle">
@@ -232,7 +225,7 @@
       </div>
       <div class="treeStatsCard">
         <div class="treeStatsHead">Current data</div>
-        <div id="treeStats">No trees loaded</div>
+        <div id="treeStats">Loading DEMO tree...</div>
       </div>
       <div class="treeStatsCard dataQualityCard">
         <div class="treeStatsHead">Data review</div>

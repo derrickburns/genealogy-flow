@@ -369,9 +369,10 @@ function _kfFindPeopleRows(criteria = {}) {
         name: ind.name || "?",
         sex: ind.sex || null,
         birth: ind.birth_year ?? null,
+        birth_place: ind.birth_place || null,
         death: ind.death_year ?? null,
         status,
-        latest_place: latest?.place || null,
+        latest_place: latest?.place || ind.birth_place || null,
         latest_year: latest?.year ?? null,
         place_intervals: matchingIntervals.slice(0, 8),
         placed_events: _kfPlacedEvents(ind).slice(-12),
@@ -415,7 +416,9 @@ function buildQuestionDataContext(userMsg) {
     if (placeTerms.length) lines.push(`Place terms recognized from question: ${placeTerms.join(", ")}.`);
     for (const row of result.rows) {
       const life = [row.birth ? `b. ${row.birth}` : "", row.death ? `d. ${row.death}` : row.status].filter(Boolean).join(", ");
-      const latest = row.latest_place ? `latest known ${row.latest_place} in ${row.latest_year}` : "no placed events";
+      const latest = row.latest_place
+        ? (row.latest_year != null ? `latest known ${row.latest_place} in ${row.latest_year}` : `birth location recorded as ${row.latest_place}`)
+        : "no placed events";
       const intervals = placeTerms.length
         ? (row.place_intervals.length ? `matching intervals: ${row.place_intervals.map(_kfFormatInterval).join("; ")}` : `matching intervals: none`)
         : "";
@@ -511,6 +514,7 @@ function _kfSelectedGenealogyFacts(opts = {}) {
         name: ind.name || "?",
         surname: _kfSurnameOf(ind.name || "") || "(unknown)",
         birth: ind.birth_year ?? null,
+        birthPlace: ind.birth_place || null,
         death: ind.death_year ?? null,
       };
       persons.push(person);
@@ -1130,7 +1134,7 @@ function _kfSelectedGenealogyAnalysisPayload(opts = {}) {
 }
 
 async function _kfRunGenealogyAnalysis(kind, opts, fallback) {
-  if (!_kfLoadedSources.size) return { error: "no tree loaded" };
+  if (!_kfLoadedSources.size) return _kfTreeDataLoadingError();
   if (typeof _kfRunAnalysisInWorker === "function" &&
       (typeof _kfAnalysisWorkerMayBeAvailable !== "function" || _kfAnalysisWorkerMayBeAvailable())) {
     try {
@@ -1143,6 +1147,10 @@ async function _kfRunGenealogyAnalysis(kind, opts, fallback) {
   }
   const result = fallback(opts || {});
   return result && typeof result === "object" ? { ...result, computedIn: "main" } : result;
+}
+
+function _kfTreeDataLoadingError() {
+  return { error: "tree data is still loading; the DEMO tree should load automatically" };
 }
 
 // Page-control API for Claude. Each method returns a small status object that
@@ -1784,7 +1792,7 @@ window.kfApi = {
   },
 
   traceLineage(fromQuery, toQuery, opts) {
-    if (!lastIndividuals || !lastParentsOf) return { error: "no tree loaded" };
+    if (!lastIndividuals || !lastParentsOf) return _kfTreeDataLoadingError();
     const a = _kfFindIndi(fromQuery), b = _kfFindIndi(toQuery);
     if (!a) return { error: "no person matched: " + fromQuery };
     if (!b) return { error: "no person matched: " + toQuery };
@@ -1901,7 +1909,7 @@ window.kfApi = {
   },
 
   showAncestors(query, maxGen) {
-    if (!lastParentsOf || !lastIndiById) return { error: "no tree loaded" };
+    if (!lastParentsOf || !lastIndiById) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     const m = _kfAncestorsByGen(ind.id, lastParentsOf, Math.max(1, parseInt(maxGen, 10) || 6));
@@ -1912,7 +1920,7 @@ window.kfApi = {
   },
 
   showDescendants(query, maxGen) {
-    if (!lastChildrenOf || !lastIndiById) return { error: "no tree loaded" };
+    if (!lastChildrenOf || !lastIndiById) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     const m = _kfDescendantsByGen(ind.id, lastChildrenOf, Math.max(1, parseInt(maxGen, 10) || 6));
@@ -1927,7 +1935,7 @@ window.kfApi = {
   },
 
   getDwellsForPerson(query) {
-    if (!lastIndividuals) return { error: "no tree loaded" };
+    if (!lastIndividuals) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     const idx = lastIndiIdxById.get(ind.id);
@@ -1948,7 +1956,7 @@ window.kfApi = {
   },
 
   getRelationship(queryA, queryB) {
-    if (!lastParentsOf || !lastIndiById) return { error: "no tree loaded" };
+    if (!lastParentsOf || !lastIndiById) return _kfTreeDataLoadingError();
     const a = _kfFindIndi(queryA), b = _kfFindIndi(queryB);
     if (!a) return { error: "no person matched: " + queryA };
     if (!b) return { error: "no person matched: " + queryB };
@@ -2035,7 +2043,7 @@ window.kfApi = {
   },
 
   getFamily(query) {
-    if (!lastIndividuals || !lastIndiById) return { error: "no tree loaded" };
+    if (!lastIndividuals || !lastIndiById) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     const par = lastParentsOf?.get(ind.id) || [null, null];
@@ -2073,7 +2081,7 @@ window.kfApi = {
   },
 
   getAncestors(query, maxGen) {
-    if (!lastParentsOf || !lastIndiById) return { error: "no tree loaded" };
+    if (!lastParentsOf || !lastIndiById) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     const m = _kfAncestorsByGen(ind.id, lastParentsOf, parseInt(maxGen, 10) || 6);
@@ -2088,7 +2096,7 @@ window.kfApi = {
   },
 
   getDescendants(query, maxGen) {
-    if (!lastChildrenOf || !lastIndiById) return { error: "no tree loaded" };
+    if (!lastChildrenOf || !lastIndiById) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     const m = _kfDescendantsByGen(ind.id, lastChildrenOf, parseInt(maxGen, 10) || 6);
@@ -2103,7 +2111,7 @@ window.kfApi = {
   },
 
   getMigrations(query) {
-    if (!lastIndividuals) return { error: "no tree loaded" };
+    if (!lastIndividuals) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     const idx = lastIndiIdxById.get(ind.id);
@@ -2135,7 +2143,7 @@ window.kfApi = {
   },
 
   getContemporaries(query, year, opts) {
-    if (!lastIndividuals) return { error: "no tree loaded" };
+    if (!lastIndividuals) return _kfTreeDataLoadingError();
     const ind = _kfFindIndi(query);
     if (!ind) return { error: "no person matched: " + query };
     let y = year != null ? Number(year) : ind.birth_year;
@@ -2157,12 +2165,12 @@ window.kfApi = {
   },
 
   findPeople(criteria) {
-    if (!_kfLoadedSources.size) return { error: "no tree loaded" };
+    if (!_kfLoadedSources.size) return _kfTreeDataLoadingError();
     return _kfFindPeopleRows(criteria || {});
   },
 
   setHighlight(idsOrNames, opts) {
-    if (!lastIndividuals) return { error: "no tree loaded" };
+    if (!lastIndividuals) return _kfTreeDataLoadingError();
     if (!Array.isArray(idsOrNames)) return { error: "expected array of person ids or names" };
     const set = new Set(), resolved = [];
     for (const q of idsOrNames) {

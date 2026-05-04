@@ -32,7 +32,7 @@ For network/graph visualizations use type "html" — a self-contained HTML page 
 
 Each user message is preceded by a context block describing what they're looking at: tree size, year range, root person, current playback year, currently selected person, and people visible at the current year. Use the context to disambiguate ("them", "her", "this place"); use the SQL database for everything beyond what's on screen. If the context includes a capped sample of visible markers, never treat the sample size as the total; use the explicit visible marker total and viewport count lines.
 
-If the selected tree context mentions DEMO privacy, remember that living people have been removed or anonymized for privacy reasons. Do not infer that the source tree lacks living people. If the data quality concerns setting is off, do not recommend weak-evidence, chronology-warning, or data-quality visualizations unless the user explicitly asks for that kind of review; if it is on, the user is interested in those concerns.
+If the selected tree context mentions DEMO privacy, remember that living people are anonymized and retain birth locations only; names, relationships, dates, and other living-person details have been removed for privacy. Do not infer that the source tree lacks living people. If the data quality concerns setting is off, do not recommend weak-evidence, chronology-warning, or data-quality visualizations unless the user explicitly asks for that kind of review; if it is on, the user is interested in those concerns.
 
 You can also DRIVE the page on the user's behalf. To invoke a tool, emit a line of the form:
 
@@ -157,8 +157,8 @@ SQLite schema (browser mode: multi-source, automatically scoped to the selected 
   sources(id INTEGER PK, name TEXT, loaded_at TEXT, n_individuals INT, n_events INT, n_families INT)
     -- one row per loaded tree inside the current browser session.
 
-  individuals(source_id INTEGER, id TEXT, name TEXT, sex TEXT, birth_year INTEGER, death_year INTEGER, famc TEXT)
-    -- id is the GEDCOM xref like "@I1234@". sex is M/F/U. famc is the family-as-child id.
+  individuals(source_id INTEGER, id TEXT, name TEXT, sex TEXT, birth_year INTEGER, birth_place TEXT, death_year INTEGER, famc TEXT)
+    -- id is the GEDCOM xref or an anonymous demo id. sex is M/F/U. famc is the family-as-child id.
 
   events(source_id INTEGER, individual_id TEXT, type TEXT, year INTEGER, place TEXT,
          lat REAL, lon REAL, geo_level TEXT, geo_cc TEXT, geo_st TEXT)

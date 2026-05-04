@@ -110,28 +110,40 @@ function _kfDemoIsPrivatePerson(ind, currentYear = new Date().getUTCFullYear()) 
   if (birth == null) return true;
   return currentYear - birth < _KF_PUBLIC_DEMO_MAX_AGE;
 }
+function _kfDemoLivingBirthPlace(ind) {
+  const birth = _kfCatalogRecords(ind?.events).find(event => {
+    const type = String(event.tag ?? event.type ?? "").toUpperCase();
+    return type === "BIRT" && String(event.place ?? "").trim();
+  });
+  return String(birth?.place ?? ind?.birth_place ?? ind?.birthPlace ?? "").trim();
+}
+function _kfDemoLivingBirthPlaceEvents(ind) {
+  const place = _kfDemoLivingBirthPlace(ind);
+  return place ? [{ tag: "BIRT", type: "BIRT", place, sources: [] }] : [];
+}
 function _kfSanitizePublicDemoJson(json) {
   const currentYear = new Date().getUTCFullYear();
   const livingIds = new Set();
-  const labels = new Map();
   let livingCount = 0;
   const individuals = _kfCatalogRecords(json?.individuals).map(ind => {
     const id = _kfCatalogId(ind, ["id", "xref", "individual_id"]);
     const isPrivate = _kfDemoIsPrivatePerson(ind, currentYear);
+    let safeId = id;
     if (isPrivate) {
       livingCount++;
-      labels.set(id, `Living person ${livingCount}`);
       if (id) livingIds.add(id);
+      safeId = `@DEMO_LIVING_${livingCount}@`;
     }
     return {
-      id,
-      name: isPrivate ? (labels.get(id) || "Living person") : (ind.name || id),
+      id: safeId,
+      name: isPrivate ? "" : (ind.name || id),
       sex: isPrivate ? "U" : (ind.sex || "U"),
       birth_year: isPrivate ? null : _kfDemoNumberOrNull(ind.birth_year ?? ind.birthYear),
+      birth_place: isPrivate ? (_kfDemoLivingBirthPlace(ind) || null) : (ind.birth_place ?? ind.birthPlace ?? null),
       death_year: isPrivate ? null : _kfDemoNumberOrNull(ind.death_year ?? ind.deathYear),
       famc: isPrivate ? null : (ind.famc || ind.family_child || null),
       fams: isPrivate ? [] : (Array.isArray(ind.fams) ? ind.fams : []),
-      events: isPrivate ? [] : _kfCatalogRecords(ind.events).map(e => ({
+      events: isPrivate ? _kfDemoLivingBirthPlaceEvents(ind) : _kfCatalogRecords(ind.events).map(e => ({
         ...e,
         sources: [],
       })),
@@ -160,7 +172,8 @@ function _kfSanitizePublicDemoJson(json) {
     privacy: {
       tier: "public-demo",
       living_people: "anonymized",
-      living_details: "removed",
+      living_details: "birth_location_only",
+      living_names: "removed",
     },
   };
 }
@@ -171,14 +184,17 @@ function parseGedcomFromJson(json) {
       const id = _kfCatalogId(ind, ["id", "xref", "individual_id"]);
       if (!id) return null;
       const birthYear = ind.birth_year ?? ind.birthYear ?? null;
+      const birthPlace = String(ind.birth_place ?? ind.birthPlace ?? _kfCatalogRecords(ind.events).find(e => String(e.tag ?? e.type ?? "").toUpperCase() === "BIRT" && String(e.place ?? "").trim())?.place ?? "").trim() || null;
       const deathYear = ind.death_year ?? ind.deathYear ?? null;
+      const anonymousDemoLiving = !String(ind.name || "").trim() && /^@DEMO_LIVING_\d+@$/.test(id);
       return {
         id,
-        name: ind.name || id,
+        name: ind.name || (anonymousDemoLiving ? "Anonymous living person" : id),
         sex: ind.sex || "U",
         famc: ind.famc || ind.family_child || null,
         raw: "",
         birth_year: birthYear,
+        birth_place: birthPlace,
         death_year: deathYear,
         events: _kfCatalogRecords(ind.events)
           .flatMap(e => expandRangedEvent({

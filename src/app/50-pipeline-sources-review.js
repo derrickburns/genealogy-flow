@@ -768,36 +768,6 @@ function _kfPruneDuplicateLoadedSources() {
   return changed;
 }
 
-let _kfEmptyTreesModalBound = false;
-function _kfBindEmptyTreesModal() {
-  if (_kfEmptyTreesModalBound) return;
-  _kfEmptyTreesModalBound = true;
-  const modal = document.getElementById("emptyTreesModal");
-  const dismiss = document.getElementById("emptyTreesDismiss");
-  if (!modal || !dismiss) return;
-  const close = () => {
-    sessionStorage.setItem("kf-empty-trees-dismissed", "1");
-    modal.classList.add("hidden");
-  };
-  dismiss.addEventListener("click", close);
-  modal.addEventListener("click", e => { if (e.target === modal) close(); });
-}
-
-function _kfMaybeShowEmptyTreesModal(show) {
-  const modal = document.getElementById("emptyTreesModal");
-  const body = document.getElementById("emptyTreesBody");
-  if (!modal || !body) return;
-  _kfBindEmptyTreesModal();
-  if (!show || sessionStorage.getItem("kf-empty-trees-dismissed") === "1") {
-    modal.classList.add("hidden");
-    return;
-  }
-  body.textContent = _kfIsMobileLayout()
-    ? "Choose a shared tree below. To load your own family tree data, use the desktop app and sign in."
-    : "Load a shared tree or open a GEDCOM file to start exploring.";
-  modal.classList.remove("hidden");
-}
-
 async function loadCatalogTree(key, opts = {}) {
   if (!key) return false;
   const catalogMeta = (_kfCatalogTrees || []).find(t => t && t.key === key) || null;
@@ -1090,13 +1060,11 @@ function renderSources(list) {
     wrap.classList.add("hidden");
     inner.innerHTML = "";
     const treeStats = document.getElementById("treeStats");
-    if (treeStats) treeStats.textContent = "No trees loaded";
-    _kfMaybeShowEmptyTreesModal(true);
+    if (treeStats) treeStats.textContent = "Loading DEMO tree...";
     if (typeof _kfRefreshQuickChips === "function") _kfRefreshQuickChips();
     return;
   }
   wrap.classList.remove("hidden");
-  _kfMaybeShowEmptyTreesModal(filtered.length === 0);
   const nameCounts = new Map();
   for (const row of inventory) {
     const key = _kfFamiliarTreeName(_kfTreeInventoryItem(row)).toLowerCase();
