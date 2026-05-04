@@ -26,6 +26,7 @@ type CacheBody = {
   cache_key?: string;
   question?: string;
   answer?: string;
+  chips?: unknown;
   model?: string;
   prompt_version?: string;
   analysis_version?: string;
@@ -39,6 +40,7 @@ type CacheRow = {
   cache_key: string;
   question: string;
   answer?: string | null;
+  chips_json?: string | null;
   preview: string | null;
   answer_length: number | null;
   model: string | null;
@@ -65,6 +67,33 @@ function cleanText(value: unknown, max: number): string {
 function validSha256(value: unknown): string {
   const text = String(value || "").trim().toLowerCase();
   return /^[a-f0-9]{64}$/.test(text) ? text : "";
+}
+
+function cleanChipsJson(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  const chips = value
+    .filter(chip => chip && typeof chip === "object" && typeof (chip as { method?: unknown }).method === "string")
+    .slice(0, 12)
+    .map(chip => {
+      const c = chip as { label?: unknown; method?: unknown; args?: unknown };
+      return {
+        label: cleanText(c.label || c.method || "Open", 120),
+        method: cleanText(c.method, 80),
+        args: c.args == null ? null : c.args,
+      };
+    })
+    .filter(chip => chip.method);
+  return chips.length ? JSON.stringify(chips).slice(0, 20000) : "";
+}
+
+function parseChipsJson(value: unknown): unknown[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -101,6 +130,11 @@ async function ensureAiCacheSchema(env: Env): Promise<void> {
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS ai_answer_cache_tree ON ai_answer_cache(tree_hash_key, updated_at)`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS ai_answer_cache_question ON ai_answer_cache(question_hash)`),
   ]);
+  try {
+    await env.DB.prepare(`ALTER TABLE ai_answer_cache ADD COLUMN chips_json TEXT`).run();
+  } catch (e) {
+    if (!/duplicate column|already exists/i.test(String((e as Error)?.message || e))) throw e;
+  }
 }
 
 async function normalizeTreeRefs(env: Env, user: UserContext, refs: TreeRefIn[]): Promise<NormalizedTreeRef[]> {
@@ -170,6 +204,7 @@ function publicEntry(row: CacheRow, includeAnswer: boolean) {
     question: row.question,
     preview: row.preview || "",
     answer: includeAnswer ? row.answer || "" : undefined,
+    chips: includeAnswer ? parseChipsJson(row.chips_json) : undefined,
     answer_length: row.answer_length || 0,
     model: row.model,
     prompt_version: row.prompt_version,
@@ -194,7 +229,7 @@ async function handleIndex(env: Env, user: UserContext, body: CacheBody) {
   const rows = await env.DB.prepare(`
     SELECT cache_key, question,
            CASE WHEN is_standard = 1 AND answer_length <= 4000 AND updated_at >= ? THEN answer ELSE NULL END AS answer,
-           preview, answer_length, model, prompt_version, analysis_version, app_commit, is_standard,
+           chips_json, preview, answer_length, model, prompt_version, analysis_version, app_commit, is_standard,
            created_at, updated_at, hit_count
     FROM ai_answer_cache
     WHERE tree_hash_key = ?
@@ -217,7 +252,7 @@ async function handleGet(env: Env, user: UserContext, body: CacheBody) {
   const cacheKey = validSha256(body.cache_key);
   if (!cacheKey) return json({ error: "cache_key required" }, { status: 422 });
   const row = await env.DB.prepare(`
-    SELECT cache_key, question, answer, preview, answer_length, model, prompt_version, analysis_version, app_commit, is_standard,
+    SELECT cache_key, question, answer, chips_json, preview, answer_length, model, prompt_version, analysis_version, app_commit, is_standard,
            created_at, updated_at, hit_count
     FROM ai_answer_cache
     WHERE cache_key = ? AND tree_hash_key = ?
@@ -236,19 +271,21 @@ async function handlePut(env: Env, user: UserContext, body: CacheBody) {
   const cacheKey = validSha256(body.cache_key);
   const question = cleanText(body.question, 2000);
   const answer = cleanText(body.answer, 50000);
+  const chipsJson = cleanChipsJson(body.chips);
   if (!cacheKey || !question || !answer) return json({ error: "cache_key, question, and answer required" }, { status: 422 });
   const questionHash = await sha256Hex(question.toLowerCase().replace(/\s+/g, " ").trim());
   const now = Math.floor(Date.now() / 1000);
   const preview = answer.replace(/\s+/g, " ").trim().slice(0, 260);
   await env.DB.prepare(`
     INSERT INTO ai_answer_cache (
-      cache_key, tree_hash_key, tree_refs_json, question_hash, question, answer, preview, answer_length,
+      cache_key, tree_hash_key, tree_refs_json, question_hash, question, answer, chips_json, preview, answer_length,
       model, prompt_version, analysis_version, app_commit, is_standard,
       created_by_user_id, created_by_email, created_at, updated_at, hit_count
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     ON CONFLICT(cache_key) DO UPDATE SET
       answer = excluded.answer,
+      chips_json = excluded.chips_json,
       preview = excluded.preview,
       answer_length = excluded.answer_length,
       model = excluded.model,
@@ -264,6 +301,7 @@ async function handlePut(env: Env, user: UserContext, body: CacheBody) {
     questionHash,
     question,
     answer,
+    chipsJson,
     preview,
     answer.length,
     cleanText(body.model, 80),

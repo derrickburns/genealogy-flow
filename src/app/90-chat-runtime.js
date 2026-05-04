@@ -226,7 +226,7 @@ const CHAT_TOOL_ROUND_MAX_CHARS = 18000;
 const CHAT_TOOL_ROW_LIMIT = 24;
 const AI_CACHE_MODEL = "claude-sonnet-4-6";
 const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v7";
-const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v2";
+const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v3-chip-cache";
 const AI_CACHE_INDEX_TTL_MS = 5 * 60 * 1000;
 const _kfAiCacheEntries = new Map();
 let _kfAiCacheIndexKey = "";
@@ -397,20 +397,35 @@ async function _kfLoadCachedAiAnswer(cacheContext) {
   return null;
 }
 
-async function _kfStoreCachedAiAnswer(cacheContext, answer) {
+function _kfSerializableChatChips(chips) {
+  if (!Array.isArray(chips)) return [];
+  return chips
+    .filter(chip => chip && typeof chip === "object" && chip.method)
+    .slice(0, 12)
+    .map(chip => ({
+      label: String(chip.label || chip.method || "Open").slice(0, 120),
+      method: String(chip.method || "").slice(0, 80),
+      args: chip.args == null ? null : chip.args,
+    }));
+}
+
+async function _kfStoreCachedAiAnswer(cacheContext, answer, chips = []) {
   if (!cacheContext || _clerkUserTier === "anon") return;
   const text = String(answer || "").trim();
   if (!text || /^\*?\[?error/i.test(text) || text.length < 40) return;
+  const serializableChips = _kfSerializableChatChips(chips);
   try {
     const data = await _kfPostAiCache({
       action: "put",
       ...cacheContext,
       answer: text,
+      chips: serializableChips,
     });
     _kfAiCacheEntries.set(cacheContext.cache_key, {
       cache_key: cacheContext.cache_key,
       question: cacheContext.question,
       answer: text.length <= 4000 && cacheContext.is_standard ? text : undefined,
+      chips: serializableChips,
       preview: text.replace(/\s+/g, " ").slice(0, 260),
       model: cacheContext.model,
       prompt_version: cacheContext.prompt_version,
@@ -955,6 +970,7 @@ async function runChatTurn(userText) {
     chatHistory.push({
       role: "bot",
       content: `*cached answer*\n\n${cached.answer}`,
+      chips: _kfSerializableChatChips(cached.chips),
       cached: true,
     });
     renderChat();
@@ -1020,7 +1036,7 @@ async function runChatTurn(userText) {
     }
     renderChat();
     if (!results.length) {
-      await _kfStoreCachedAiAnswer(cacheContext, pending.content);
+      await _kfStoreCachedAiAnswer(cacheContext, pending.content, pending.chips);
       return;  // no tool calls -> Claude is done
     }
     // Surface KFCALL errors visibly -- otherwise showViz failures are silent.
@@ -1070,7 +1086,8 @@ async function runChatTurn(userText) {
     const withoutCalls = String(reply || "").replace(KFCALL_RE, "").replace(/<<KFCALL:[\s\S]*$/g, "");
     const chipParse = parseChips(withoutCalls);
     pending.content = _kfPlainEnglishEventText(chipParse.stripped || pending.content || "*Tool limit reached before a usable summary could be produced.*");
-    await _kfStoreCachedAiAnswer(cacheContext, pending.content);
+    if (chipParse.chips.length) pending.chips = _kfMergeChatChips(pending.chips, chipParse.chips);
+    await _kfStoreCachedAiAnswer(cacheContext, pending.content, pending.chips);
   } catch (e) {
     pending.content = `*[tool limit reached]* I gathered evidence but could not generate the final summary: ${e?.message || e}`;
   }
