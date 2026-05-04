@@ -94,7 +94,7 @@
     <input type="range" id="rot" min="-180" max="180" step="1" value="0">
     <select id="colorMode"><option value="lineage" selected>maternal/paternal</option><option value="gender">gender</option><option value="tree">tree</option></select>
     <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select>
-    <select id="clusterMode"><option value="none" selected>none</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="dispersion">on zoom</option></select>
+    <select id="clusterMode"><option value="none" selected>none</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="group">AI groups</option><option value="dispersion">on zoom</option></select>
     <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"><b id="clusterRadiusLabel">30</b>
     <input type="range" id="kinN" min="0" max="20" step="1" value="0"><b id="kinNLabel">0</b>
     <div id="clusterSection"></div>
@@ -224,6 +224,7 @@
               <option value="none">Off - individual people</option>
               <option value="state">Places - state/country regions</option>
               <option value="tree">Trees - compare selected data sets</option>
+              <option value="group">AI groups - from Claude answers</option>
               <option value="pie">Lineage - paternal/maternal branches</option>
               <option value="gender">Gender - recorded sex mix</option>
               <option value="parents">Parent knowledge - missing parents</option>
@@ -293,6 +294,7 @@
         <div id="chatBar">
           <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools on</button>
           <button type="button" id="chatReview" title="Review cross-tree link candidates" hidden>review</button>
+          <button type="button" id="chatPdf" title="Create a printable PDF report from this AI session">PDF</button>
           <button type="button" id="chatClear" title="Clear conversation">clear</button>
           <button type="submit" id="chatSend">Send</button>
         </div>

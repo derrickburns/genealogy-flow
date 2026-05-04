@@ -11,7 +11,7 @@ function _kfIsClusterSelectionMode() {
   return clusterMode !== "none" && !!_kfActiveLens === false &&
     (clusterMode === "aggregate" || clusterMode === "pie" || clusterMode === "parents" ||
      clusterMode === "gender"    || clusterMode === "tree" || clusterMode === "state" ||
-     (clusterMode === "dispersion" && zoomTransform.k < 2));
+     clusterMode === "group"     || (clusterMode === "dispersion" && zoomTransform.k < 2));
 }
 
 function _kfPickDeckClusterAt(x, y) {
@@ -326,9 +326,10 @@ function updateMapLegend() {
   // --- compute viewport stats ---
   const isIndividualMode = !(clusterMode === "pie" || clusterMode === "parents" ||
     clusterMode === "gender" || clusterMode === "tree" ||
-    clusterMode === "aggregate" || clusterMode === "dispersion" || clusterMode === "state");
+    clusterMode === "aggregate" || clusterMode === "dispersion" || clusterMode === "state" ||
+    clusterMode === "group");
 
-  const total = _kfDwellCount || 0;
+  let total = _kfDwellCount || 0;
   let inView = total;
   // [paternal, maternal, other]
   const sideTot = [0, 0, 0], sideView = [0, 0, 0];
@@ -340,7 +341,14 @@ function updateMapLegend() {
   }
 
   const bounds = _kfMap && _kfMap.getBounds ? _kfMap.getBounds() : null;
-  if (bounds && total && _kfDwellPositions && _kfPersonDwell && _kfPersonIndi) {
+  let groupLegendEntries = null;
+  if (clusterMode === "group" && typeof _kfActiveGroupLegendEntries === "function") {
+    groupLegendEntries = _kfActiveGroupLegendEntries(bounds);
+    total = groupLegendEntries.reduce((sum, e) => sum + e.total, 0);
+    inView = groupLegendEntries.reduce((sum, e) => sum + e.visible, 0);
+  }
+
+  if (bounds && total && _kfDwellPositions && _kfPersonDwell && _kfPersonIndi && clusterMode !== "group") {
     const bW = bounds.getWest(), bE = bounds.getEast();
     const bS = bounds.getSouth(), bN = bounds.getNorth();
     inView = 0;
@@ -437,6 +445,15 @@ function updateMapLegend() {
   } else if (clusterMode === "state") {
     html += hdr("US States");
     html += `<div style="font-size:10px;color:#566480;">Color and label show the state abbreviation. Circle size = people count.</div>`;
+  } else if (clusterMode === "group") {
+    html += hdr(_kfActiveGroupSetLabel ? _kfActiveGroupSetLabel() : "AI groups");
+    const entries = groupLegendEntries || [];
+    if (entries.length) {
+      for (const entry of entries) html += dot(entry.color, entry.label, entry.total, entry.visible);
+      html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count. Color = AI-defined group.</div>`;
+    } else {
+      html += `<div style="font-size:10px;color:#566480;">No active AI group members are visible for this year.</div>`;
+    }
   } else {
     // "none" or unknown — show individual particle legend
     if (colorMode === "gender") {
@@ -607,6 +624,7 @@ function frame(activeTrailFade) {
       if (i == null || i < 0) continue;
       const sx = dwellSx[i], sy = dwellSy[i];
       if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;
+      if (clusterMode === "group" && (typeof _kfGroupIndexForDwell !== "function" || _kfGroupIndexForDwell(i) < 0)) continue;
       visible.push(i);
     }
     const mode = useDispersion ? "aggregate" : clusterMode;
@@ -861,6 +879,7 @@ function buildClusters(visible, radius) {
     const ps = dwellSrc[i];                // parent-knowledge: 0=both, 1=one, 2=none
     const ind = lastIndividuals && lastIndividuals[dwellIndi[i]];
     const gx = ind && ind.sex === "M" ? 0 : ind && ind.sex === "F" ? 1 : 2;
+    const gg = typeof _kfGroupIndexForDwell === "function" ? _kfGroupIndexForDwell(i) : -1;
     if (chosen) {
       const n = chosen.members.length;
       chosen.cx = (chosen.cx * n + x) / (n + 1);
@@ -869,16 +888,19 @@ function buildClusters(visible, radius) {
       if (sd === 0 || sd === 1 || sd === 2) chosen.sides[sd] += 1;
       if (ps === 0 || ps === 1 || ps === 2) chosen.parents[ps] += 1;
       chosen.genders[gx] += 1;
+      if (gg >= 0) chosen.groups[gg] = (chosen.groups[gg] || 0) + 1;
     } else {
       const cl = {
         cx: x, cy: y, members: [i],
         sides:   [0, 0, 0],   // [paternal, maternal, other] lineage from root
         parents: [0, 0, 0],   // [both-known, one-known, none-known]
         genders: [0, 0, 0],   // [M, F, U]
+        groups: [],
       };
       if (sd === 0 || sd === 1 || sd === 2) cl.sides[sd] += 1;
       if (ps === 0 || ps === 1 || ps === 2) cl.parents[ps] += 1;
       cl.genders[gx] += 1;
+      if (gg >= 0) cl.groups[gg] = (cl.groups[gg] || 0) + 1;
       clusters.push(cl);
     }
   }
@@ -1073,6 +1095,50 @@ function drawClusters(visible, radius, mode, year, dw) {
         members: cl.members,
         sides: cl.sides, parents: cl.parents, genders: cl.genders,
         sourceCounts, sourceNames,
+      });
+    }
+    return;
+  }
+  if (mode === "group") {
+    const runtime = typeof _kfEnsureActiveGroupRuntime === "function" ? _kfEnsureActiveGroupRuntime() : null;
+    if (!runtime) return;
+    for (const cl of clusters) {
+      const counts = cl.groups || [];
+      const total = counts.reduce((sum, n) => sum + (n || 0), 0);
+      if (!total) continue;
+      const r = Math.max(8, Math.min(28, 5 + Math.sqrt(total) * 4));
+      let start = -Math.PI / 2;
+      for (let gi = 0; gi < runtime.groups.length; gi++) {
+        const count = counts[gi] || 0;
+        if (!count) continue;
+        const slice = (count / total) * Math.PI * 2;
+        const c = runtime.groups[gi].color || _kfGroupColor(gi);
+        fxCtx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.86)`;
+        fxCtx.beginPath();
+        fxCtx.moveTo(cl.cx, cl.cy);
+        fxCtx.arc(cl.cx, cl.cy, r, start, start + slice);
+        fxCtx.closePath();
+        fxCtx.fill();
+        start += slice;
+      }
+      fxCtx.strokeStyle = "rgba(255,255,255,0.9)";
+      fxCtx.lineWidth = 1.2;
+      fxCtx.beginPath();
+      fxCtx.arc(cl.cx, cl.cy, r, 0, Math.PI * 2);
+      fxCtx.stroke();
+      if (total > 1) {
+        fxCtx.fillStyle = "rgba(20,28,48,0.95)";
+        fxCtx.font = "bold 10px -apple-system, sans-serif";
+        fxCtx.textAlign = "center"; fxCtx.textBaseline = "middle";
+        fxCtx.fillText(String(total), cl.cx, cl.cy);
+        fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
+      }
+      _kfFxClusterHits.push({
+        kind: "circle", cx: cl.cx, cy: cl.cy, r,
+        count: total,
+        members: cl.members.filter(di => (typeof _kfGroupIndexForDwell !== "function" || _kfGroupIndexForDwell(di) >= 0)),
+        sides: cl.sides, parents: cl.parents, genders: cl.genders,
+        groupCounts: counts.slice(),
       });
     }
     return;

@@ -484,6 +484,7 @@ const _KF_CLUSTER_OPTION_HELP = {
   gender: "Group nearby people and show the recorded male/female mix inside each cluster.",
   parents: "Group nearby people by how much parent information is known: zero, one, or two recorded parents.",
   pie: "Group nearby people by paternal, maternal, and other lineage relative to the home person.",
+  group: "Group people using named groups created from AI answers, such as migration waves or surname cohorts.",
   dispersion: "Declutter dense views automatically at low zoom, then return to individual markers as you zoom in.",
 };
 const _KF_SHOW_FILTER_HELP = {

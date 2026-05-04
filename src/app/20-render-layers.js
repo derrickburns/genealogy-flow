@@ -1039,6 +1039,7 @@ function makeDwellLayer() {
   const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
                     || clusterMode === "parents"   || clusterMode === "gender"
                     || clusterMode === "tree"      || clusterMode === "state"
+                    || clusterMode === "group"
                     || useDispersion
                     || !!_kfActiveLens;   // active lens replaces dwells too
   if (replaceMode) return null;
@@ -1445,6 +1446,7 @@ function makeFlowLayer() {
   const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
                     || clusterMode === "parents"   || clusterMode === "gender"
                     || clusterMode === "tree"      || clusterMode === "state"
+                    || clusterMode === "group"
                     || useDispersion
                     || !!_kfActiveLens;   // active lens replaces dwells too
   if (replaceMode) return null;
@@ -1600,6 +1602,7 @@ function makeFlowDestLayer() {
   const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
                     || clusterMode === "parents"   || clusterMode === "gender"
                     || clusterMode === "tree"      || clusterMode === "state"
+                    || clusterMode === "group"
                     || useDispersion
                     || !!_kfActiveLens;
   if (replaceMode) return null;

@@ -8,7 +8,7 @@ HARD CONSTRAINTS — never violate these:
 5. You have NO access to design tools, canvas editors, or diagramming software. Do not mention Pencil, Figma, Miro, or any design/canvas tool. Do not offer to create diagrams outside of KFCALL showViz.
 
 SUGGESTION LISTS: When listing visualization or analysis ideas, ALWAYS present each one as a clickable chip using <<KFCHIP:{"label":"...","method":"chat","args":"..."}>>. The args value must be the complete self-contained request that produces the visualization (e.g., "Show me a family network graph centered on [root person], showing 3 generations of parents, children, and spouses"). Never list suggestions as plain bullet points — every suggestion must be a button the user can click.
-When the user clicks a suggestion chip, assume they want both a short written explanation and a visual aid when the data supports one. Use showViz, setClusterMode, centerOn, or another visual action when it would clarify the answer; if no visual would help, say that briefly.
+When the user clicks a suggestion chip, assume they want both a short written explanation and a visual aid when the data supports one. Use showViz, setClusterMode, createGroupSet, centerOn, or another visual action when it would clarify the answer; if no visual would help, say that briefly.
 
 When you name a specific person, place, cluster, or follow-up action that would help the user inspect the current view, include a short KFCHIP for it instead of leaving it as passive text. Prefer chips such as selectPerson, centerOn, setClusterMode, showYearTour, or chat with a complete follow-up request. Use showOutliers only when the data quality concerns setting is on or the user explicitly asks for data-quality review.
 
@@ -72,7 +72,14 @@ Available tools. jsonArgs is a single JSON value:
 - centerOn(personIdOrNameOrPlace)  Center the map. Accepts a person (rotates/pans to their latest event) OR a place string like "San Francisco, California, USA" / "Detroit, Michigan" / "France" — uses the offline geocoder to resolve places.
 - setProjection(name)              [deprecated stub] only Natural Earth is supported now; do not use.
 - setKinLines(n)                   0..20 — connect each person to N nearest blood kin.
-- setClusterMode(mode)             "none" | "aggregate" | "pie" | "parents" | "gender" | "tree" | "state" | "dispersion"
+- setClusterMode(mode)             "none" | "aggregate" | "pie" | "parents" | "gender" | "tree" | "state" | "group" | "dispersion"
+- createGroupSet({name, question?, groups, activate?, showTimeline?, save?})
+  Creates an AI-defined group set from people you identified in an answer, activates "AI groups" map clustering by default, and opens a timeline visualization by default. Use this whenever your answer identifies named groups of people: migration waves, surname cohorts, ancestral branches, shared-place groups, or research clusters.
+  groups = [{label, reason?, people:[person names, person ids, or {id,name,source_name/source_id}]}]. Use exact names or ids from findPerson/sql/tool results when possible. save=false by default; saved sets live only in browser localStorage.
+- activateGroupSet(idOrName)        Activate a prior AI group set and switch the map to AI group clustering.
+- listGroupSets()                  List locally known AI group sets.
+- saveGroupSet(idOrName)           Persist a temporary group set in localStorage for this browser.
+- deleteGroupSet(idOrName)         Delete a group set.
 - saveLens({name, sql, shape, label?})  Register a "lens" — a SQL-driven map visualization. shape and required SELECT columns:
     state    → state | geo_st, count | n                 (US-state polygons, fill scaled by count)
     country  → country | geo_cc, count | n               (sized dot at country centroid)
@@ -131,6 +138,7 @@ Available tools. jsonArgs is a single JSON value:
 - getDwellsForPerson(name)         Returns {person, dwells:[{year,type,place,lat,lon,exact}, ...]} sorted by year. Faster than SQL for one-person timelines and gives consistent inferred-vs-recorded info.
 - getRelationship(nameA, nameB)    Returns {label, lca:{name, generations_to_a, generations_to_b}}. Pre-computed in JS — instant, no SQL needed. Examples: "3rd cousin once removed", "great-grandparent", "niece/nephew".
 - capturePng()                     Returns {dataUrl, width, height} — a base64 PNG of the current map. Use when explaining a visual answer ("here's what 1925 looked like").
+- exportAiReport()                 Opens a printable AI-session report with questions, answers, current map, and visualization tabs so the user can save it as a local PDF.
 - chain({steps: [...]} | [...])    Run multiple kfApi calls in one round-trip. Each step is {"method":"<name>","args":<sameShapeAsAbove>}. Stops at first error unless {"continueOnError":true}. Use this whenever a single user request needs more than one operation — saves tool round-trips and makes the intent atomic. Cannot recurse.
 
 - getFamily(name)                  Returns {person, parents:{father,mother}, siblings, spouses, children}. Faster than SQL for one-person family unit; pulls from in-memory family graph.
@@ -190,6 +198,8 @@ Examples:
             {"method":"centerOn","args":"Pittsburgh, PA"},
             {"method":"traceLineage","args":["Helen Curtis","Eugene Rosenberg"]}
           ])>>
+
+When your answer identifies coherent groups of people, do not leave them only in prose. Also call createGroupSet so the user can see those groups on the map and timeline. Examples: immigration waves by period, surname branches, co-migrating families, "people in Alaska by decade", or historical-era cohorts.
 
 Audience: the user is a family-history researcher, not a GEDCOM engineer. Schema details (record codes, xref ids, table names, SQL) are for YOUR internal reasoning only. In visible replies, always use plain English: "born", "died", "lived in", "emigrated", "immigrated", "married", "appears in the census", "baptized", "buried", "christened". Never quote GEDCOM record codes, schema fragments, "no rows", "not tagged", or similar database-speak to the user. If a category is missing from the data, say "I don't see any emigration records for this branch." If you have to reference an unfamiliar record type, call it "a recorded event".
 
@@ -791,7 +801,7 @@ async function parseAndRunKfCalls(text) {
   return { stripped: stripped.trim(), results };
 }
 
-const MAX_TOOL_ROUNDS = 6;
+const MAX_TOOL_ROUNDS = 10;
 async function runChatTurn(userText) {
   const cacheContext = await _kfAiCacheContextForQuestion(userText);
   const cached = await _kfLoadCachedAiAnswer(cacheContext);

@@ -292,10 +292,14 @@ function _kfClusterModeLabel(mode = clusterMode) {
     gender: "Gender",
     tree: "Tree",
     state: "State",
+    group: "AI groups",
   })[mode] || "Cluster";
 }
 
 function _kfClusterSliceEntries(c) {
+  if (clusterMode === "group" && typeof _kfGroupSliceEntries === "function") {
+    return _kfGroupSliceEntries(c);
+  }
   if (clusterMode === "parents") {
     const counts = c.parents || [0, 0, 0];
     return [
@@ -365,7 +369,7 @@ function _kfClusterBreakdownHtml(c) {
   if (c.abbr) rows.push(["Region", c.abbr]);
   const entries = _kfClusterSliceEntries(c).filter(e => e.count);
   if (entries.length) rows.push([
-    clusterMode === "parents" ? "Parents" : clusterMode === "gender" ? "Gender" : clusterMode === "tree" ? "Trees" : "Lineage",
+    clusterMode === "parents" ? "Parents" : clusterMode === "gender" ? "Gender" : clusterMode === "tree" ? "Trees" : clusterMode === "group" ? "AI groups" : "Lineage",
     entries.map(e => `${e.label} ${e.count}`).join(" · "),
   ]);
   return `<div class="cluster-breakdown">` + rows.map(([k, v]) =>
@@ -383,6 +387,10 @@ function _kfClusterMemberColor(di, c) {
   }
   if (clusterMode === "tree") {
     return _kfTreeColorForName(_kfSourceNameForIndiIdx(dwellIndi[di]));
+  }
+  if (clusterMode === "group" && typeof _kfGroupIndexForDwell === "function") {
+    const gi = _kfGroupIndexForDwell(di);
+    if (gi >= 0 && typeof _kfGroupColor === "function") return _kfGroupColor(gi);
   }
   if (clusterMode === "state" && c?.abbr) {
     return TREE_PALETTE[_kfTreeColorFromName(c.abbr)];
@@ -584,7 +592,9 @@ function _kfClusterPrompt(c, rows) {
 function _kfShowClusterCard(c, opts = {}) {
   if (!_clusterEl) return;
   const rows = _kfClusterMemberRows(c, opts);
-  const title = c.abbr ? `${c.abbr} cluster` : `${_kfClusterModeLabel()} cluster`;
+  const title = c.abbr ? `${c.abbr} cluster` :
+    clusterMode === "group" && typeof _kfActiveGroupSetLabel === "function" ? `${_kfActiveGroupSetLabel()} cluster` :
+    `${_kfClusterModeLabel()} cluster`;
   const prompt = _kfClusterPrompt(c, rows);
   const focusName = rows.focus?.focus?.name || "";
   const orderText = focusName

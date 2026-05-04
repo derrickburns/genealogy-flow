@@ -1376,6 +1376,14 @@ function _kfNormalizeClusterMode(input) {
     ["us states", "state"],
     ["by us state", "state"],
     ["by us states", "state"],
+    ["group", "group"],
+    ["groups", "group"],
+    ["ai group", "group"],
+    ["ai groups", "group"],
+    ["custom group", "group"],
+    ["custom groups", "group"],
+    ["claude group", "group"],
+    ["claude groups", "group"],
     ["dispersion", "dispersion"],
     ["on zoom", "dispersion"],
     ["density", "dispersion"],
@@ -1489,11 +1497,34 @@ window.kfApi = {
   },
   setClusterMode(mode) {
     mode = _kfNormalizeClusterMode(mode);
-    const valid = ["none", "pie", "parents", "gender", "tree", "state", "dispersion"];
+    const valid = ["none", "pie", "parents", "gender", "tree", "state", "group", "dispersion"];
     if (!valid.includes(mode)) return { error: "valid modes: " + valid.join(", ") };
+    if (mode === "group" && !(typeof _kfEnsureActiveGroupRuntime === "function" && _kfEnsureActiveGroupRuntime())) {
+      return { error: "create or activate an AI group set before selecting AI group clustering" };
+    }
     $("clusterMode").value = mode;
     $("clusterMode").dispatchEvent(new Event("change", { bubbles: true }));
     return { ok: true, clusterMode: mode };
+  },
+  createGroupSet(input) {
+    if (typeof _kfCreateGroupSet !== "function") return { error: "AI group sets are not ready" };
+    return _kfCreateGroupSet(input);
+  },
+  activateGroupSet(input) {
+    if (typeof _kfActivateGroupSet !== "function") return { error: "AI group sets are not ready" };
+    return _kfActivateGroupSet(input);
+  },
+  listGroupSets() {
+    if (typeof _kfListGroupSets !== "function") return { error: "AI group sets are not ready" };
+    return _kfListGroupSets();
+  },
+  saveGroupSet(input) {
+    if (typeof _kfSaveGroupSet !== "function") return { error: "AI group sets are not ready" };
+    return _kfSaveGroupSet(input);
+  },
+  deleteGroupSet(input) {
+    if (typeof _kfDeleteGroupSet !== "function") return { error: "AI group sets are not ready" };
+    return _kfDeleteGroupSet(input);
   },
   showYearTour() {
     if (typeof _kfShowYearTour === "function") {
@@ -1988,6 +2019,11 @@ window.kfApi = {
     try { ctx.drawImage(fxCanvas, 0, 0); } catch (_) {}
     const dataUrl = out.toDataURL("image/png");
     return { ok: true, dataUrl, width: W, height: H, bytes: Math.round(dataUrl.length * 0.75) };
+  },
+
+  exportAiReport() {
+    if (typeof _kfExportAiReport !== "function") return { error: "AI report export is not ready" };
+    return _kfExportAiReport();
   },
 
   // ---- Genealogy data lookups (no map mutation; complement to show*) ----
