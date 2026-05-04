@@ -613,6 +613,7 @@
   #accountIcon::after { content:""; position:absolute; left:50%; bottom:4px; width:10px; height:5px; border:1.5px solid currentColor; border-bottom:0; border-radius:9px 9px 0 0; transform:translateX(-50%); }
   #accountBtn.signedIn #accountIcon { background:#183b7a; border-color:#183b7a; color:#fff; }
   #accountLabel { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #buildVersion { color:#94a3b8; font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10px; line-height:1; padding:2px 4px; border:1px solid #e2e8f0; border-radius:999px; background:rgba(248,250,252,0.72); }
   #accountMenu { position:absolute; top:calc(100% + 6px); right:14px; z-index:100; display:grid; gap:9px; width:min(340px, calc(100vw - 28px)); padding:12px; border:1px solid #cbd5e1; border-radius:14px; background:#fff; box-shadow:0 18px 54px rgba(15,23,42,0.22); color:#334155; }
   #accountMenu[hidden] { display:none; }
   .accountMenuHead { color:#0f172a; font-size:11px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; }
@@ -814,6 +815,7 @@
     #authBar button { min-height:28px; padding:4px 8px; font-size:10.5px; white-space:nowrap; }
     #accountLabel { display:none; }
     #accountBtn { min-width:32px; padding:4px !important; }
+    #buildVersion { font-size:9px; padding:2px 3px; }
     #accountMenu { right:8px; width:calc(100vw - 16px); box-sizing:border-box; }
     #reportIssue { display:none; }
     #apiKeyRow { display:none !important; }

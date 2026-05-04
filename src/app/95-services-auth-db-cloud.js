@@ -262,8 +262,6 @@ async function updateAuthUI(user) {
   const btnEl = document.getElementById("authBtn");
   const apiKeyRowEl = document.getElementById("apiKeyRow");
 
-  const versionEl = document.getElementById("buildVersion");
-
   if (!user) {
     _clerkToken = null;
     _clerkUserTier = "anon";
@@ -273,7 +271,6 @@ async function updateAuthUI(user) {
     btnEl.textContent = "Sign in";
     apiKeyRowEl.style.display = "flex";
     _kfSyncUploadCloudVisibility();
-    if (versionEl) versionEl.style.display = "none";
     applyChatAccess("anon");
     _kfCatalogTrees = [];
     _kfStartupLoadUserKey = "";
@@ -298,7 +295,6 @@ async function updateAuthUI(user) {
     btnEl.textContent = "Sign out";
     apiKeyRowEl.style.display = _clerkUserTier === "vip" ? "none" : "flex";
     _kfSyncUploadCloudVisibility();
-    if (versionEl) versionEl.style.display = "inline";
     applyChatAccess(_clerkUserTier);
     _kfRemovePublicDemoSourcesForSignedIn();
     _kfRemoveRestrictedVipSources();
@@ -330,7 +326,6 @@ async function updateAuthUI(user) {
   btnEl.textContent = "Sign out";
   apiKeyRowEl.style.display = _clerkUserTier === "vip" ? "none" : "flex";
   _kfSyncUploadCloudVisibility();
-  if (versionEl) versionEl.style.display = "inline";
   applyChatAccess(_clerkUserTier);
   _kfRemovePublicDemoSourcesForSignedIn();
   _kfRemoveRestrictedVipSources();
