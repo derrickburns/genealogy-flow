@@ -33,6 +33,7 @@ function initMapLibre() {
     zoom: 1.5,
     attributionControl: { compact: true },
     renderWorldCopies: true,
+    preserveDrawingBuffer: true,
     fadeDuration: 0,
   });
   // Re-project all dwells whenever the map moves — fxCanvas dwell rendering

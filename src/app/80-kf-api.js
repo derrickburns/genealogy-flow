@@ -2001,22 +2001,35 @@ window.kfApi = {
   },
 
   capturePng() {
-    // Composite the MapLibre basemap canvas with the fxCanvas particle overlay
-    // into one offscreen canvas and return a base64 PNG.
+    // Composite every visible map canvas (MapLibre, deck.gl overlays, and
+    // fxCanvas) into one offscreen canvas and return a base64 PNG.
     const out = document.createElement("canvas");
     out.width = W; out.height = H;
     const ctx = out.getContext("2d");
     ctx.fillStyle = "#cfe2ec";
     ctx.fillRect(0, 0, W, H);
-    try {
-      if (_kfMap) {
-        // Force a synchronous render so the GL canvas has the latest frame.
-        _kfMap.triggerRepaint();
-        const mlCanvas = _kfMap.getCanvas();
-        if (mlCanvas) ctx.drawImage(mlCanvas, 0, 0, W, H);
-      }
-    } catch (_) {}
-    try { ctx.drawImage(fxCanvas, 0, 0); } catch (_) {}
+    if (_kfMap) {
+      try { _kfMap.triggerRepaint(); } catch (_) {}
+    }
+    const wrap = document.getElementById("mapWrap");
+    const wrapRect = wrap?.getBoundingClientRect?.();
+    const canvases = wrap
+      ? Array.from(wrap.querySelectorAll("canvas"))
+        .filter(c => {
+          const cs = getComputedStyle(c);
+          return cs.display !== "none" && cs.visibility !== "hidden" && c.width > 0 && c.height > 0;
+        })
+      : [fxCanvas].filter(Boolean);
+    for (const canvas of canvases) {
+      try {
+        const rect = canvas.getBoundingClientRect();
+        const x = wrapRect ? rect.left - wrapRect.left : 0;
+        const y = wrapRect ? rect.top - wrapRect.top : 0;
+        const w = rect.width || W;
+        const h = rect.height || H;
+        ctx.drawImage(canvas, x, y, w, h);
+      } catch (_) {}
+    }
     const dataUrl = out.toDataURL("image/png");
     return { ok: true, dataUrl, width: W, height: H, bytes: Math.round(dataUrl.length * 0.75) };
   },

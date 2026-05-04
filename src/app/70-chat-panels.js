@@ -1170,7 +1170,8 @@ window.addEventListener("message", e => {
   }
 });
 const CHAT_TOOLS_LS = "kf-chat-show-tools";
-let _chatShowTools = localStorage.getItem(CHAT_TOOLS_LS) !== "0";
+const _chatToolsPref = localStorage.getItem(CHAT_TOOLS_LS);
+let _chatShowTools = _chatToolsPref === "1";
 function renderChat() {
   if (chatHistory.length === 0) {
     chatHistoryEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
@@ -1428,6 +1429,11 @@ function _kfQuestionDef(label, text) {
   return { label, text };
 }
 
+function _kfIsYearDependentQuestion(q) {
+  const text = String(q?.text || "").toLowerCase();
+  return /\b(this year|visible people|current year|shown here|in \d{3,4}|at \d{3,4}|visible in|pattern in)\b/.test(text);
+}
+
 function _kfChatScopeQuestions(root, selected, visible) {
   const y = Math.floor(curYear);
   const questions = [
@@ -1534,8 +1540,16 @@ function _kfRefreshChatScope(force = false) {
   const key = questions.map(q => `${q.label}:${q.text}`).join("|");
   if (!force && key === _kfChatScopeLastRenderKey) return;
   _kfChatScopeLastRenderKey = key;
+  const renderQuestion = q => {
+    const yearDependent = _kfIsYearDependentQuestion(q);
+    const cls = `chatChip chat-scope-question${yearDependent ? " year-dependent" : ""}`;
+    const label = yearDependent
+      ? `${escChat(q.label)} <span class="chip-badge">YEAR</span>`
+      : escChat(q.label);
+    return `<button type="button" class="${cls}" data-chat-scope-question="${escChat(q.text)}" title="${escChat(q.text)}">${label}</button>`;
+  };
   chatScopeEl.innerHTML = questions.length
-    ? `<div class="chatChips chat-scope-actions" aria-label="Suggested questions">${questions.map(q => `<button type="button" class="chatChip chat-scope-question" data-chat-scope-question="${escChat(q.text)}" title="${escChat(q.text)}">${escChat(q.label)}</button>`).join("")}</div>`
+    ? `<div class="chatChips chat-scope-actions" aria-label="Suggested questions">${questions.map(renderQuestion).join("")}</div>`
     : "";
   _kfBindChatScopeQuestions();
 }

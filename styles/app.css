@@ -437,7 +437,10 @@
   #chatScope .chatChips { margin:0; }
   .chat-scope-actions { display:flex; flex-wrap:wrap; gap:5px; }
   .chat-scope-question { border-color:#b9c8dd; background:#fff; color:#1f3a78; padding:4px 8px; font-size:10.5px; }
+  .chat-scope-question.year-dependent { border-style:dashed; background:#fff8e6; border-color:#d7a736; color:#704800; }
   .chat-scope-question:hover { background:#e8f0ff; border-color:#7290c8; color:#14306a; }
+  .chat-scope-question.year-dependent:hover { background:#ffe7a6; border-color:#b7791f; color:#553400; }
+  .chat-scope-question .chip-badge { display:inline-block; margin-left:5px; padding:1px 4px; border-radius:999px; background:rgba(183,121,31,0.14); color:#8a5a12; font-size:8.5px; font-weight:800; letter-spacing:0.06em; vertical-align:middle; }
   #sideTabs { display:flex; gap:0; border-bottom:1px solid #e0e6ee; background:#f4f6fa; flex-shrink:0; overflow-x:auto; scrollbar-width:none; }
   #sideTabs::-webkit-scrollbar { display:none; }
   #sideTabs button { flex:0 0 auto; padding:8px 10px; border:0; border-right:1px solid #e0e6ee; background:transparent; color:#566480; font:inherit; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; }

@@ -13,6 +13,8 @@ interface ReportEmailBody {
 interface ResendEmailResponse {
   id?: string;
   message?: string;
+  error?: string | { message?: string; name?: string };
+  name?: string;
 }
 
 function json(data: unknown, init: ResponseInit = {}) {
@@ -55,13 +57,30 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function fromEmail(env: Env): string {
+function configuredFromEmail(env: Env): string {
   const configured = typeof env.REPORT_FROM_EMAIL === "string" && env.REPORT_FROM_EMAIL.trim()
     ? env.REPORT_FROM_EMAIL.trim()
     : typeof env.INVITE_FROM_EMAIL === "string" && env.INVITE_FROM_EMAIL.trim()
       ? env.INVITE_FROM_EMAIL.trim()
-      : "Kindred Flow <onboarding@resend.dev>";
+      : "";
   return configured;
+}
+
+async function resendError(resp: Response): Promise<string> {
+  const raw = await resp.text().catch(() => "");
+  let data: ResendEmailResponse | null = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as ResendEmailResponse;
+    } catch {
+      data = null;
+    }
+  }
+  const nestedError = data?.error && typeof data.error === "object" ? data.error : null;
+  const message = data?.message || nestedError?.message || (typeof data?.error === "string" ? data.error : "") || raw;
+  const name = data?.name || nestedError?.name || "";
+  const label = name ? `${name}: ` : "";
+  return `${label}${message || `Resend ${resp.status}`}`.slice(0, 1000);
 }
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
@@ -72,6 +91,12 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const apiKey = typeof ctx.env.RESEND_API_KEY === "string" ? ctx.env.RESEND_API_KEY.trim() : "";
   if (!apiKey) {
     return json({ error: "Email reporting is not configured" }, { status: 501 });
+  }
+  const sender = configuredFromEmail(ctx.env);
+  if (!sender) {
+    return json({
+      error: "Email sender is not configured. Set REPORT_FROM_EMAIL or INVITE_FROM_EMAIL to a Resend-verified sender address.",
+    }, { status: 501 });
   }
 
   let body: ReportEmailBody;
@@ -106,26 +131,32 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       <p style="color:#64748b;font-size:13px">This email was sent to ${escHtml(user.email)} from your signed-in Kindred Flow session.</p>
     </div>`;
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail(ctx.env),
-      to: user.email,
-      subject,
-      text,
-      html: emailHtml,
-      attachments: [{ filename, content: attachment }],
-    }),
-  });
-
-  const data = await resp.json().catch(async () => ({ message: await resp.text().catch(() => "") })) as ResendEmailResponse;
-  if (!resp.ok) {
-    const message = typeof data?.message === "string" && data.message ? data.message : `Resend ${resp.status}`;
-    return json({ error: message }, { status: 502 });
+  let resp: Response;
+  try {
+    resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: sender,
+        to: user.email,
+        subject,
+        text,
+        html: emailHtml,
+        attachments: [{ filename, content: attachment }],
+      }),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return json({ error: `Email provider request failed: ${message}` }, { status: 502 });
   }
+
+  if (!resp.ok) {
+    const message = await resendError(resp);
+    return json({ error: `Email provider rejected the report: ${message}`, provider_status: resp.status }, { status: 502 });
+  }
+  const data = await resp.json().catch(() => ({})) as ResendEmailResponse;
   return json({ ok: true, to: user.email, id: data?.id || null });
 };

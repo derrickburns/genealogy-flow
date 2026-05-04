@@ -602,6 +602,97 @@ async function callClaudeStream(userMsg, onDelta, pendingMsg = null, opts = {}) 
 
 const KFCALL_RE = /<<KFCALL:(\w+)\((.*?)\)>>/gs;
 const KFCHIP_TAG = "<<KFCHIP:";
+const KFCALL_TAG = "<<KFCALL:";
+const KF_MARKER_TAGS = [KFCALL_TAG, KFCHIP_TAG];
+
+function _kfLongestMarkerPrefixSuffix(text) {
+  let keep = 0;
+  const max = Math.min(text.length, Math.max(...KF_MARKER_TAGS.map(t => t.length)) - 1);
+  for (let n = 1; n <= max; n++) {
+    const suffix = text.slice(-n);
+    if (KF_MARKER_TAGS.some(tag => tag.startsWith(suffix))) keep = n;
+  }
+  return keep;
+}
+
+function _kfFirstMarkerStart(text) {
+  let best = -1;
+  for (const tag of KF_MARKER_TAGS) {
+    const idx = text.indexOf(tag);
+    if (idx >= 0 && (best < 0 || idx < best)) best = idx;
+  }
+  return best;
+}
+
+function _kfFindKfChipMarkerEnd(text, start) {
+  let p = start + KFCHIP_TAG.length;
+  while (p < text.length && /\s/.test(text[p])) p++;
+  if (p >= text.length) return -1;
+  if (text[p] !== "{") {
+    const end = text.indexOf(">>", p);
+    return end >= 0 ? end + 2 : -1;
+  }
+  let depth = 0;
+  let inStr = false;
+  let escNext = false;
+  let q = p;
+  for (; q < text.length; q++) {
+    const ch = text[q];
+    if (escNext) { escNext = false; continue; }
+    if (inStr) {
+      if (ch === "\\") escNext = true;
+      else if (ch === "\"") inStr = false;
+      continue;
+    }
+    if (ch === "\"") { inStr = true; continue; }
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) { q++; break; }
+    }
+  }
+  if (depth !== 0) return -1;
+  while (q < text.length && /\s/.test(text[q])) q++;
+  return text.slice(q, q + 2) === ">>" ? q + 2 : -1;
+}
+
+function _kfFindKfCallMarkerEnd(text, start) {
+  const end = text.indexOf(">>", start + KFCALL_TAG.length);
+  return end >= 0 ? end + 2 : -1;
+}
+
+function _kfCreateStreamingMarkerFilter() {
+  let pending = "";
+  const stripVisibleMarkers = (text, flush = false) => {
+    pending += String(text || "");
+    let out = "";
+    while (pending) {
+      const start = _kfFirstMarkerStart(pending);
+      if (start < 0) {
+        const hold = flush ? 0 : _kfLongestMarkerPrefixSuffix(pending);
+        out += pending.slice(0, pending.length - hold);
+        pending = hold ? pending.slice(-hold) : "";
+        break;
+      }
+      out += pending.slice(0, start);
+      const end = pending.startsWith(KFCHIP_TAG, start)
+        ? _kfFindKfChipMarkerEnd(pending, start)
+        : _kfFindKfCallMarkerEnd(pending, start);
+      if (end < 0) {
+        pending = pending.slice(start);
+        if (flush) pending = "";
+        break;
+      }
+      pending = pending.slice(end);
+    }
+    return out;
+  };
+  return {
+    push(delta) { return stripVisibleMarkers(delta, false); },
+    flush() { return stripVisibleMarkers("", true); },
+  };
+}
+
 // Lenient retry: if JSON.parse fails, try replacing raw newlines / tabs
 // inside strings with escaped equivalents. Claude sometimes emits
 // multi-line SQL in args without escaping the newlines, which is invalid
@@ -647,9 +738,9 @@ function parseChips(text) {
     if (text[p] !== "{") {
       // Treat as malformed; skip past the next ">>" and warn.
       const end = text.indexOf(">>", p);
-      if (end < 0) { out += text.slice(start); break; }
-      chips.push({ label: "\u26A0 chip parse failed (no JSON object)", method: null, _error: "expected '{' after KFCHIP:", _body: text.slice(start, end + 2) });
-      i = end + 2;
+      const body = end < 0 ? text.slice(start) : text.slice(start, end + 2);
+      chips.push({ label: "\u26A0 chip parse failed (no JSON object)", method: null, _error: "expected '{' after KFCHIP:", _body: body });
+      i = end < 0 ? text.length : end + 2;
       continue;
     }
     // Walk braces, respecting string boundaries (so `}` inside a quoted
@@ -671,9 +762,8 @@ function parseChips(text) {
       else if (ch === "}") { depth--; if (depth === 0) { q++; break; } }
     }
     if (depth !== 0) {
-      // Unterminated — keep the rest of the text in `out` so the user sees
-      // the raw marker, and stop scanning.
-      out += text.slice(start);
+      // Unterminated markers should never leak into the visible transcript.
+      chips.push({ label: "\u26A0 chip parse failed (incomplete)", method: null, _error: "unterminated KFCHIP marker", _body: text.slice(start, 400) });
       break;
     }
     let r = q;
@@ -824,19 +914,28 @@ async function runChatTurn(userText) {
     let reply;
     try {
       let sawDelta = false;
+      const markerFilter = _kfCreateStreamingMarkerFilter();
       reply = await callClaudeStream(nextInput, delta => {
         if (!sawDelta) {
           pending.content = "";
           sawDelta = true;
         }
-        pending.content += delta;
-        renderChat();
+        const visibleDelta = markerFilter.push(delta);
+        if (visibleDelta) {
+          pending.content += visibleDelta;
+          renderChat();
+        }
       }, pending, {
         includeViewContext: round === 0,
         cacheSafe: !!cacheContext,
         contextQuestion: userText,
         currentUserText: userText,
       });
+      const trailingVisible = markerFilter.flush();
+      if (trailingVisible) {
+        pending.content += trailingVisible;
+        renderChat();
+      }
     } catch (e) {
       const message = e?.message || String(e);
       if (typeof _kfRecordClientError === "function") {

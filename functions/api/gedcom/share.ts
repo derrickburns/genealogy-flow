@@ -56,7 +56,15 @@ async function sendShareInviteEmail(env: Env, params: {
   if (!apiKey) return { sent: false, skipped: "RESEND_API_KEY is not configured" };
   const from = typeof env.INVITE_FROM_EMAIL === "string" && env.INVITE_FROM_EMAIL.trim()
     ? env.INVITE_FROM_EMAIL.trim()
-    : "Kindred Flow <onboarding@resend.dev>";
+    : typeof env.REPORT_FROM_EMAIL === "string" && env.REPORT_FROM_EMAIL.trim()
+      ? env.REPORT_FROM_EMAIL.trim()
+      : "";
+  if (!from) {
+    return {
+      sent: false,
+      error: "Email sender is not configured. Set INVITE_FROM_EMAIL or REPORT_FROM_EMAIL to a Resend-verified sender address.",
+    };
+  }
   const appUrl = inviteAppUrl(env);
   const subject = `${params.ownerEmail} shared a Kindred Flow tree with you`;
   const text = [

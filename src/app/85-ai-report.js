@@ -17,11 +17,34 @@ function _kfReportAttr(s) {
   return _kfReportEsc(s).replace(/\n/g, "&#10;");
 }
 
+function _kfReportVisibleMessageText(m) {
+  if (m?.role === "user") return String(m.content || "");
+  return _kfPlainEnglishEventText(_kfHideToolMarkersInChatText(String(m?.content || "")));
+}
+
+function _kfReportHasSignal(m) {
+  const raw = _kfReportVisibleMessageText(m).trim();
+  if (!raw) return false;
+  if (m?.role !== "bot") return raw !== "_thinking..._";
+  const normalized = raw
+    .replace(/[`*_]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return false;
+  return !new Set([
+    "thinking...",
+    "thinking",
+    "using the data...",
+    "using the data",
+  ]).has(normalized);
+}
+
 function _kfReportTranscriptMessages() {
   return chatHistory
     .filter(m => m && (m.role === "user" || m.role === "bot"))
     .filter(m => m.kind !== "tool" && m.kind !== "action")
-    .filter(m => String(m.content || "").trim() && String(m.content || "").trim() !== "_thinking..._");
+    .filter(_kfReportHasSignal);
 }
 
 function _kfReportTreeNames() {
@@ -44,9 +67,7 @@ function _kfReportTranscriptHtml(messages) {
     return `<section class="card"><h2>AI Conversation</h2><p class="muted">No AI questions or answers are in this session yet.</p></section>`;
   }
   return `<section class="card"><h2>AI Conversation</h2>` + messages.map(m => {
-    const raw = m.role === "user"
-      ? String(m.content || "")
-      : _kfPlainEnglishEventText(_kfHideToolMarkersInChatText(String(m.content || "")));
+    const raw = _kfReportVisibleMessageText(m);
     const body = m.role === "user" ? `<p>${_kfReportEsc(raw)}</p>` : renderMd(raw);
     const who = m.role === "user" ? "Question" : (m.cached ? "Answer (cached)" : "Answer");
     return `<article class="turn ${m.role}"><h3>${who}</h3><div>${body}</div></article>`;
@@ -57,9 +78,7 @@ function _kfReportPlainText(messages) {
   const lines = ["Kindred Flow AI Report", ""];
   for (const m of messages) {
     const label = m.role === "user" ? "Question" : "Answer";
-    const raw = m.role === "user"
-      ? String(m.content || "")
-      : _kfPlainEnglishEventText(_kfHideToolMarkersInChatText(String(m.content || "")));
+    const raw = _kfReportVisibleMessageText(m);
     lines.push(`${label}:`, raw.replace(/\s+/g, " ").trim(), "");
   }
   lines.push("Open the attached report in a browser, then print or save as PDF.");
