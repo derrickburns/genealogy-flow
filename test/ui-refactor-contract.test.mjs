@@ -98,3 +98,35 @@ test("responsive browser smoke coverage is wired into package scripts", () => {
   assert.match(smoke, /window\.kfDebug\.clientErrors/);
   assert.match(smoke, /value => !!value\?\.ok/);
 });
+
+test("responsive shell naming stays presentation-only", () => {
+  const html = readFileSync("index.html", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
+  const state = readFileSync("src/app/00-state.js", "utf8");
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const derived = readFileSync("src/app/75-derived-cache.js", "utf8");
+  const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+  const responsiveShellCode = [html, styles, panels, derived, services].join("\n");
+
+  for (const oldName of [
+    "compactSheet",
+    "compactContextStrip",
+    "compactMapTab",
+    "compactConcept",
+    "_kfSetCompactSheetState",
+    "_kfBumpCompactSheetForTab",
+  ]) {
+    assert.doesNotMatch(responsiveShellCode, new RegExp(oldName));
+  }
+
+  assert.match(html, /id="responsiveSheetHandle"/);
+  assert.match(html, /id="responsiveContextStrip"/);
+  assert.match(html, /class="responsiveMapTab"/);
+  assert.match(styles, /#responsiveSheetHandle/);
+  assert.match(styles, /\.responsiveConceptCards/);
+  assert.match(state, /function\s+_kfUsesResponsiveShell\s*\(/);
+  assert.match(panels, /function\s+_kfSetResponsiveSheetState\s*\(/);
+  assert.match(panels, /_kfUsesResponsiveShell\(\)/);
+  assert.match(derived, /_kfResponsiveContextStripHtml/);
+  assert.match(services, /responsive_shell:/);
+});

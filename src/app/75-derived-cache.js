@@ -311,7 +311,7 @@ async function _kfAskQuestion(text, opts = {}) {
     (typeof _kfDisplayAiSuggestionQuestion === "function" ? _kfDisplayAiSuggestionQuestion(requestText) : requestText)
   ).trim();
   if (typeof _kfIsSideTabActive === "function" && _kfIsSideTabActive("chat")) {
-    if (typeof _kfBumpCompactSheetForTab === "function") _kfBumpCompactSheetForTab("chat");
+    if (typeof _kfRevealResponsiveSheetForTab === "function") _kfRevealResponsiveSheetForTab("chat");
   } else {
     _kfSetSideTab("chat");
   }
@@ -482,7 +482,7 @@ function _kfVisibleRowsForYear(yint) {
 }
 
 function _kfDerivedCacheLimit() {
-  return (typeof _kfIsCompactLayout === "function" && _kfIsCompactLayout()) ? 24 : 80;
+  return (typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell()) ? 24 : 80;
 }
 
 function _kfTrimDerivedCache(cache, limit) {
@@ -596,20 +596,20 @@ function _kfYearDigestHeaderHtml(title, sub = "") {
     `</div>`;
 }
 
-function _kfCompactConceptCardsHtml() {
-  if (typeof _kfIsCompactLayout === "function" && !_kfIsCompactLayout()) return "";
-  return `<div class="compactConceptCards" aria-label="How to read this view">` +
-    `<div class="compactConceptCard"><b>Time changes the map.</b><span>Markers are people alive or possibly alive in the selected year.</span></div>` +
-    `<div class="compactConceptCard"><b>Trees define scope.</b><span>Checked trees control the map, clusters, AI, and search.</span></div>` +
-    `<div class="compactConceptCard"><b>Movement is evidence.</b><span>Long gaps animate near the destination year so we do not imply decades of travel.</span></div>` +
-    `<div class="compactConceptCard"><b>Clusters are shortcuts.</b><span>Tap a cluster to understand a branch before reading individual records.</span></div>` +
+function _kfResponsiveConceptCardsHtml() {
+  if (typeof _kfUsesResponsiveShell === "function" && !_kfUsesResponsiveShell()) return "";
+  return `<div class="responsiveConceptCards" aria-label="How to read this view">` +
+    `<div class="responsiveConceptCard"><b>Time changes the map.</b><span>Markers are people alive or possibly alive in the selected year.</span></div>` +
+    `<div class="responsiveConceptCard"><b>Trees define scope.</b><span>Checked trees control the map, clusters, AI, and search.</span></div>` +
+    `<div class="responsiveConceptCard"><b>Movement is evidence.</b><span>Long gaps animate near the destination year so we do not imply decades of travel.</span></div>` +
+    `<div class="responsiveConceptCard"><b>Clusters are shortcuts.</b><span>Tap a cluster to understand a branch before reading individual records.</span></div>` +
     `</div>`;
 }
 
 function _kfYearTourHtml() {
   if (!timelineLoaded || !lastIndividuals) {
     return _kfYearDigestHeaderHtml("Guided tour") +
-      _kfCompactConceptCardsHtml() +
+      _kfResponsiveConceptCardsHtml() +
       `<ul class="year-digest-list"><li>Load one or more GEDCOM trees to enable the year tour.</li></ul>`;
   }
   const y = Math.floor(curYear);
@@ -631,7 +631,7 @@ function _kfYearTourHtml() {
   if (_kfShowDataQualityConcerns && d.weak.length) lines.push(`${d.weak.length.toLocaleString()} visible markers have weak place evidence; use "weak evidence" to review them.`);
   if (!lines.length) lines.push("This year has no notable marker changes under the current filters.");
   return _kfYearDigestHeaderHtml(`Guided tour for ${y}`, _kfViewModeLabel()) +
-    _kfCompactConceptCardsHtml() +
+    _kfResponsiveConceptCardsHtml() +
     `<div class="year-digest-metrics">` +
       _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
       _kfYearDigestMetricHtml(d.current.exact.toLocaleString(), "specific") +
@@ -752,7 +752,7 @@ function _kfViewModeLabel() {
   return [filter, sex, cluster].filter(Boolean).join(" | ");
 }
 
-function _kfCompactContextStripHtml(y, data, sourceCount) {
+function _kfResponsiveContextStripHtml(y, data, sourceCount) {
   if (!timelineLoaded || !lastIndividuals) {
     return `<b>Start here</b> <span>Select a tree, then scrub the year to watch family history move.</span>`;
   }
@@ -770,8 +770,8 @@ function _kfRefreshViewChrome(force = false) {
   const breadEl = $("focusBreadcrumb");
   const whyEl = $("viewWhy");
   const digestEl = $("tourPaneContent");
-  const compactContextEl = $("compactContextStrip");
-  if (!summaryEl && !breadEl && !whyEl && !digestEl && !compactContextEl) return;
+  const responsiveContextEl = $("responsiveContextStrip");
+  if (!summaryEl && !breadEl && !whyEl && !digestEl && !responsiveContextEl) return;
   const y = Math.floor(curYear);
   const data = _kfVisibleMarkerData();
   const sourceCount = (typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList().length : 0) || (_kfLoadedSources?.size || 0);
@@ -797,9 +797,9 @@ function _kfRefreshViewChrome(force = false) {
     ? _kfIsSideTabActive("tour")
     : digestEl?.closest(".sidePane")?.classList.contains("on");
   if (digestEl && tourIsVisible) _kfRenderActiveYearDigest();
-  if (compactContextEl) {
-    compactContextEl.hidden = false;
-    compactContextEl.innerHTML = _kfCompactContextStripHtml(y, data, sourceCount);
+  if (responsiveContextEl) {
+    responsiveContextEl.hidden = false;
+    responsiveContextEl.innerHTML = _kfResponsiveContextStripHtml(y, data, sourceCount);
   }
   const chatIsVisible = typeof _kfIsSideTabActive === "function"
     ? _kfIsSideTabActive("chat")
@@ -850,7 +850,7 @@ function _kfClusterDigestHtml(c, rows) {
     if (issueCount) bullets.push(`${issueCount} ${issueCount === 1 ? "person has" : "people have"} data issues worth checking.`);
   }
   const html = `<div class="ux-section cluster-digest"><h4>Most useful things to know</h4><ul class="ux-list">${bullets.map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`;
-  _kfTrimDerivedCache(_kfDerivedCache.cluster, (typeof _kfIsCompactLayout === "function" && _kfIsCompactLayout()) ? 40 : 120);
+  _kfTrimDerivedCache(_kfDerivedCache.cluster, (typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell()) ? 40 : 120);
   _kfDerivedCache.cluster.set(key, { ...(cached || {}), digestHtml: html });
   return html;
 }

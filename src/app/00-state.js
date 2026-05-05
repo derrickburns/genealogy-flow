@@ -266,9 +266,15 @@ function _kfHaversineMiles(la1, lo1, la2, lo2) {
 }
 let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
 let isDraggingSlider = false;
-function _kfIsCompactLayout() {
+const KF_RESPONSIVE_SHELL_MEDIA = "(max-width: 900px), (pointer: coarse) and (max-width: 980px)";
+
+function _kfUsesResponsiveShell() {
   return typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 900px), (pointer: coarse) and (max-width: 980px)").matches;
+    window.matchMedia(KF_RESPONSIVE_SHELL_MEDIA).matches;
+}
+
+function _kfIsCompactLayout() {
+  return _kfUsesResponsiveShell();
 }
 
 function _kfShouldCacheRawTreeText(text) {

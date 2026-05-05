@@ -44,6 +44,7 @@ function _kfBuildTreeDebugSnapshot() {
     },
     startup: ux.startup || null,
     layout: {
+      responsive_shell: typeof _kfUsesResponsiveShell === "function" ? _kfUsesResponsiveShell() : null,
       compact: typeof _kfIsCompactLayout === "function" ? _kfIsCompactLayout() : null,
       tab: ux.layout?.tab || (typeof _kfActiveSideTab !== "undefined" ? _kfActiveSideTab : null),
       sheet: ux.layout?.sheet || document.getElementById("panel")?.dataset?.sheet || null,
@@ -293,7 +294,7 @@ function _kfHasAvailableNonDemoRemoteTree() {
 
 function _kfOpenTreesPanel() {
   if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
-  if (_kfIsCompactLayout() && typeof _kfSetCompactSheetState === "function") _kfSetCompactSheetState("open");
+  if (_kfUsesResponsiveShell() && typeof _kfSetResponsiveSheetState === "function") _kfSetResponsiveSheetState("open");
 }
 
 function _kfMaybeOpenTreesPanelForEmptySelection(opts = {}) {
