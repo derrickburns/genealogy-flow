@@ -43,3 +43,18 @@ test("map legend auto-hides when it cannot fit the viewport", () => {
   assert.match(mapRuntime, /classList\.toggle\("legendAutoHidden"/);
   assert.match(state, /updateMapLegend\(\)/);
 });
+
+test("tree inventory and persistence are viewport-neutral product behavior", () => {
+  const controls = readFileSync("src/app/60-ui-controls.js", "utf8");
+  const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
+  const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+
+  assert.match(controls, /function\s+_kfOpenTreesPanelAfterSplashIfNeeded\s*\(/);
+  assert.doesNotMatch(controls, /_kfOpenTreesPanelAfterSplashIfMobile/);
+  assert.match(controls, /_kfMaybeOpenTreesPanelForEmptySelection\(\)/);
+  assert.doesNotMatch(sources, /wrap\.classList\.toggle\("hidden",\s*!_kfIsMobileLayout\(\)\)/);
+
+  const persistFn = services.match(/async function _kfMaybePersistLoadedTreeByHash[\s\S]*?\n}/)?.[0] || "";
+  assert.ok(persistFn, "_kfMaybePersistLoadedTreeByHash should exist");
+  assert.doesNotMatch(persistFn, /_kfIsMobileLayout/);
+});

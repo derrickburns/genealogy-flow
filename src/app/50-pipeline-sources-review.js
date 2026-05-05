@@ -1213,7 +1213,7 @@ function renderSources(list) {
   const inventory = _kfBuildTreeInventory(filtered, remoteTrees);
   const model = _kfCreateTreeInventoryModel(filtered, remoteTrees, inventory);
   if (inventory.length === 0) {
-    wrap.classList.toggle("hidden", !_kfIsMobileLayout());
+    wrap.classList.remove("hidden");
     _kfRenderTreeInventory(model, inner);
     const treeStats = document.getElementById("treeStats");
     if (treeStats) treeStats.textContent = model.emptyMessage || "Loading tree list...";

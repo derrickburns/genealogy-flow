@@ -92,11 +92,21 @@ function _kfSetDialogOpen(el, open) {
   el.setAttribute("aria-hidden", open ? "false" : "true");
 }
 
-function _kfOpenTreesPanelAfterSplashIfMobile() {
-  if (typeof _kfIsMobileLayout !== "function" || !_kfIsMobileLayout()) return;
+function _kfOpenTreesPanelAfterSplashIfNeeded() {
   requestAnimationFrame(() => {
-    if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
-    else if (typeof _kfSetMobileSheetState === "function") _kfSetMobileSheetState("open");
+    if (typeof _kfMaybeOpenTreesPanelForEmptySelection === "function") {
+      _kfMaybeOpenTreesPanelForEmptySelection();
+      return;
+    }
+    if (
+      typeof _kfHasSelectedVisualizationTree === "function" &&
+      typeof _kfHasAvailableNonDemoRemoteTree === "function" &&
+      !_kfHasSelectedVisualizationTree() &&
+      _kfHasAvailableNonDemoRemoteTree() &&
+      typeof _kfSetSideTab === "function"
+    ) {
+      _kfSetSideTab("trees");
+    }
   });
 }
 
@@ -136,7 +146,7 @@ function _kfInitSplash() {
   btn.addEventListener("click", () => {
     _kfSetCookie("kf_splash_seen", "1");
     _kfSetDialogOpen(splash, false);
-    _kfOpenTreesPanelAfterSplashIfMobile();
+    _kfOpenTreesPanelAfterSplashIfNeeded();
   });
 }
 

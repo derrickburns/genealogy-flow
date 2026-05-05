@@ -722,7 +722,7 @@ function _kfSourceCameFromServer(sourceMeta) {
 }
 
 async function _kfMaybePersistLoadedTreeByHash(src, sourceMeta = {}) {
-  if (!_clerkToken || !src?.content_hash || _kfIsMobileLayout() || _kfSourceCameFromServer(sourceMeta)) return null;
+  if (!_clerkToken || !src?.content_hash || _kfSourceCameFromServer(sourceMeta)) return null;
   const lookup = await _kfLookupServerTreeByHash(src.content_hash);
   if (lookup?.exists && Array.isArray(lookup.trees) && lookup.trees.length) {
     const existing = lookup.trees.find(t => t.kind === "cloud") || lookup.trees[0];
