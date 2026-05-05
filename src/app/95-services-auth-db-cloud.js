@@ -278,6 +278,8 @@ async function updateAuthUI(user) {
   if (!user) {
     _clerkToken = null;
     _clerkUserTier = "anon";
+    _kfSetAuthUxState("signed-out", { tier: "anon", email: "" });
+    _kfSetStartupPhase(KF_STARTUP_PHASE.ANONYMOUS_DEMO, "loading demo tree...");
     statusEl.textContent = "not signed in";
     statusEl.className = "authTier anon";
     emailEl.style.display = "none";
@@ -301,6 +303,8 @@ async function updateAuthUI(user) {
 
   if (!_clerkToken) {
     _clerkUserTier = VIP_EMAILS.has(email.toLowerCase()) ? "vip" : "regular";
+    _kfSetAuthUxState("signed-in-token-pending", { tier: _clerkUserTier, email });
+    _kfSetStartupPhase(KF_STARTUP_PHASE.SIGNED_IN_INVENTORY, "loading shared tree list...");
     statusEl.textContent = _clerkUserTier === "vip" ? "VIP" : "member";
     statusEl.className = "authTier " + _clerkUserTier;
     emailEl.textContent = email;
@@ -331,6 +335,8 @@ async function updateAuthUI(user) {
     : serverUser?.type === "regular"
       ? "regular"
       : VIP_EMAILS.has(email.toLowerCase()) ? "vip" : "regular";
+  _kfSetAuthUxState("signed-in", { tier: _clerkUserTier, email });
+  _kfSetStartupPhase(KF_STARTUP_PHASE.SIGNED_IN_INVENTORY, "loading shared tree list...");
 
   statusEl.textContent = _clerkUserTier === "vip" ? "VIP" : "member";
   statusEl.className = "authTier " + _clerkUserTier;
@@ -355,22 +361,32 @@ async function updateAuthUI(user) {
 
 async function autoLoadStartupTrees() {
   if (_kfIsMobileLayout()) {
+    _kfSetStartupPhase(KF_STARTUP_PHASE.SIGNED_IN_INVENTORY, "loading shared tree list...");
     await refreshSources();
-    if (_kfHasAvailableNonDemoRemoteTree()) {
-      if (!_kfHasSelectedVisualizationTree()) {
-        _kfOpenMobileTreesPanel();
-        stats.textContent = "shared trees available - choose one to load";
-      }
-    } else if (!_kfHasSelectedVisualizationTree()) {
+    const action = _kfChooseStartupAction({
+      isMobile: true,
+      hasSelectedVisualizationTree: _kfHasSelectedVisualizationTree(),
+      hasAvailableNonDemoRemoteTree: _kfHasAvailableNonDemoRemoteTree(),
+    });
+    if (action === KF_STARTUP_ACTION.SHOW_MOBILE_TREE_PICKER) {
+      _kfSetStartupPhase(KF_STARTUP_PHASE.MOBILE_TREE_PICKER, "shared trees available - choose one to load");
+      _kfOpenMobileTreesPanel();
+      stats.textContent = "shared trees available - choose one to load";
+    } else if (action === KF_STARTUP_ACTION.LOAD_MOBILE_DEMO) {
+      _kfSetStartupPhase(KF_STARTUP_PHASE.MOBILE_DEMO_FALLBACK, "loading demo tree...");
       await autoLoadPublicDemoTree();
       _kfMaybeOpenTreesPanelForEmptySelection();
+    } else {
+      _kfSetStartupPhase(KF_STARTUP_PHASE.READY, stats?.textContent || "ready");
     }
     autoIntroOnce();
     return;
   }
+  _kfSetStartupPhase(KF_STARTUP_PHASE.DESKTOP_AUTO_LOAD, "restoring your trees...");
   await autoLoadCloudGedcom();
   await autoLoadVipCatalogTrees();
   if (!_kfHasSelectedVisualizationTree()) await autoLoadPublicDemoTree();
+  _kfSetStartupPhase(KF_STARTUP_PHASE.READY, stats?.textContent || "ready");
   autoIntroOnce();
 }
 

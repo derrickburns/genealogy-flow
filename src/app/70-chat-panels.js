@@ -140,6 +140,7 @@ function _kfSyncSideTabChrome(tab) {
 function _kfMarkMapTabActive() {
   if (!_kfIsMobileLayout()) return;
   _kfActiveSideTab = "map";
+  if (typeof _kfSetMobileUxState === "function") _kfSetMobileUxState({ tab: "map" });
   _kfSyncSideTabChrome("map");
 }
 
@@ -162,6 +163,7 @@ function _kfSetMobileSheetState(state) {
   if (!panel) return;
   const next = state === "full" || state === "open" ? state : "peek";
   panel.dataset.sheet = next;
+  if (typeof _kfSetMobileUxState === "function") _kfSetMobileUxState({ sheet: next });
   if (next === "peek") _kfMarkMapTabActive();
   if (_mobileSheetHandleEl) {
     _mobileSheetHandleEl.setAttribute("aria-expanded", next !== "peek" ? "true" : "false");
@@ -204,6 +206,7 @@ function _kfSetSideTab(tab) {
     }
   }
   _kfActiveSideTab = next;
+  if (typeof _kfSetMobileUxState === "function") _kfSetMobileUxState({ tab: next });
   _kfSyncSideTabChrome(next);
   if (next === "chat" && typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
   _kfBumpMobileSheetForTab(next);

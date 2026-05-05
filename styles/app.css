@@ -686,6 +686,10 @@
   #treesPane #sourcesPanel .treeInventoryRow { display:grid; gap:6px; min-width:0; padding:9px; border:1px solid #d6dde7; border-radius:10px; background:#fff; }
   #treesPane #sourcesPanel .treeInventoryRow.on { border-color:#2a4a8c; box-shadow:0 0 0 1px rgba(42,74,140,0.15) inset; }
   #treesPane #sourcesPanel .treeInventoryRow.excluded { opacity:0.72; background:#f8fafc; border-style:dashed; }
+  #treesPane #sourcesPanel .treeInventory { display:grid; gap:10px; min-width:0; }
+  #treesPane #sourcesPanel .treeEmptyState { display:grid; gap:4px; min-width:0; padding:12px; border:1px dashed #cbd5e1; border-radius:10px; background:#f8fafc; color:#475569; }
+  #treesPane #sourcesPanel .treeEmptyTitle { color:#102033; font-size:12px; font-weight:900; }
+  #treesPane #sourcesPanel .treeEmptyBody { font-size:11px; line-height:1.35; }
   #treesPane #sourcesPanel .treeRowMain { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; gap:8px; min-width:0; }
   #treesPane #sourcesPanel .treeRowSpacer { width:18px; height:18px; }
   #treesPane #sourcesPanel .treeInlineForm { display:flex; gap:6px; min-width:0; }
