@@ -112,6 +112,11 @@ function _kfTogglePeopleControls() {
   _kfRenderPeopleControls();
 }
 
+function _kfSetPeopleControlsCollapsed(collapsed) {
+  if (typeof _kfSetPeopleUxState === "function") _kfSetPeopleUxState({ controlsCollapsed: !!collapsed });
+  _kfRenderPeopleControls();
+}
+
 function KfPeopleSelect({ id, helpId, label, value, options, help, onChange, disabled }) {
   return h("section", { class: "optionCard peopleOptionCard" },
     h("label", { for: id }, label),
