@@ -154,7 +154,8 @@ const VIP_EMAILS = new Set([
   "jamil.burns@gmail.com","derrickrburns@gmail.com","derrickburns@gmail.com",
   "derrick.burns@gmail.com","derrick@kindredsearch.com","derrickburns@kindredsearch.com",
   "paigeunterberg@gmail.com",
-  "james.raby@gmail.com"
+  "james.raby@gmail.com",
+  "f.d.gregory@att.net"
 ]);
 
 let _clerkReady = false;
@@ -481,13 +482,15 @@ function _ensureSqlJs() {
   return _sqlJsReady;
 }
 
-async function buildBrowserDb() {
-  if (_kfLoadedSources.size === 0) {
-    if (_kfBrowserDb) { _kfBrowserDb.close(); _kfBrowserDb = null; }
-    return;
-  }
-  try {
+function buildBrowserDb() {
+  const seq = ++_kfBrowserDbBuildSeq;
+  const build = (async () => {
+    if (_kfLoadedSources.size === 0) {
+      if (_kfBrowserDb) { _kfBrowserDb.close(); _kfBrowserDb = null; }
+      return null;
+    }
     await _ensureSqlJs();
+    if (seq !== _kfBrowserDbBuildSeq) return _kfBrowserDb;
     if (_kfBrowserDb) { _kfBrowserDb.close(); _kfBrowserDb = null; }
     const db = new window._sqlJs.Database();
     db.run(`CREATE TABLE base_sources (id INTEGER PRIMARY KEY, name TEXT, loaded_at TEXT, n_individuals INTEGER, n_events INTEGER, n_families INTEGER)`);
@@ -538,12 +541,35 @@ async function buildBrowserDb() {
     se.free();
     sf.free(); sc.free();
     db.run("COMMIT");
+    if (seq !== _kfBrowserDbBuildSeq) {
+      try { db.close(); } catch (_) {}
+      return _kfBrowserDb;
+    }
     _kfBrowserDb = db;
     _kfEnsureSelectedSources();
     _kfRefreshBrowserViews();
-  } catch (e) {
-    console.warn("[kf] buildBrowserDb:", e.message || e);
+    return _kfBrowserDb;
+  })().catch(e => {
+    if (seq === _kfBrowserDbBuildSeq) console.warn("[kf] buildBrowserDb:", e.message || e);
+    return null;
+  }).finally(() => {
+    if (seq === _kfBrowserDbBuildSeq) _kfBrowserDbBuildPromise = null;
+  });
+  _kfBrowserDbBuildPromise = build;
+  return build;
+}
+
+async function _kfEnsureBrowserDbReady() {
+  if (_kfBrowserDbBuildPromise) {
+    await _kfBrowserDbBuildPromise.catch(() => null);
+    if (_kfBrowserDb) return _kfBrowserDb;
   }
+  if (_kfBrowserDb) return _kfBrowserDb;
+  if (_kfLoadedSources?.size) {
+    await buildBrowserDb();
+    if (_kfBrowserDb) return _kfBrowserDb;
+  }
+  return null;
 }
 
 function queryBrowserDb(query, maxRows = 200) {

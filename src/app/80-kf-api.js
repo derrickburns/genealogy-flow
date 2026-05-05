@@ -1720,7 +1720,8 @@ window.kfApi = {
     // Validate by running once.
     const probeSql = sql.replace(/__YEAR__/g, String(Math.floor(curYear)));
     try {
-      let j = _kfBrowserDb ? queryBrowserDb(probeSql, 1000) : null;
+      const db = typeof _kfEnsureBrowserDbReady === "function" ? await _kfEnsureBrowserDbReady() : _kfBrowserDb;
+      let j = db ? queryBrowserDb(probeSql, 1000) : null;
       if (!j && (location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
         const proxy = await detectChatProxy();
         if (proxy) {
@@ -2560,7 +2561,8 @@ window.kfApi = {
   async sql(query) {
     // Browser DB is the primary path for all users on the hosted site.
     // Only fall through to the local proxy when running on localhost (dev).
-    if (_kfBrowserDb) {
+    const db = typeof _kfEnsureBrowserDbReady === "function" ? await _kfEnsureBrowserDbReady() : _kfBrowserDb;
+    if (db) {
       return queryBrowserDb(query);
     }
     // Dev localhost: fall back to local proxy SQL endpoint if running

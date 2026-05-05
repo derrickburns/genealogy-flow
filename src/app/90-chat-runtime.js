@@ -23,6 +23,7 @@ When you name a specific person, place, cluster, or follow-up action that would 
 Never say that the map is centered, pinned, changed, annotated, or showing a route unless you emitted the required KFCALL and have seen the tool result confirm success. If a map action fails, say plainly that the map did not change.
 
 FAMILY-PATTERN SUMMARIES: For broad questions, prefer the compact helper methods before sql(); they are bounded, scoped to checked trees, and designed to avoid runaway tool calls. Use:
+  - Irish/Ireland/Northern Ireland/Ulster direct ancestors -> getAncestryByRegion({region:"ireland"})
   - immigration waves / transition years / historically significant source-marked people -> getImmigrationWaves()
   - farthest-moving surnames -> getSurnameMigrationDistances()
   - rural-to-city shifts -> getUrbanizationShift()
@@ -154,6 +155,7 @@ Available tools. jsonArgs is a single JSON value:
 - chain({steps: [...]} | [...])    Run multiple kfApi calls in one round-trip. Each step is {"method":"<name>","args":<sameShapeAsAbove>}. Stops at first error unless {"continueOnError":true}. Use this whenever a single user request needs more than one operation — saves tool round-trips and makes the intent atomic. Cannot recurse.
 
 - getFamily(name)                  Returns {person, parents:{father,mother}, siblings, spouses, children}. Faster than SQL for one-person family unit; pulls from in-memory family graph.
+- getAncestryByRegion({region?, root?, maxGen?, limit?})  Finds direct ancestors of the current root with place evidence in a broad region. For Irish questions use region:"ireland"; it includes Ireland, Northern Ireland, and Ulster, and excludes US places named Ireland.
 - getImmigrationWaves({limit?})    Compact summary of immigration/emigration and cross-country transition waves across the checked trees: decade/routes, key surnames, example people, and source-marked title/role people. Use FIRST for broad immigration-wave questions.
 - getSurnameMigrationDistances({limit?})  Ranks surnames by cumulative and largest recorded migration distances, with example people/routes.
 - getUrbanizationShift({limit?})   Shows decade-by-decade shift toward city-level records and the biggest increases.
@@ -225,8 +227,8 @@ const CHAT_TOOL_RESULT_MAX_CHARS = 8000;
 const CHAT_TOOL_ROUND_MAX_CHARS = 18000;
 const CHAT_TOOL_ROW_LIMIT = 24;
 const AI_CACHE_MODEL = "claude-sonnet-4-6";
-const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v7";
-const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v3-chip-cache";
+const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v8-region-grounding";
+const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v4-region-ancestry";
 const AI_CACHE_INDEX_TTL_MS = 5 * 60 * 1000;
 const _kfAiCacheEntries = new Map();
 let _kfAiCacheIndexKey = "";
@@ -964,6 +966,14 @@ async function parseAndRunKfCalls(text) {
 
 const MAX_TOOL_ROUNDS = 10;
 async function runChatTurn(userText) {
+  const deterministic = typeof _kfTryAnswerAncestryByRegionQuestion === "function"
+    ? _kfTryAnswerAncestryByRegionQuestion(userText)
+    : null;
+  if (deterministic?.content) {
+    chatHistory.push(deterministic);
+    renderChat();
+    return;
+  }
   const cacheContext = await _kfAiCacheContextForQuestion(userText);
   const cached = await _kfLoadCachedAiAnswer(cacheContext);
   if (cached?.answer) {

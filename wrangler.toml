@@ -13,7 +13,7 @@ binding = "STORAGE"
 bucket_name = "genealogy-flow"
 
 [vars]
-VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@gmail.com,derrickrburns@gmail.com,derrickburns@gmail.com,derrick.burns@gmail.com,derrick@kindredsearch.com,derrickburns@kindredsearch.com,paigeunterberg@gmail.com,james.raby@gmail.com"
+VIP_EMAILS = "ginagregoryburns@gmail.com,mayasylvia.burns@gmail.com,jamil.burns@gmail.com,derrickrburns@gmail.com,derrickburns@gmail.com,derrick.burns@gmail.com,derrick@kindredsearch.com,derrickburns@kindredsearch.com,paigeunterberg@gmail.com,james.raby@gmail.com,f.d.gregory@att.net"
 # CLERK_PUBLISHABLE_KEY is configured as a Pages secret; middleware has a
 # checked-in fallback because the key is public and must match index.html.
 

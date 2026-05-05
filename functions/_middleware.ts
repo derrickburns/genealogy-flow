@@ -46,6 +46,7 @@ const DEFAULT_VIP_EMAILS = [
   "derrickburns@kindredsearch.com",
   "paigeunterberg@gmail.com",
   "james.raby@gmail.com",
+  "f.d.gregory@att.net",
 ];
 
 // Public Clerk browser key used by index.html. Keeping this as a fallback avoids

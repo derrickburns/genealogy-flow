@@ -92,7 +92,8 @@ async function _kfFetchLensData() {
   if (cacheKey === _kfLensCacheKey) return;
   _kfLensFetching = true;
   try {
-    let j = _kfBrowserDb ? queryBrowserDb(sql, 1000) : null;
+    const db = typeof _kfEnsureBrowserDbReady === "function" ? await _kfEnsureBrowserDbReady() : _kfBrowserDb;
+    let j = db ? queryBrowserDb(sql, 1000) : null;
     if (!j && (location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
       const proxy = await detectChatProxy();
       if (!proxy) return;

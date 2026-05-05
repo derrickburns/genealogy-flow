@@ -41,7 +41,7 @@
     "audience": "tsx src/bin/audience.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:functions": "tsc -p tsconfig.functions.json",
-    "test:ux": "node --test test/ux-startup.test.mjs",
+    "test:ux": "node --test test/*.test.mjs",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/finalize-bins.mjs",
     "prepublishOnly": "pnpm run build",
     "seed-demo": "node scripts/seed-demo.mjs",

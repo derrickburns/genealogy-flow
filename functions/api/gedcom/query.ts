@@ -6,8 +6,8 @@ function wrapQuery(sql: string, sourceIds: number[]): string {
   const ids = sourceIds.join(",");
   return `WITH
   sources         AS (SELECT id,name,loaded_at,n_individuals,n_events,n_families FROM ged_sources WHERE id IN (${ids})),
-  individuals     AS (SELECT source_id,id,name,sex,birth_year,death_year,famc FROM ged_individuals WHERE source_id IN (${ids})),
-  events          AS (SELECT source_id,individual_id,type,year,place,lat,lon FROM ged_events WHERE source_id IN (${ids})),
+  individuals     AS (SELECT source_id,id,name,sex,birth_year,NULL AS birth_place,death_year,famc FROM ged_individuals WHERE source_id IN (${ids})),
+  events          AS (SELECT source_id,individual_id,type,year,place,lat,lon,NULL AS geo_level,NULL AS geo_cc,NULL AS geo_st FROM ged_events WHERE source_id IN (${ids})),
   families        AS (SELECT source_id,id,husb_id,wife_id FROM ged_families WHERE source_id IN (${ids})),
   family_children AS (SELECT source_id,family_id,child_id FROM ged_family_children WHERE source_id IN (${ids}))
 ${q}`;

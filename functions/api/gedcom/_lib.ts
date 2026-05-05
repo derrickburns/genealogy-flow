@@ -4,10 +4,10 @@ export const INITIAL_SHARED_CATALOG_EMAILS = [
   "mayasylvia.burns@gmail.com",
   "jamil.burns@gmail.com",
   "ginagregoryburns@gmail.com",
+  "f.d.gregory@att.net",
 ];
 
 export const INITIAL_ARCHER_EXTRA_SHARED_WITH = [
-  "f.d.gregory@att.net",
 ];
 
 export const INITIAL_SHARED_CATALOG_KEYS = ["golden-rosenberg", "gregory-henry", "archer"];

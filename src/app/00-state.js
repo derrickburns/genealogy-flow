@@ -318,6 +318,8 @@ function _kfJsonHeaders() {
     : { "Content-Type": "application/json" };
 }
 let _kfBrowserDb = null;     // sql.js in-memory SQLite DB built from the loaded GEDCOM
+let _kfBrowserDbBuildPromise = null;
+let _kfBrowserDbBuildSeq = 0;
 let _sqlJsReady = null;      // Promise — resolves when sql.js WASM is loaded
 const CHAT_PROXY_LS = "kf-chat-proxy";
 const CHAT_PROXY_DEFAULT = "http://localhost:8789";
