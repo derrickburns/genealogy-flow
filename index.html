@@ -169,82 +169,14 @@
         </span>
       </div>
       <div id="peopleControls" class="peopleControls">
-        <button id="peopleControlsToggle" class="paneDisclosureToggle" type="button" aria-expanded="true" aria-controls="peopleControlsBody">
-          <span>Display options</span>
-          <small id="peopleControlsSummary">Everyone · all surnames · all people · no lines</small>
-        </button>
-        <div id="peopleControlsBody" class="paneDisclosureBody optionSelectorGrid">
-          <section class="optionCard">
-            <label for="showFilterChoice">People shown</label>
-            <select id="showFilterChoice">
-              <option value="all">Everyone - no relationship filter</option>
-              <option value="blood">Blood relatives - direct biological kin</option>
-              <option value="ancestors">Direct ancestors - parents and grandparents</option>
-            </select>
-            <p id="showFilterHelp" class="optionHelp">Use the selected trees without narrowing by family relationship.</p>
-          </section>
-          <section class="optionCard">
-            <label for="surnameSelect">Surname</label>
-            <span id="peopleSurnameGroup" class="chipGroup surnameControl" data-grp="surname" style="display:none;">
-              <select id="surnameSelect">
-                <option value="">all</option>
-              </select>
-            </span>
-            <p class="optionHelp">Focus the people shown by common surname in the selected trees.</p>
-          </section>
-          <section class="optionCard">
-            <label for="sexFilterChoice">Sex filter</label>
-            <select id="sexFilterChoice">
-              <option value="all">All people - no sex filter</option>
-              <option value="M">Men only - recorded male</option>
-              <option value="F">Women only - recorded female</option>
-            </select>
-            <p id="sexFilterHelp" class="optionHelp">Do not filter by recorded sex.</p>
-          </section>
-          <section class="optionCard">
-            <label for="kinLinesChoice">Relationship context</label>
-            <select id="kinLinesChoice">
-              <option value="0">Off - no relationship lines</option>
-              <option value="3">Closest 3 - show only strongest context</option>
-              <option value="5">Closest 5 - balanced context</option>
-              <option value="10">Closest 10 - broader family context</option>
-              <option value="20">Closest 20 - dense relationship context</option>
-            </select>
-            <p id="kinLinesHelp" class="optionHelp">Hide relationship lines so the map stays clean.</p>
-            <input type="range" id="kinNMain" min="0" max="20" step="1" value="0" hidden>
-            <b id="kinNMainLabel" hidden>0</b>
-          </section>
-        </div>
+        <div id="peopleControlsMount"></div>
       </div>
       <div id="personEmpty">Click a marker on the map to inspect that person.</div>
       <div id="selectedPerson" hidden></div>
     </div>
     <div id="clusterPane" class="sidePane">
       <div id="clusterControls" class="clusterControls">
-        <div class="optionSelectorGrid">
-          <section class="optionCard">
-            <label for="clusterModeChoice">How to group people</label>
-            <select id="clusterModeChoice">
-              <option value="none">Off - individual people</option>
-              <option value="state">Places - state/country regions</option>
-              <option value="tree">Trees - compare selected data sets</option>
-              <option value="group">AI groups - from Claude answers</option>
-              <option value="pie">Lineage - paternal/maternal branches</option>
-              <option value="gender">Gender - recorded sex mix</option>
-              <option value="parents">Parent knowledge - missing parents</option>
-              <option value="dispersion">Declutter - group when zoomed out</option>
-            </select>
-            <p id="clusterModeHelp" class="optionHelp">Show each visible person as an individual marker.</p>
-          </section>
-          <section class="optionCard">
-            <label for="clusterRadiusMain">Cluster size</label>
-            <div class="clusterRadiusControl">
-              <input type="range" id="clusterRadiusMain" min="10" max="80" step="2" value="30">
-              <b id="clusterRadiusMainLabel">30</b>
-            </div>
-            <p class="optionHelp">Larger values combine nearby people into fewer clusters.</p>
-          </section>
-        </div>
+        <div id="clusterControlsMount"></div>
       </div>
       <div id="clusterEmpty">Click a cluster on the map to inspect its people.</div>
       <div id="selectedCluster" hidden></div>

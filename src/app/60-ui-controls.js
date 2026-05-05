@@ -458,59 +458,11 @@ function _kfBuildSurnameTopN(n = 12) {
 }
 
 function _kfRenderSurnameChips() {
-  const grp = document.querySelector(".chipGroup[data-grp='surname']");
-  const sel = document.getElementById("surnameSelect");
-  if (!grp || !sel) return;
   if (!_kfSurnamesTop || !_kfSurnamesTop.length) {
-    grp.style.display = "none";
-    sel.innerHTML = '<option value="">all</option>';
     _kfSurnameFilter = null;
-    return;
   }
-  grp.style.display = "";
-  const current = _kfSurnameFilter ? [..._kfSurnameFilter][0] : "";
-  const opts = ['<option value="">all</option>'];
-  for (const { surname, count } of _kfSurnamesTop) {
-    const sel2 = surname === current ? " selected" : "";
-    opts.push(`<option value="${escHtml(surname)}"${sel2}>${escHtml(surname)} (${count})</option>`);
-  }
-  sel.innerHTML = opts.join("");
-  sel.onchange = () => {
-    const val = sel.value;
-    _kfSurnameFilter = val ? new Set([val]) : null;
-    _kfPersonsCacheYear = "";
-    if (_kfDeckOverlay) updateDeckDwellLayer();
-    _kfRefreshViewChrome(true);
-  };
+  if (typeof _kfRenderPeopleControls === "function") _kfRenderPeopleControls();
 }
-
-const _KF_CLUSTER_OPTION_HELP = {
-  none: "Show each visible person as an individual marker.",
-  state: "Group people into state or country-level regions so broad geography is easier to compare.",
-  tree: "Group nearby people by source tree so overlaps and differences between selected trees stand out.",
-  gender: "Group nearby people and show the recorded male/female mix inside each cluster.",
-  parents: "Group nearby people by how much parent information is known: zero, one, or two recorded parents.",
-  pie: "Group nearby people by paternal, maternal, and other lineage relative to the home person.",
-  group: "Group people using named groups created from AI answers, such as migration waves or surname cohorts.",
-  dispersion: "Declutter dense views automatically at low zoom, then return to individual markers as you zoom in.",
-};
-const _KF_SHOW_FILTER_HELP = {
-  all: "Use the selected trees without narrowing by family relationship.",
-  blood: "Show only direct blood relatives of the home person.",
-  ancestors: "Show only direct ancestors of the home person.",
-};
-const _KF_SEX_FILTER_HELP = {
-  all: "Do not filter by recorded sex.",
-  M: "Show only people recorded as male.",
-  F: "Show only people recorded as female.",
-};
-const _KF_KIN_LINE_HELP = {
-  0: "Hide relationship lines so the map stays clean.",
-  3: "Draw relationship lines to the three closest visible kinfolk.",
-  5: "Draw relationship lines to the five closest visible kinfolk.",
-  10: "Draw relationship lines to the ten closest visible kinfolk.",
-  20: "Draw relationship lines to the twenty closest visible kinfolk.",
-};
 
 function _kfSetSelectValue(id, value) {
   const el = document.getElementById(id);
@@ -529,14 +481,8 @@ function _kfSyncOptionSelectors() {
   if (clusterRadiusMainLabel) clusterRadiusMainLabel.textContent = String(clusterRadius);
   const kinValue = kinLinesN >= 20 ? 20 : kinLinesN >= 10 ? 10 : kinLinesN >= 5 ? 5 : kinLinesN >= 3 ? 3 : 0;
   _kfSetSelectValue("kinLinesChoice", kinValue);
-  const clusterHelp = document.getElementById("clusterModeHelp");
-  const showHelp = document.getElementById("showFilterHelp");
-  const sexHelp = document.getElementById("sexFilterHelp");
-  const kinHelp = document.getElementById("kinLinesHelp");
-  if (clusterHelp) clusterHelp.textContent = _KF_CLUSTER_OPTION_HELP[clusterMode] || _KF_CLUSTER_OPTION_HELP.none;
-  if (showHelp) showHelp.textContent = _KF_SHOW_FILTER_HELP[curFilter] || _KF_SHOW_FILTER_HELP.all;
-  if (sexHelp) sexHelp.textContent = _KF_SEX_FILTER_HELP[_kfSexFilter || "all"] || _KF_SEX_FILTER_HELP.all;
-  if (kinHelp) kinHelp.textContent = _KF_KIN_LINE_HELP[kinValue] || _KF_KIN_LINE_HELP[0];
+  if (typeof _kfRenderClusterControls === "function") _kfRenderClusterControls();
+  if (typeof _kfRenderPeopleControls === "function") _kfRenderPeopleControls();
 }
 
 function _kfRefreshQuickChips() {
@@ -564,26 +510,6 @@ function _kfRefreshQuickChips() {
   if (overlayGrp) overlayGrp.style.display = _kfLoadedTreeCount >= 2 ? "" : "none";
 }
 
-document.getElementById("clusterModeChoice")?.addEventListener("change", e => {
-  window.kfApi.setClusterMode(e.target.value);
-});
-document.getElementById("showFilterChoice")?.addEventListener("change", e => {
-  $("filt").value = e.target.value;
-  $("filt").dispatchEvent(new Event("change", { bubbles: true }));
-});
-document.getElementById("sexFilterChoice")?.addEventListener("change", e => {
-  _kfSexFilter = e.target.value === "all" ? null : e.target.value;
-  _kfPersonsCacheYear = "";
-  if (_kfDeckOverlay) updateDeckDwellLayer();
-  _kfRefreshViewChrome(true);
-  _kfRefreshQuickChips();
-});
-document.getElementById("kinLinesChoice")?.addEventListener("change", e => {
-  _kfSetKinLines(parseInt(e.target.value, 10) || 0);
-  _kfRefreshViewChrome(true);
-  _kfRefreshQuickChips();
-});
-
 function _kfSetClusterRadius(n) {
   clusterRadius = parseInt(n, 10) || 30;
   $("clusterRadius").value = clusterRadius;
@@ -595,11 +521,8 @@ function _kfSetClusterRadius(n) {
   fxCtx.clearRect(0, 0, W, H);
   if (_kfDeckOverlay) updateDeckDwellLayer();
   if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+  if (typeof _kfRenderClusterControls === "function") _kfRenderClusterControls();
 }
-
-document.getElementById("clusterRadiusMain")?.addEventListener("input", e => {
-  _kfSetClusterRadius(e.target.value);
-});
 
 
 async function _kfToggleMatchOverlay() {

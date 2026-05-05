@@ -41,6 +41,9 @@ const _kfUxState = {
     tab: "map",
     sheet: "peek",
   },
+  people: {
+    controlsCollapsed: false,
+  },
   trees: {
     status: "idle",
     rows: [],
@@ -67,6 +70,7 @@ function _kfSetUxState(patch = {}) {
   if (patch.auth) _kfPatchUxSection("auth", patch.auth);
   if (patch.startup) _kfPatchUxSection("startup", patch.startup);
   if (patch.mobile) _kfPatchUxSection("mobile", patch.mobile);
+  if (patch.people) _kfPatchUxSection("people", patch.people);
   if (patch.trees) _kfPatchUxSection("trees", patch.trees);
   for (const listener of _kfUxListeners) listener(_kfUxState);
 }
@@ -104,6 +108,10 @@ function _kfSetTreeInventoryUxState(patch = {}) {
 
 function _kfSetMobileUxState(patch = {}) {
   _kfSetUxState({ mobile: patch });
+}
+
+function _kfSetPeopleUxState(patch = {}) {
+  _kfSetUxState({ people: patch });
 }
 
 function _kfSetTreeInventoryBusyKey(key = "") {
