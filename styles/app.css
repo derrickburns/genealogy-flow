@@ -84,6 +84,7 @@
   .hoverTip .tipChain .lbl { color:#888; font-style:italic; min-width:50px; }
   .hoverTip .tipChain .nm { color:#1c2433; }
   #mapLegend { max-width:40ch !important; white-space:normal; overflow-wrap:anywhere; }
+  #mapLegend.legendAutoHidden { display:none !important; }
   #mapLegend div { max-width:40ch; white-space:normal; overflow-wrap:anywhere; }
   .rangeWrap { position:relative; flex:1 1 auto; min-width:120px; padding:18px 0 14px; display:flex; align-items:center; }
   #yearHist { position:absolute; left:0; right:0; bottom:14px; height:18px; width:100%; pointer-events:none; opacity:0.55; }

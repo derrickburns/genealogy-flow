@@ -347,6 +347,7 @@ function resize() {
     projectAll();
     fxCtx.clearRect(0, 0, W, H);
     if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+    if (typeof updateMapLegend === "function") updateMapLegend();
   }
 }
 window.addEventListener("resize", resize);

@@ -201,15 +201,15 @@ function _kfHasAvailableNonDemoRemoteTree() {
     (_kfCloudTrees || []).some(isAvailableNonDemo);
 }
 
-function _kfOpenMobileTreesPanel() {
-  if (!_kfIsMobileLayout()) return;
+function _kfOpenTreesPanel() {
   if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
-  if (typeof _kfSetMobileSheetState === "function") _kfSetMobileSheetState("open");
+  if (_kfIsMobileLayout() && typeof _kfSetMobileSheetState === "function") _kfSetMobileSheetState("open");
 }
 
-function _kfMaybeOpenTreesPanelForEmptySelection() {
-  if (!_kfIsMobileLayout() || _kfHasSelectedVisualizationTree()) return;
-  _kfOpenMobileTreesPanel();
+function _kfMaybeOpenTreesPanelForEmptySelection(opts = {}) {
+  if (_kfHasSelectedVisualizationTree()) return;
+  if (!opts.force && !_kfHasAvailableNonDemoRemoteTree()) return;
+  _kfOpenTreesPanel();
 }
 
 function _kfScheduleAuthTokenRetry() {
@@ -361,33 +361,26 @@ async function updateAuthUI(user) {
 }
 
 async function autoLoadStartupTrees() {
-  if (_kfIsMobileLayout()) {
-    _kfSetStartupPhase(KF_STARTUP_PHASE.SIGNED_IN_INVENTORY, "loading shared tree list...");
-    await refreshSources();
-    const action = _kfChooseStartupAction({
-      isMobile: true,
-      hasSelectedVisualizationTree: _kfHasSelectedVisualizationTree(),
-      hasAvailableNonDemoRemoteTree: _kfHasAvailableNonDemoRemoteTree(),
-    });
-    if (action === KF_STARTUP_ACTION.SHOW_MOBILE_TREE_PICKER) {
-      _kfSetStartupPhase(KF_STARTUP_PHASE.MOBILE_TREE_PICKER, "shared trees available - choose one to load");
-      _kfOpenMobileTreesPanel();
-      stats.textContent = "shared trees available - choose one to load";
-    } else if (action === KF_STARTUP_ACTION.LOAD_MOBILE_DEMO) {
-      _kfSetStartupPhase(KF_STARTUP_PHASE.MOBILE_DEMO_FALLBACK, "loading demo tree...");
-      await autoLoadPublicDemoTree();
-      _kfMaybeOpenTreesPanelForEmptySelection();
-    } else {
-      _kfSetStartupPhase(KF_STARTUP_PHASE.READY, stats?.textContent || "ready");
-    }
+  _kfSetStartupPhase(KF_STARTUP_PHASE.AUTO_LOAD, "restoring your trees...");
+  await autoLoadCloudGedcom();
+  await autoLoadVipCatalogTrees();
+  const action = _kfChooseStartupAction({
+    hasSelectedVisualizationTree: _kfHasSelectedVisualizationTree(),
+    hasAvailableNonDemoRemoteTree: _kfHasAvailableNonDemoRemoteTree(),
+  });
+  if (action === KF_STARTUP_ACTION.SHOW_TREE_PICKER) {
+    _kfSetStartupPhase(KF_STARTUP_PHASE.TREE_PICKER, "shared trees available - choose one to load");
+    stats.textContent = "shared trees available - choose one to load";
+    _kfMaybeOpenTreesPanelForEmptySelection({ force: true });
     autoIntroOnce();
     return;
   }
-  _kfSetStartupPhase(KF_STARTUP_PHASE.DESKTOP_AUTO_LOAD, "restoring your trees...");
-  await autoLoadCloudGedcom();
-  await autoLoadVipCatalogTrees();
-  if (!_kfHasSelectedVisualizationTree()) await autoLoadPublicDemoTree();
+  if (action === KF_STARTUP_ACTION.LOAD_DEMO) {
+    _kfSetStartupPhase(KF_STARTUP_PHASE.DEMO_FALLBACK, "loading demo tree...");
+    await autoLoadPublicDemoTree();
+  }
   _kfSetStartupPhase(KF_STARTUP_PHASE.READY, stats?.textContent || "ready");
+  _kfMaybeOpenTreesPanelForEmptySelection();
   autoIntroOnce();
 }
 

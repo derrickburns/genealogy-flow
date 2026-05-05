@@ -33,3 +33,13 @@ test("refactored panel mount points still exist in the shell", () => {
     assert.match(html, new RegExp(`id="${id}"`));
   }
 });
+
+test("map legend auto-hides when it cannot fit the viewport", () => {
+  const styles = readFileSync("styles/app.css", "utf8");
+  const mapRuntime = readFileSync("src/app/30-map-runtime.js", "utf8");
+  const state = readFileSync("src/app/00-state.js", "utf8");
+  assert.match(styles, /#mapLegend\.legendAutoHidden\s*\{\s*display:none\s*!important;\s*\}/);
+  assert.match(mapRuntime, /function\s+_kfUpdateLegendAccommodation\s*\(/);
+  assert.match(mapRuntime, /classList\.toggle\("legendAutoHidden"/);
+  assert.match(state, /updateMapLegend\(\)/);
+});

@@ -324,6 +324,31 @@ function colorForFinal(side, _parStat, indiIdx) {
   }
   return colorFor(side);
 }
+function _kfUpdateLegendAccommodation(el) {
+  if (!el || el.classList.contains("hidden")) return;
+  el.classList.remove("legendAutoHidden");
+
+  const wrap = document.getElementById("mapWrap");
+  if (!wrap) return;
+  const wrapW = wrap.clientWidth || W || 0;
+  const wrapH = wrap.clientHeight || H || 0;
+  if (!wrapW || !wrapH) return;
+
+  const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+  if (style && style.display === "none") return;
+  const left = style ? (parseFloat(style.left) || 0) : 0;
+  const bottom = style ? (parseFloat(style.bottom) || 0) : 0;
+  const inset = 10;
+  const legendW = el.offsetWidth || 0;
+  const legendH = el.offsetHeight || 0;
+  if (!legendW || !legendH) return;
+
+  const exceedsBounds = legendW + left + inset > wrapW || legendH + bottom + inset > wrapH;
+  const consumesTooMuchMap = (legendW * legendH) > (wrapW * wrapH * 0.28);
+  const crowdedNarrowMap = wrapW < 640 && legendW > wrapW * 0.52;
+  const crowdedShortMap = wrapH < 480 && legendH > wrapH * 0.38;
+  el.classList.toggle("legendAutoHidden", exceedsBounds || consumesTooMuchMap || crowdedNarrowMap || crowdedShortMap);
+}
 function updateMapLegend() {
   const el = document.getElementById("mapLegend");
   if (!el || el.classList.contains("hidden")) return;
@@ -529,6 +554,7 @@ function updateMapLegend() {
   }
 
   el.innerHTML = html;
+  _kfUpdateLegendAccommodation(el);
 }
 
 function drawShape(ctx, x, y, r, ps) {

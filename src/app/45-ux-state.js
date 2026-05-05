@@ -3,28 +3,25 @@ export const KF_STARTUP_PHASE = Object.freeze({
   BOOTING: "booting",
   ANONYMOUS_DEMO: "anonymous-demo",
   SIGNED_IN_INVENTORY: "signed-in-inventory",
-  MOBILE_TREE_PICKER: "mobile-tree-picker",
-  MOBILE_DEMO_FALLBACK: "mobile-demo-fallback",
-  DESKTOP_AUTO_LOAD: "desktop-auto-load",
+  TREE_PICKER: "tree-picker",
+  DEMO_FALLBACK: "demo-fallback",
+  AUTO_LOAD: "auto-load",
   READY: "ready",
   ERROR: "error",
 });
 
 export const KF_STARTUP_ACTION = Object.freeze({
-  DESKTOP_AUTO_LOAD: "desktop-auto-load",
-  SHOW_MOBILE_TREE_PICKER: "show-mobile-tree-picker",
-  LOAD_MOBILE_DEMO: "load-mobile-demo",
+  SHOW_TREE_PICKER: "show-tree-picker",
+  LOAD_DEMO: "load-demo",
   READY: "ready",
 });
 
 export function _kfChooseStartupAction(input = {}) {
-  const isMobile = !!input.isMobile;
   const hasSelectedVisualizationTree = !!input.hasSelectedVisualizationTree;
   const hasAvailableNonDemoRemoteTree = !!input.hasAvailableNonDemoRemoteTree;
-  if (!isMobile) return KF_STARTUP_ACTION.DESKTOP_AUTO_LOAD;
   if (hasSelectedVisualizationTree) return KF_STARTUP_ACTION.READY;
-  if (hasAvailableNonDemoRemoteTree) return KF_STARTUP_ACTION.SHOW_MOBILE_TREE_PICKER;
-  return KF_STARTUP_ACTION.LOAD_MOBILE_DEMO;
+  if (hasAvailableNonDemoRemoteTree) return KF_STARTUP_ACTION.SHOW_TREE_PICKER;
+  return KF_STARTUP_ACTION.LOAD_DEMO;
 }
 
 const _kfUxState = {
