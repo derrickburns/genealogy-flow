@@ -73,3 +73,28 @@ test("raw tree text caching is based on memory budget, not viewport", () => {
   assert.ok(processCacheBlock, "processFile should contain the raw tree cache decision");
   assert.doesNotMatch(processCacheBlock, /_kfIsCompactLayout/);
 });
+
+test("issue reports expose a responsive tree debug snapshot", () => {
+  const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+
+  assert.match(services, /function\s+_kfBuildTreeDebugSnapshot\s*\(/);
+  assert.match(services, /tree_debug:\s*_kfBuildTreeDebugSnapshot\(\)/);
+  assert.match(services, /const sourceId = tree\.source_id \?\? tree\.id \?\? null/);
+  assert.match(services, /src\.source_id \?\? src\.id/);
+  assert.doesNotMatch(services, /snapshot:\s*_kfBuildIssueContext/);
+  assert.match(services, /window\.kfDebug\s*=/);
+  assert.match(services, /treeSnapshot:\s*_kfBuildTreeDebugSnapshot/);
+  assert.match(services, /clientErrors:\s*\(\) => _kfClientErrors\.slice\(\)/);
+  assert.match(services, /has_available_non_demo_remote_tree/);
+});
+
+test("responsive browser smoke coverage is wired into package scripts", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
+
+  assert.equal(pkg.scripts["smoke:responsive"], "node scripts/smoke-responsive-layout.mjs");
+  assert.match(smoke, /Emulation\.setDeviceMetricsOverride/);
+  assert.match(smoke, /window\.kfDebug\.treeSnapshot/);
+  assert.match(smoke, /window\.kfDebug\.clientErrors/);
+  assert.match(smoke, /value => !!value\?\.ok/);
+});

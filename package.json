@@ -47,6 +47,7 @@
     "seed-demo": "node scripts/seed-demo.mjs",
     "seed-demo:local": "node scripts/seed-demo.mjs --local",
     "smoke:demo:local": "node scripts/smoke-local-demo.mjs",
+    "smoke:responsive": "node scripts/smoke-responsive-layout.mjs",
     "predeploy": "node scripts/prepare-public.mjs",
     "deploy": "pnpm run predeploy && pnpm exec wrangler pages deploy public",
     "dev": "pnpm run predeploy && pnpm exec wrangler pages dev public --persist-to .wrangler/state"

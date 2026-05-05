@@ -4,6 +4,87 @@ function _kfShortText(value, max = 1200) {
   return s.length > max ? s.slice(0, max) + "...[truncated]" : s;
 }
 
+function _kfPublicTreeMeta(tree) {
+  if (!tree) return null;
+  const sourceId = tree.source_id ?? tree.id ?? null;
+  return {
+    kind: tree.kind || tree.source_kind || null,
+    key: tree.key || tree.catalog_key || null,
+    name: tree.name || tree.common_name || null,
+    tree_uuid: tree.tree_uuid || null,
+    available: tree.available !== false,
+    relation: tree.relation || null,
+    owner_email: tree.owner_email || null,
+    selected: !!(_kfSelectedSourceIds && sourceId != null && _kfSelectedSourceIds.has(sourceId)),
+    loaded: sourceId != null,
+    source_id: sourceId,
+    n_individuals: tree.n_individuals || null,
+    n_events: tree.n_events || null,
+    top_pci_name: tree.top_pci_name || null,
+    top_pci_score: tree.top_pci_score ?? null,
+  };
+}
+
+function _kfBuildTreeDebugSnapshot() {
+  const ux = typeof _kfReadUxState === "function" ? _kfReadUxState() : {};
+  const loaded = typeof _kfGetLoadedSourcesList === "function" ? _kfGetLoadedSourcesList() : [];
+  const isAvailableNonDemo = tree =>
+    tree && tree.available !== false && !_kfIsPublicDemoSourceName(tree.name || tree.common_name || tree.key || tree.catalog_key);
+  const selectedIds = [...(_kfSelectedSourceIds || [])];
+  const selectedTrees = loaded.filter(src => _kfSelectedSourceIds?.has(src.source_id ?? src.id));
+  const catalog = (_kfCatalogTrees || []).filter(Boolean);
+  const cloud = (_kfCloudTrees || []).filter(Boolean);
+  const shared = (_kfShareState?.trees || []).filter(Boolean);
+  return {
+    auth: {
+      status: ux.auth?.status || null,
+      tier: _clerkUserTier || null,
+      email: _kfCurrentAuthEmail() || null,
+      has_token: !!_clerkToken,
+    },
+    startup: ux.startup || null,
+    layout: {
+      compact: typeof _kfIsCompactLayout === "function" ? _kfIsCompactLayout() : null,
+      tab: ux.layout?.tab || (typeof _kfActiveSideTab !== "undefined" ? _kfActiveSideTab : null),
+      sheet: ux.layout?.sheet || document.getElementById("panel")?.dataset?.sheet || null,
+      viewport: { width: innerWidth, height: innerHeight, device_pixel_ratio: devicePixelRatio },
+    },
+    trees: {
+      active_tree: _kfActiveTreeName || null,
+      loaded_count: loaded.length,
+      selected_count: selectedTrees.length,
+      selected_source_ids: selectedIds,
+      has_selected_visualization_tree: _kfHasSelectedVisualizationTree(),
+      has_available_non_demo_remote_tree: _kfHasAvailableNonDemoRemoteTree(),
+      loaded: loaded.map(_kfPublicTreeMeta),
+      selected: selectedTrees.map(_kfPublicTreeMeta),
+      inventory: ux.trees || null,
+      catalog: {
+        count: catalog.length,
+        available_non_demo_count: catalog.filter(isAvailableNonDemo).length,
+        trees: catalog.map(_kfPublicTreeMeta),
+      },
+      cloud: {
+        count: cloud.length,
+        available_non_demo_count: cloud.filter(isAvailableNonDemo).length,
+        trees: cloud.map(_kfPublicTreeMeta),
+      },
+      shares: {
+        count: shared.length,
+        error: _kfShareState?.error || null,
+        trees: shared.map(_kfPublicTreeMeta),
+      },
+    },
+    cache: {
+      raw_tree_cache_count: _kfTreeCache?.size || 0,
+      raw_tree_cache_names: _kfTreeCache ? [..._kfTreeCache.keys()] : [],
+      raw_tree_cache_max_chars: typeof KF_RAW_TREE_CACHE_MAX_CHARS !== "undefined" ? KF_RAW_TREE_CACHE_MAX_CHARS : null,
+      low_memory_raw_tree_cache_max_chars: typeof KF_RAW_TREE_CACHE_LOW_MEMORY_MAX_CHARS !== "undefined" ? KF_RAW_TREE_CACHE_LOW_MEMORY_MAX_CHARS : null,
+      device_memory_gb: Number(globalThis.navigator?.deviceMemory) || null,
+    },
+  };
+}
+
 function _kfBuildIssueContext() {
   const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
   const root = lastRootId ? lastIndiById?.get(lastRootId) : null;
@@ -48,6 +129,7 @@ function _kfBuildIssueContext() {
         dwell_place: selectedPlace,
       } : null,
     },
+    tree_debug: _kfBuildTreeDebugSnapshot(),
     recent_chat: chatHistory.slice(-12).map(m => ({
       role: m.role,
       kind: m.kind || null,
@@ -133,6 +215,14 @@ async function _kfReportIssue() {
   }
 }
 $("reportIssue")?.addEventListener("click", _kfReportIssue);
+
+const _kfExistingDebug = { ...(window.kfDebug || {}) };
+delete _kfExistingDebug.snapshot;
+window.kfDebug = {
+  ..._kfExistingDebug,
+  treeSnapshot: _kfBuildTreeDebugSnapshot,
+  clientErrors: () => _kfClientErrors.slice(),
+};
 
 // Default to locked state; Clerk will unlock once it resolves auth
 applyChatAccess("anon");
