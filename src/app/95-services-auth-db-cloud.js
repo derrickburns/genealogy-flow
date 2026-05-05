@@ -193,9 +193,22 @@ function _kfHasSelectedVisualizationTree() {
   return [..._kfLoadedSources.values()].some(src => _kfSelectedSourceIds.has(src.source_id));
 }
 
+function _kfHasAvailableNonDemoRemoteTree() {
+  const isAvailableNonDemo = t =>
+    t && t.available !== false && !_kfIsPublicDemoSourceName(t.name || t.key);
+  return (_kfCatalogTrees || []).some(t => isAvailableNonDemo(t) && t.key !== "demo") ||
+    (_kfCloudTrees || []).some(isAvailableNonDemo);
+}
+
+function _kfOpenMobileTreesPanel() {
+  if (!_kfIsMobileLayout()) return;
+  if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
+  if (typeof _kfSetMobileSheetState === "function") _kfSetMobileSheetState("open");
+}
+
 function _kfMaybeOpenTreesPanelForEmptySelection() {
   if (!_kfIsMobileLayout() || _kfHasSelectedVisualizationTree()) return;
-  if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
+  _kfOpenMobileTreesPanel();
 }
 
 function _kfScheduleAuthTokenRetry() {
@@ -343,9 +356,15 @@ async function updateAuthUI(user) {
 async function autoLoadStartupTrees() {
   if (_kfIsMobileLayout()) {
     await refreshSources();
-    await autoLoadVipCatalogTrees();
-    if (!_kfHasSelectedVisualizationTree()) await autoLoadPublicDemoTree();
-    _kfMaybeOpenTreesPanelForEmptySelection();
+    if (_kfHasAvailableNonDemoRemoteTree()) {
+      if (!_kfHasSelectedVisualizationTree()) {
+        _kfOpenMobileTreesPanel();
+        stats.textContent = "shared trees available - choose one to load";
+      }
+    } else if (!_kfHasSelectedVisualizationTree()) {
+      await autoLoadPublicDemoTree();
+      _kfMaybeOpenTreesPanelForEmptySelection();
+    }
     autoIntroOnce();
     return;
   }
