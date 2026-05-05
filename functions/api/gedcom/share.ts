@@ -249,7 +249,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     if (!validShareEmail(email)) return json({ error: "Enter a valid email address" }, { status: 422 });
     await ctx.env.DB.prepare(`
       DELETE FROM tree_shares
-      WHERE tree_kind = ? AND tree_key = ? AND shared_with_email = ?
+      WHERE tree_kind = ? AND tree_key = ? AND lower(shared_with_email) = ?
     `).bind(kind, key, email).run();
   } else {
     if (!email) return json({ error: "email required" }, { status: 422 });

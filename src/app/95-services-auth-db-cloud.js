@@ -329,7 +329,7 @@ async function updateAuthUI(user) {
   applyChatAccess(_clerkUserTier);
   _kfRemovePublicDemoSourcesForSignedIn();
   _kfRemoveRestrictedVipSources();
-  refreshSources();
+  await refreshSources();
   _kfUpdateAccountChrome();
   _kfMaybeOpenTreesPanelForEmptySelection();
 

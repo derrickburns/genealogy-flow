@@ -1,16 +1,16 @@
 import type { Env } from "../../_middleware";
 
-const INITIAL_SHARED_CATALOG_EMAILS = [
+export const INITIAL_SHARED_CATALOG_EMAILS = [
   "mayasylvia.burns@gmail.com",
   "jamil.burns@gmail.com",
   "ginagregoryburns@gmail.com",
 ];
 
-const INITIAL_ARCHER_EXTRA_SHARED_WITH = [
+export const INITIAL_ARCHER_EXTRA_SHARED_WITH = [
   "f.d.gregory@att.net",
 ];
 
-const INITIAL_SHARED_CATALOG_KEYS = ["golden-rosenberg", "gregory-henry", "archer"];
+export const INITIAL_SHARED_CATALOG_KEYS = ["golden-rosenberg", "gregory-henry", "archer"];
 
 export const DEFAULT_TREE_OWNER_EMAIL = "derrickrburns@gmail.com";
 export const CATALOG_ARCHER_TREE_UUID = "14d2dad8-3582-49c2-b439-99aa30d4370b";
@@ -370,7 +370,7 @@ export async function accessibleGedSourceIds(env: Env, userId: string, email: st
          SELECT 1 FROM tree_shares sh
          WHERE sh.tree_kind = 'gedcom'
            AND (sh.tree_key = s.tree_uuid OR sh.tree_key = CAST(s.id AS TEXT))
-           AND sh.shared_with_email = ?
+           AND lower(sh.shared_with_email) = ?
        )
     ORDER BY s.is_default DESC, s.loaded_at ASC, s.id ASC
   `).bind(userId, userId, normalized, normalized).all<{ id: number }>();

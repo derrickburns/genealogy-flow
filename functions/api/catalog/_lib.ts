@@ -1,5 +1,12 @@
 import type { Env, UserContext } from "../../_middleware";
-import { DEFAULT_TREE_OWNER_EMAIL, ensureGedcomMultiSourceSchema, normalizeEmail } from "../gedcom/_lib";
+import {
+  DEFAULT_TREE_OWNER_EMAIL,
+  ensureGedcomMultiSourceSchema,
+  INITIAL_ARCHER_EXTRA_SHARED_WITH,
+  INITIAL_SHARED_CATALOG_EMAILS,
+  INITIAL_SHARED_CATALOG_KEYS,
+  normalizeEmail,
+} from "../gedcom/_lib";
 
 export interface CatalogTree {
   uuid: string;
@@ -65,9 +72,18 @@ export async function sharedCatalogKeys(env: Env, email: string | undefined): Pr
   await ensureGedcomMultiSourceSchema(env);
   const rows = await env.DB.prepare(`
     SELECT tree_key FROM tree_shares
-    WHERE tree_kind = 'catalog' AND shared_with_email = ?
+    WHERE tree_kind = 'catalog' AND lower(shared_with_email) = ?
   `).bind(normalized).all<{ tree_key: string }>();
-  return new Set((rows.results ?? []).map(row => row.tree_key));
+  const keys = new Set((rows.results ?? []).map(row => row.tree_key));
+  const hasInitialAccess = INITIAL_SHARED_CATALOG_EMAILS.map(normalizeEmail).includes(normalized);
+  const hasArcherAccess = INITIAL_ARCHER_EXTRA_SHARED_WITH.map(normalizeEmail).includes(normalized);
+  for (const key of INITIAL_SHARED_CATALOG_KEYS) {
+    if (!hasInitialAccess && !(key === "archer" && hasArcherAccess)) continue;
+    keys.add(key);
+    const tree = catalogTreeByKey(key);
+    if (tree) keys.add(tree.uuid);
+  }
+  return keys;
 }
 
 export async function canAccessCatalogTree(env: Env, user: UserContext, tree: CatalogTree): Promise<boolean> {

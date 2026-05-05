@@ -1089,7 +1089,7 @@ async function autoLoadVipCatalogTrees() {
   if (_kfVipCatalogAutoLoadUserKey === userKey) return;
   _kfVipCatalogAutoLoadUserKey = userKey;
   try {
-    const trees = (_kfCatalogTrees.length ? _kfCatalogTrees : await fetchCatalogTrees())
+    const trees = (await fetchCatalogTrees())
       .filter(t => t && t.available !== false && t.key !== "demo");
     const pending = trees.filter(t => {
       return !_kfIsTreeLoadedLike(t);
