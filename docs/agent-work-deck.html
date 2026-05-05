@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kindred Flow - Agent Work Deck</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #09111f;
+  color: #e7edf6;
+  height: 100vh;
+  overflow: hidden;
+}
+.deck { width: 100%; height: 100vh; position: relative; }
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  padding: 38px 54px 68px;
+  gap: 18px;
+}
+.slide.active { display: flex; }
+.slide.title { justify-content: center; align-items: center; text-align: center; }
+.kicker {
+  color: #7e90ad;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+h1 { font-size: 32px; line-height: 1.1; color: #f5f8fc; }
+.title h1 { font-size: 46px; }
+.sub { color: #9bacc6; font-size: 15px; line-height: 1.45; max-width: 760px; }
+.slide-header { display: grid; gap: 6px; flex: 0 0 auto; }
+.body { flex: 1; min-height: 0; display: grid; gap: 16px; }
+.cols-2 { grid-template-columns: 1fr 1fr; }
+.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.rows { display: grid; gap: 12px; align-content: start; }
+.card {
+  background: #111d31;
+  border: 1px solid #22334f;
+  border-radius: 9px;
+  padding: 15px 16px;
+  min-height: 0;
+}
+.card h2 {
+  color: #f5f8fc;
+  font-size: 17px;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+.card h3 {
+  color: #8ea7d4;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+p, li, td {
+  color: #a8b6cd;
+  font-size: 13px;
+  line-height: 1.5;
+}
+ul { padding-left: 18px; }
+li { margin: 3px 0; }
+code {
+  color: #d9e7ff;
+  background: #0b1526;
+  border: 1px solid #1d2a43;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.green { background: #153626; color: #67d193; }
+.blue { background: #162c4d; color: #77aaff; }
+.amber { background: #372912; color: #e4b956; }
+.red { background: #3a1b22; color: #f08494; }
+.purple { background: #2b1f45; color: #b998ff; }
+.metric-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.metric { background: #0d1829; border: 1px solid #1d2d49; border-radius: 8px; padding: 12px; }
+.metric strong { display: block; color: #f5f8fc; font-size: 24px; line-height: 1; margin-bottom: 4px; }
+.metric span { color: #8999b1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+.flow { display: grid; gap: 9px; }
+.step {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #1b3357;
+  color: #9dc0ff;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+.step p { padding-top: 3px; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  color: #7e90ad;
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #253754;
+  padding: 8px 10px;
+}
+td {
+  border-bottom: 1px solid #18263d;
+  padding: 8px 10px;
+  vertical-align: top;
+}
+td:first-child { color: #eef4ff; font-weight: 700; }
+tr:last-child td { border-bottom: 0; }
+.quote {
+  border-left: 3px solid #5b8cff;
+  padding: 10px 13px;
+  background: #0d1829;
+  color: #c9d6ea;
+  border-radius: 0 7px 7px 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.mono-list { display: grid; gap: 6px; }
+.mono-list code { display: block; width: 100%; }
+nav {
+  position: fixed;
+  right: 28px;
+  bottom: 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+nav button {
+  background: #1a2a44;
+  border: 1px solid #2c4367;
+  color: #c9d6ea;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+nav button:hover { background: #243b60; color: #f5f8fc; }
+nav button:disabled { opacity: 0.35; cursor: default; }
+#counter { color: #7888a3; min-width: 48px; text-align: center; font-size: 12px; }
+@media (max-width: 760px) {
+  .slide { padding: 28px 20px 66px; }
+  .cols-2, .cols-3 { grid-template-columns: 1fr; overflow-y: auto; }
+  .metric-row { grid-template-columns: 1fr 1fr; }
+  .title h1 { font-size: 34px; }
+  h1 { font-size: 25px; }
+}
+</style>
+</head>
+<body>
+<div class="deck">
+
+<section class="slide title active">
+  <div class="kicker">Agent Work Deck</div>
+  <h1>Kindred Flow UI QA and Stabilization</h1>
+  <p class="sub">A handoff deck for the recent agent workstream: what changed, what was tested, what broke, what was fixed, and where the next agent should continue.</p>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 2</div>
+    <h1>Workstream Snapshot</h1>
+    <p class="sub">The recent work was focused on making the refactored app usable, testable, and resilient in the browser.</p>
+  </div>
+  <div class="body cols-2">
+    <div class="card">
+      <h2>Primary Goal</h2>
+      <p>Continue the UI refactor and verify the new interaction surface against real local demo data, including desktop and mobile layouts.</p>
+      <div class="quote" style="margin-top:12px">Do not stop at static checks. Exercise the actual app in Chrome, find bugs, fix them, and push the result.</div>
+    </div>
+    <div class="card">
+      <h2>Completed Scope</h2>
+      <ul>
+        <li>Componentized side-panel controls for People, Cluster, and Trees.</li>
+        <li>Made local demo R2 seeding deterministic for Wrangler dev.</li>
+        <li>Added a local demo smoke test for <code>/api/demo</code>.</li>
+        <li>Ran deeper browser QA on the refactored UI.</li>
+        <li>Fixed the selected-person panel regression found during QA.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 3</div>
+    <h1>Commit Trail</h1>
+    <p class="sub">Current relevant commits on <code>main</code>.</p>
+  </div>
+  <div class="body">
+    <div class="card">
+      <table>
+        <tr><th>Commit</th><th>Purpose</th><th>Why It Matters</th></tr>
+        <tr>
+          <td><code>e7e4756</code></td>
+          <td>Componentized side panel controls.</td>
+          <td>Moved the new UX into focused Preact panels instead of more ad hoc DOM assembly.</td>
+        </tr>
+        <tr>
+          <td><code>013bf3c</code></td>
+          <td>Seed local demo R2 data.</td>
+          <td>Made local Wrangler testing reproduce production demo behavior instead of returning local 503s.</td>
+        </tr>
+        <tr>
+          <td><code>8667e86</code></td>
+          <td>Restore the People panel collapse hook.</td>
+          <td>Fixed a runtime regression where selecting a person reported <code>_kfSetPeopleControlsCollapsed is not defined</code>.</td>
+        </tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Reference</h3>
+      <p>Commit history link in the app now points to <code>https://github.com/derrickburns/genealogy-flow/commits/main</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 4</div>
+    <h1>Defect Found During QA</h1>
+    <p class="sub">The browser run exposed a real integration bug that static tests did not catch.</p>
+  </div>
+  <div class="body cols-2">
+    <div class="card">
+      <h2>Symptom</h2>
+      <ul>
+        <li>Local demo tree loaded, but the app status reported a failure.</li>
+        <li>The message was <code>demo load failed: _kfSetPeopleControlsCollapsed is not defined</code>.</li>
+        <li>The failure was triggered by selected-person card code calling a stale helper after the refactor.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Fix</h2>
+      <ul>
+        <li>Restored <code>_kfSetPeopleControlsCollapsed(collapsed)</code> in <code>src/app/49-ux-people-panel.js</code>.</li>
+        <li>The helper updates shared UX state and rerenders the People controls.</li>
+        <li>Added <code>test/ui-refactor-contract.test.mjs</code> so this specific contract fails in CI if removed again.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 5</div>
+    <h1>Verification Matrix</h1>
+    <p class="sub">Checks run after the fix.</p>
+  </div>
+  <div class="body">
+    <div class="metric-row">
+      <div class="metric"><strong>11/11</strong><span>UX tests</span></div>
+      <div class="metric"><strong>6073</strong><span>demo people</span></div>
+      <div class="metric"><strong>1692</strong><span>demo families</span></div>
+      <div class="metric"><strong>0</strong><span>app runtime errors</span></div>
+    </div>
+    <div class="card">
+      <table>
+        <tr><th>Layer</th><th>Command or Method</th><th>Result</th></tr>
+        <tr><td>Unit and contract</td><td><code>pnpm run test:ux</code></td><td><span class="badge green">pass</span> 11 tests</td></tr>
+        <tr><td>Types</td><td><code>pnpm run typecheck</code></td><td><span class="badge green">pass</span></td></tr>
+        <tr><td>Functions types</td><td><code>pnpm run typecheck:functions</code></td><td><span class="badge green">pass</span></td></tr>
+        <tr><td>Build</td><td><code>pnpm run build</code></td><td><span class="badge green">pass</span></td></tr>
+        <tr><td>Generated browser app</td><td><code>pnpm run predeploy</code> and <code>node --check</code></td><td><span class="badge green">pass</span></td></tr>
+        <tr><td>Local demo API</td><td><code>pnpm run smoke:demo:local -- http://127.0.0.1:8791/api/demo</code></td><td><span class="badge green">pass</span></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 6</div>
+    <h1>Browser QA Coverage</h1>
+    <p class="sub">The meaningful check was the live Chrome/CDP run against a local Wrangler app.</p>
+  </div>
+  <div class="body cols-2">
+    <div class="card">
+      <h2>Desktop Flow</h2>
+      <ul>
+        <li>Opened local app on <code>127.0.0.1:8791</code>.</li>
+        <li>Waited for demo data to settle: <code>1 tree | 6,073 people</code>.</li>
+        <li>Changed People filters: ancestors, women, surname Casey, 5 kin lines.</li>
+        <li>Changed Cluster mode to Places and radius to 54.</li>
+        <li>Opened Trees tab and verified selected loaded row.</li>
+        <li>Selected a Casey person and verified card collapse/dismiss behavior.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Mobile Flow</h2>
+      <ul>
+        <li>Opened a mobile-sized Chrome window.</li>
+        <li>Verified the app was not a blank blue screen.</li>
+        <li>Verified map and bottom sheet dimensions were nonzero.</li>
+        <li>Switched between Map and Trees tabs.</li>
+        <li>Verified tree inventory and current data summary were visible.</li>
+        <li>Confirmed no visible <code>failed</code>, <code>not defined</code>, or error screen text.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 7</div>
+    <h1>Operational Notes For Next Agent</h1>
+    <p class="sub">Use this to avoid repeating known setup mistakes.</p>
+  </div>
+  <div class="body cols-2">
+    <div class="card">
+      <h2>Local Demo Setup</h2>
+      <div class="mono-list">
+        <code>pnpm run seed-demo:local -- "Golden - Rosenberg.normalized.ged" gazetteer.json golden-rosenberg</code>
+        <code>pnpm run dev</code>
+        <code>pnpm run smoke:demo:local -- http://127.0.0.1:8791/api/demo</code>
+      </div>
+      <p style="margin-top:12px">Do not add <code>--r2 STORAGE</code> to local Pages dev. That creates an isolated binding-named local bucket instead of the configured <code>genealogy-flow</code> bucket.</p>
+    </div>
+    <div class="card">
+      <h2>Port Notes</h2>
+      <ul>
+        <li>Port <code>8788</code> was occupied by an unrelated local service during QA.</li>
+        <li>The verified app was run on <code>8791</code>.</li>
+        <li>The local server was stopped after testing.</li>
+        <li>Untracked GEDCOM/data files are private artifacts and should not be deleted or committed.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 8</div>
+    <h1>Next Testing Lanes</h1>
+    <p class="sub">The app is healthier, but these remain the highest-value follow-up checks.</p>
+  </div>
+  <div class="body cols-3">
+    <div class="card">
+      <h2>Authenticated Mobile</h2>
+      <p>Re-test Gina and Fred login paths on real production auth sessions, especially shared-tree inventory and first-screen behavior.</p>
+      <p style="margin-top:10px"><span class="badge amber">risk</span> This depends on real Clerk account state and server-side sharing data.</p>
+    </div>
+    <div class="card">
+      <h2>AI Query Trust</h2>
+      <p>Exercise the Golden/Rosenberg Irish ancestry question end to end on mobile and force retry paths to verify no fabricated answer is shown after tool failure.</p>
+      <p style="margin-top:10px"><span class="badge amber">risk</span> Needs authenticated AI capability or a controlled proxy/key setup.</p>
+    </div>
+    <div class="card">
+      <h2>Map Marker Stability</h2>
+      <p>Continue regression tests for persistent jitter, water avoidance, and zoom-level differences in approximate-location marker placement.</p>
+      <p style="margin-top:10px"><span class="badge blue">focus</span> This should get deterministic pixel or coordinate checks, not only visual inspection.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="slide-header">
+    <div class="kicker">Slide 9</div>
+    <h1>Agent Handoff Checklist</h1>
+    <p class="sub">Minimal steps before the next push touching the UI.</p>
+  </div>
+  <div class="body cols-2">
+    <div class="card">
+      <h2>Before Editing</h2>
+      <ul>
+        <li>Run <code>git status --short</code> and preserve untracked private data files.</li>
+        <li>Read the relevant <code>src/app/NN-*.js</code> fragment, not only generated <code>public/app.js</code>.</li>
+        <li>Regenerate public assets with <code>pnpm run predeploy</code> before browser testing.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Before Closing</h2>
+      <ul>
+        <li>Run <code>pnpm run test:ux</code>, typechecks, and build.</li>
+        <li>Smoke local demo API against the same port the app uses.</li>
+        <li>Use browser/CDP for at least one desktop and one mobile interaction path.</li>
+        <li>Commit only source/docs/tests, not local GEDCOM artifacts.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<nav>
+  <button id="prev" disabled>Prev</button>
+  <span id="counter">1 / 9</span>
+  <button id="next">Next</button>
+</nav>
+
+<script>
+const slides = Array.from(document.querySelectorAll(".slide"));
+let current = 0;
+
+function show(index) {
+  slides[current].classList.remove("active");
+  current = index;
+  slides[current].classList.add("active");
+  document.getElementById("prev").disabled = current === 0;
+  document.getElementById("next").disabled = current === slides.length - 1;
+  document.getElementById("counter").textContent = `${current + 1} / ${slides.length}`;
+}
+
+document.getElementById("prev").addEventListener("click", () => {
+  if (current > 0) show(current - 1);
+});
+
+document.getElementById("next").addEventListener("click", () => {
+  if (current < slides.length - 1) show(current + 1);
+});
+
+document.addEventListener("keydown", event => {
+  if ((event.key === "ArrowRight" || event.key === "ArrowDown") && current < slides.length - 1) show(current + 1);
+  if ((event.key === "ArrowLeft" || event.key === "ArrowUp") && current > 0) show(current - 1);
+});
+</script>
+</body>
+</html>
