@@ -10,12 +10,15 @@
  *   - A GEDCOM file in the project root (or pass path as first arg)
  *   - gazetteer.json in the project root (or skip geocoding if absent)
  *
- * Usage:
- *   node scripts/seed-demo.mjs [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug]
- *   CLOUDFLARE_API_TOKEN=... node scripts/seed-demo.mjs
+ * Production usage:
+ *   CLOUDFLARE_API_TOKEN=... node scripts/seed-demo.mjs [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug]
+ *
+ * Local Pages-dev usage:
+ *   node scripts/seed-demo.mjs --local [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug]
+ *   pnpm run dev
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,9 +30,52 @@ function extractYear(dateStr) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-const gedPath = process.argv[2] ?? "Golden-Rosenberg.ged";
-const gazPath = process.argv[3] ?? "gazetteer.json";
-const catalogSlug = (process.argv[4] ?? "golden-rosenberg").toLowerCase();
+function parseArgs(argv) {
+  const opts = {
+    local: false,
+    persistTo: ".wrangler/state",
+    localBucket: "genealogy-flow",
+    positional: [],
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--") {
+      continue;
+    } else if (arg === "--local") {
+      opts.local = true;
+    } else if (arg === "--persist-to") {
+      opts.persistTo = argv[++i] || opts.persistTo;
+    } else if (arg.startsWith("--persist-to=")) {
+      opts.persistTo = arg.slice("--persist-to=".length) || opts.persistTo;
+    } else if (arg === "--local-bucket") {
+      opts.localBucket = argv[++i] || opts.localBucket;
+    } else if (arg.startsWith("--local-bucket=")) {
+      opts.localBucket = arg.slice("--local-bucket=".length) || opts.localBucket;
+    } else if (arg === "--help" || arg === "-h") {
+      printUsage();
+      process.exit(0);
+    } else {
+      opts.positional.push(arg);
+    }
+  }
+  return opts;
+}
+
+function printUsage() {
+  console.log(`Usage:
+  node scripts/seed-demo.mjs [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug]
+  CLOUDFLARE_API_TOKEN=... node scripts/seed-demo.mjs
+
+Local Pages-dev R2:
+  node scripts/seed-demo.mjs --local [path/to/file.ged] [path/to/gazetteer.json] [catalog-slug]
+  node scripts/seed-demo.mjs --local --persist-to .wrangler/state --local-bucket genealogy-flow "Golden - Rosenberg.normalized.ged" gazetteer.json golden-rosenberg
+`);
+}
+
+const args = parseArgs(process.argv.slice(2));
+const gedPath = args.positional[0] ?? "Golden-Rosenberg.ged";
+const gazPath = args.positional[1] ?? "gazetteer.json";
+const catalogSlug = (args.positional[2] ?? "golden-rosenberg").toLowerCase();
 if (catalogSlug === "demo") {
   console.error("Catalog slug 'demo' is reserved for the sanitized public DEMO dataset.");
   process.exit(1);
@@ -37,7 +83,7 @@ if (catalogSlug === "demo") {
 
 if (!existsSync(gedPath)) {
   console.error(`GEDCOM file not found: ${gedPath}`);
-  console.error("Usage: node scripts/seed-demo.mjs [path/to/Golden-Rosenberg.ged] [path/to/gazetteer.json]");
+  printUsage();
   process.exit(1);
 }
 
@@ -215,6 +261,48 @@ function sqlNum(v) { return v != null ? v : "NULL"; }
 const CF_ACCOUNT = "210e31e10a253d4117ed00eac6fa2ff8";
 const D1_DB_ID  = "8c0eda38-4eb8-4c2f-b6c2-dafc96c2c059";
 const CF_TOKEN  = process.env.CLOUDFLARE_API_TOKEN;
+
+function runFile(cmd, cmdArgs) {
+  try {
+    execFileSync(cmd, cmdArgs, { stdio: "inherit" });
+  } catch {
+    console.error(`Command failed: ${cmd} ${cmdArgs.join(" ")}`);
+    process.exit(1);
+  }
+}
+
+function localR2Put(key, filePath, contentType) {
+  runFile("pnpm", [
+    "exec",
+    "wrangler",
+    "r2",
+    "object",
+    "put",
+    `${args.localBucket}/${key}`,
+    "--local",
+    "--persist-to",
+    args.persistTo,
+    "--file",
+    filePath,
+    "--content-type",
+    contentType,
+    "--force",
+  ]);
+}
+
+if (args.local) {
+  console.log(`\nSeeding local R2 bucket ${args.localBucket} with persistence at ${args.persistTo}...`);
+  localR2Put(`demo/${catalogSlug}.json`, jsonPath, "application/json");
+  if (catalogSlug === "golden-rosenberg") {
+    localR2Put("demo/demo.json", publicJsonPath, "application/json");
+  }
+  if (existsSync(gazPath)) {
+    localR2Put("geocodes/gazetteer.json", gazPath, "application/json");
+  }
+  console.log("\nLocal demo seed complete. Start dev with `pnpm run dev` and verify with `pnpm run smoke:demo:local`.");
+  process.exit(0);
+}
+
 if (!CF_TOKEN) { console.error("CLOUDFLARE_API_TOKEN not set"); process.exit(1); }
 
 async function r2Put(key, filePath, contentType) {

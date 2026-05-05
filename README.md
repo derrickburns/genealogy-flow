@@ -16,6 +16,20 @@ pnpm install
 pnpm run dev
 ```
 
+Local DEMO data is stored in Wrangler's local R2 state. If `/api/demo`
+returns `503 Demo data not seeded yet`, seed the local bucket from a private
+GEDCOM first:
+
+```sh
+pnpm run seed-demo:local -- "Golden - Rosenberg.normalized.ged" gazetteer.json golden-rosenberg
+pnpm run dev
+pnpm run smoke:demo:local
+```
+
+`pnpm run dev` uses the D1 and R2 bindings from `wrangler.toml`; do not pass
+`--r2 STORAGE` for local DEMO testing, because that creates a separate
+binding-named local bucket instead of the configured `genealogy-flow` bucket.
+
 Static build:
 
 ```sh

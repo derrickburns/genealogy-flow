@@ -45,9 +45,11 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/finalize-bins.mjs",
     "prepublishOnly": "pnpm run build",
     "seed-demo": "node scripts/seed-demo.mjs",
+    "seed-demo:local": "node scripts/seed-demo.mjs --local",
+    "smoke:demo:local": "node scripts/smoke-local-demo.mjs",
     "predeploy": "node scripts/prepare-public.mjs",
     "deploy": "pnpm run predeploy && pnpm exec wrangler pages deploy public",
-    "dev": "pnpm run predeploy && pnpm exec wrangler pages dev public --d1 DB --r2 STORAGE"
+    "dev": "pnpm run predeploy && pnpm exec wrangler pages dev public --persist-to .wrangler/state"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
