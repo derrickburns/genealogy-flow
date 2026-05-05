@@ -20,7 +20,7 @@
     <h1 id="splashTitle">Kindred Flow maps family history through time.</h1>
     <p>Kindred Flow is a genealogy viewer produced by Parthenian, LLC as part of the Kindred series of products. It turns family-tree data into an interactive map and timeline so you can see where people lived, how families moved, and how branches relate across places and generations.</p>
     <p>You can load GEDCOM family-tree files, select one or more trees, animate migration over time, inspect people and clusters, ask the Kindred AI genealogist questions, and share trees with other signed-in users.</p>
-    <p class="splashMobileNote">Sign in on any device to see the trees you own and the trees shared with you. You can load GEDCOM family-tree files, save loaded tree data on Kindred servers for 7 days free of charge, and share tree data with other signed-in users. Shared tree data is stored on Kindred servers, and you may delete or update it at any time.</p>
+    <p class="splashDeviceNote">Sign in on any device to see the trees you own and the trees shared with you. You can load GEDCOM family-tree files, save loaded tree data on Kindred servers for 7 days free of charge, and share tree data with other signed-in users. Shared tree data is stored on Kindred servers, and you may delete or update it at any time.</p>
     <button type="button" id="splashDismiss">Enter Kindred Flow</button>
   </div>
 </div>
@@ -109,7 +109,7 @@
 <div id="middle">
 <div id="vizArea">
 <div id="vizTabBar" hidden></div>
-<div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div><div id="mobileContextStrip" class="mobileContextStrip" hidden></div>
+<div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div><div id="compactContextStrip" class="compactContextStrip" hidden></div>
 <div id="mapLegend" class="hidden" style="position:absolute;bottom:28px;left:10px;z-index:10;background:rgba(255,255,255,0.88);border:1px solid #c0ccd8;border-radius:7px;padding:7px 10px;font-size:11px;color:#566480;line-height:1.7;pointer-events:none;min-width:150px;"></div>
 <div id="vizPane">
   <div id="vizPaneHeader">
@@ -138,13 +138,13 @@
   </div>
 </div>
 <aside id="panel">
-  <button id="mobileSheetHandle" type="button" aria-expanded="false" aria-label="Open details panel">
+  <button id="compactSheetHandle" type="button" aria-expanded="false" aria-label="Open details panel">
     <span class="grabber" aria-hidden="true"></span>
-    <span id="mobileSheetTitle">Details</span>
+    <span id="compactSheetTitle">Details</span>
   </button>
   <div id="chatPanel">
     <div id="sideTabs">
-      <button type="button" class="mobileMapTab" data-side-tab="map">Map</button>
+      <button type="button" class="compactMapTab" data-side-tab="map">Map</button>
       <button type="button" data-side-tab="person">People</button>
       <button type="button" data-side-tab="cluster">Cluster</button>
       <button type="button" data-side-tab="trees">Trees</button>

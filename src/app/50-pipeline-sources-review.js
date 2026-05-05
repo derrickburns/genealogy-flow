@@ -1478,13 +1478,11 @@ async function processFile(file) {
   eventCities = tl.eventCities || [];
   const sourceNameBase = sourceMeta.common_name || file.name.replace(/\.(ged|gedcom|json)$/i, "") || "genealogy";
   lastFileName = _kfUniqueSourceName(sourceNameBase, sourceMeta);
-  // Desktop can retain raw text for reprocessing. Mobile keeps only the
-  // parsed source snapshot to avoid doubling memory for large trees.
   _kfActiveTreeName = lastFileName;
-  if (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) {
-    _kfTreeCache.delete(lastFileName);
-  } else {
+  if (typeof _kfShouldCacheRawTreeText !== "function" || _kfShouldCacheRawTreeText(text)) {
     _kfTreeCache.set(lastFileName, text);
+  } else {
+    _kfTreeCache.delete(lastFileName);
   }
   let browserSourceId = _kfSourceIdByName.get(lastFileName);
   if (!browserSourceId) {

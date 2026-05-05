@@ -1576,7 +1576,7 @@ function makeFlowLayer() {
   // imply the person was physically traveling for the entire undocumented gap.
   const F = flowFromLat.length;
   const y = curYear;
-  const TRAIL_N = (typeof _kfIsMobileLayout === "function" && _kfIsMobileLayout()) ? 3 : 6;
+  const TRAIL_N = (typeof _kfIsCompactLayout === "function" && _kfIsCompactLayout()) ? 3 : 6;
   const TRAIL_STEP = 0.07; // t-spacing between successive trail particles
   _kfEnsureFlowParticleCapacity(F * TRAIL_N);
   let count = 0;

@@ -235,6 +235,8 @@ let _kfOverlayPaths = [];    // {points: [{lat,lon,label?}], color, label}
 let _kfSubtreeFilter = null; // Set<string> of indi ids; if non-null, render restricts to these
 let _kfActiveTreeName = null;
 const _kfTreeCache = new Map(); // sourceName -> raw GEDCOM/JSON text
+const KF_RAW_TREE_CACHE_MAX_CHARS = 2_500_000;
+const KF_RAW_TREE_CACHE_LOW_MEMORY_MAX_CHARS = 800_000;
 const _kfLoadedSources = new Map(); // sourceName -> parsed source snapshot for browser SQL
 const _kfSourceIdByName = new Map(); // sourceName -> stable browser source_id
 const _kfPreferredRootBySourceName = new Map(); // sourceName -> raw source individual id
@@ -264,9 +266,17 @@ function _kfHaversineMiles(la1, lo1, la2, lo2) {
 }
 let minYear = 1700, maxYear = 2026, curYear = 1700, playing = false;
 let isDraggingSlider = false;
-function _kfIsMobileLayout() {
+function _kfIsCompactLayout() {
   return typeof window !== "undefined" &&
     window.matchMedia("(max-width: 900px), (pointer: coarse) and (max-width: 980px)").matches;
+}
+
+function _kfShouldCacheRawTreeText(text) {
+  if (typeof text !== "string" || text.length === 0) return false;
+  const deviceMemory = Number(globalThis.navigator?.deviceMemory);
+  const lowMemoryDevice = Number.isFinite(deviceMemory) && deviceMemory > 0 && deviceMemory <= 4;
+  const limit = lowMemoryDevice ? KF_RAW_TREE_CACHE_LOW_MEMORY_MAX_CHARS : KF_RAW_TREE_CACHE_MAX_CHARS;
+  return text.length <= limit;
 }
 
 let lastIndividuals = null, lastParentsOf = null, lastIsParent = null, lastChildrenOf = null, lastIndiById = null, lastIndiIdxById = null, lastFamilies = null;

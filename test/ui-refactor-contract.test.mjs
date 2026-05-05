@@ -50,11 +50,26 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
 
   assert.match(controls, /function\s+_kfOpenTreesPanelAfterSplashIfNeeded\s*\(/);
-  assert.doesNotMatch(controls, /_kfOpenTreesPanelAfterSplashIfMobile/);
   assert.match(controls, /_kfMaybeOpenTreesPanelForEmptySelection\(\)/);
-  assert.doesNotMatch(sources, /wrap\.classList\.toggle\("hidden",\s*!_kfIsMobileLayout\(\)\)/);
+  const splashOpener = controls.match(/function _kfOpenTreesPanelAfterSplashIfNeeded[\s\S]*?\n}/)?.[0] || "";
+  assert.ok(splashOpener, "_kfOpenTreesPanelAfterSplashIfNeeded should exist");
+  assert.doesNotMatch(splashOpener, /_kfIsCompactLayout/);
+  assert.doesNotMatch(sources, /wrap\.classList\.toggle\("hidden",\s*!_kfIsCompactLayout\(\)\)/);
 
   const persistFn = services.match(/async function _kfMaybePersistLoadedTreeByHash[\s\S]*?\n}/)?.[0] || "";
   assert.ok(persistFn, "_kfMaybePersistLoadedTreeByHash should exist");
-  assert.doesNotMatch(persistFn, /_kfIsMobileLayout/);
+  assert.doesNotMatch(persistFn, /_kfIsCompactLayout/);
+});
+
+test("raw tree text caching is based on memory budget, not viewport", () => {
+  const state = readFileSync("src/app/00-state.js", "utf8");
+  const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
+
+  assert.match(state, /function\s+_kfShouldCacheRawTreeText\s*\(/);
+  assert.match(state, /KF_RAW_TREE_CACHE_MAX_CHARS/);
+  assert.match(sources, /_kfShouldCacheRawTreeText\(text\)/);
+
+  const processCacheBlock = sources.match(/_kfActiveTreeName = lastFileName;[\s\S]*?let browserSourceId/)?.[0] || "";
+  assert.ok(processCacheBlock, "processFile should contain the raw tree cache decision");
+  assert.doesNotMatch(processCacheBlock, /_kfIsCompactLayout/);
 });

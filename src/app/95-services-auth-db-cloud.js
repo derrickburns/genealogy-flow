@@ -203,7 +203,7 @@ function _kfHasAvailableNonDemoRemoteTree() {
 
 function _kfOpenTreesPanel() {
   if (typeof _kfSetSideTab === "function") _kfSetSideTab("trees");
-  if (_kfIsMobileLayout() && typeof _kfSetMobileSheetState === "function") _kfSetMobileSheetState("open");
+  if (_kfIsCompactLayout() && typeof _kfSetCompactSheetState === "function") _kfSetCompactSheetState("open");
 }
 
 function _kfMaybeOpenTreesPanelForEmptySelection(opts = {}) {

@@ -62,7 +62,7 @@ function _kfPickClusterAt(x, y) {
     return;
   }
 
-  const HIT_RADIUS = _kfIsMobileLayout() ? 24 : 14;
+  const HIT_RADIUS = _kfIsCompactLayout() ? 24 : 14;
   const HIT_R2 = HIT_RADIUS * HIT_RADIUS;
   rebuildPersonMarkers();
   let bestI = -1, bestDist = Infinity;
@@ -1359,30 +1359,30 @@ function pruneInvalidHighlightSelection() {
   }
 }
 
-// Mobile Safari is memory-sensitive during long animations. Cap refresh work at
-// 30fps while preserving playback speed by accumulating elapsed time between
-// rendered ticks instead of slowing the timeline.
-const MOBILE_REFRESH_FPS = 30;
-const MOBILE_REFRESH_INTERVAL_MS = 1000 / MOBILE_REFRESH_FPS;
+// Compact/touch layouts are memory-sensitive during long animations. Cap
+// refresh work at 30fps while preserving playback speed by accumulating elapsed
+// time between rendered ticks instead of slowing the timeline.
+const COMPACT_REFRESH_FPS = 30;
+const COMPACT_REFRESH_INTERVAL_MS = 1000 / COMPACT_REFRESH_FPS;
 let last = 0;
-let _kfLastMobileAnimationFrameAt = 0;
-let _kfLastMobileDeckUpdateAt = 0;
+let _kfLastCompactAnimationFrameAt = 0;
+let _kfLastCompactDeckUpdateAt = 0;
 
 function _kfShouldRunAnimationTick(now) {
-  if (!_kfIsMobileLayout()) return true;
-  if (!_kfLastMobileAnimationFrameAt) {
-    _kfLastMobileAnimationFrameAt = now;
+  if (!_kfIsCompactLayout()) return true;
+  if (!_kfLastCompactAnimationFrameAt) {
+    _kfLastCompactAnimationFrameAt = now;
     return true;
   }
-  if (now - _kfLastMobileAnimationFrameAt < MOBILE_REFRESH_INTERVAL_MS) return false;
-  _kfLastMobileAnimationFrameAt = now;
+  if (now - _kfLastCompactAnimationFrameAt < COMPACT_REFRESH_INTERVAL_MS) return false;
+  _kfLastCompactAnimationFrameAt = now;
   return true;
 }
 
 function _kfShouldUpdateDeckLayers(now) {
-  if (!_kfIsMobileLayout()) return true;
-  if (now - _kfLastMobileDeckUpdateAt < MOBILE_REFRESH_INTERVAL_MS) return false;
-  _kfLastMobileDeckUpdateAt = now;
+  if (!_kfIsCompactLayout()) return true;
+  if (now - _kfLastCompactDeckUpdateAt < COMPACT_REFRESH_INTERVAL_MS) return false;
+  _kfLastCompactDeckUpdateAt = now;
   return true;
 }
 
@@ -1428,7 +1428,7 @@ function tick(now) {
     }
     updateMapLegend();
     _kfRefreshLoopControls();
-    if (_kfIsMobileLayout() && typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome();
+    if (_kfIsCompactLayout() && typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome();
   }
   // MapLibre owns the basemap and projection state — no more lerp/transform
   // dance. We just re-project dwells whenever the map moves (_baseDirty is
@@ -1455,7 +1455,7 @@ function tick(now) {
 function _kfSetPlayback(next, opts = {}) {
   const wantPlaying = !!next && timelineLoaded && !playBtn.disabled;
   if (wantPlaying) {
-    // Mobile range inputs do not reliably deliver pointerup/pointercancel after
+    // Touch range inputs do not reliably deliver pointerup/pointercancel after
     // native slider interaction. If this flag stays true, tick() keeps pinning
     // curYear to range.value and playback appears broken.
     isDraggingSlider = false;
@@ -1482,12 +1482,12 @@ function _kfTogglePlaybackFromUser(e) {
 }
 
 playBtn.addEventListener("pointerdown", e => {
-  if (_kfIsMobileLayout() || e.pointerType === "touch") {
+  if (_kfIsCompactLayout() || e.pointerType === "touch") {
     e.preventDefault();
   }
 });
 playBtn.addEventListener("pointerup", e => {
-  if (_kfIsMobileLayout() || e.pointerType === "touch") {
+  if (_kfIsCompactLayout() || e.pointerType === "touch") {
     _kfPlayPointerHandledAt = Date.now();
     _kfTogglePlaybackFromUser(e);
   }

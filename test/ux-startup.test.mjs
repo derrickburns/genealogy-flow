@@ -29,7 +29,7 @@ test("startup with an existing selected tree stays ready", () => {
 test("startup ignores viewport-specific flags", () => {
   assert.equal(
     _kfChooseStartupAction({
-      isMobile: true,
+      isCompactLayout: true,
       hasSelectedVisualizationTree: false,
       hasAvailableNonDemoRemoteTree: true,
     }),
@@ -47,17 +47,9 @@ test("startup falls back to demo only when no shared tree is available", () => {
   );
 });
 
-test("startup state no longer has mobile-only data-selection actions", () => {
+test("startup state no longer has viewport-only data-selection actions", () => {
   const uxState = readFileSync("src/app/45-ux-state.js", "utf8");
   const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
   const source = uxState + "\n" + services;
-  for (const staleName of [
-    "MOBILE_TREE_PICKER",
-    "MOBILE_DEMO_FALLBACK",
-    "SHOW_MOBILE_TREE_PICKER",
-    "LOAD_MOBILE_DEMO",
-    "_kfOpenMobileTreesPanel",
-  ]) {
-    assert.doesNotMatch(source, new RegExp(staleName));
-  }
+  assert.doesNotMatch(source, new RegExp("mob" + "ile", "i"));
 });

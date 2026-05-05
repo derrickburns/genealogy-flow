@@ -24,9 +24,9 @@ const _spEl = $("selectedPerson");
 const _personEmptyEl = $("personEmpty");
 const _clusterEl = $("selectedCluster");
 const _clusterEmptyEl = $("clusterEmpty");
-const _mobileSheetHandleEl = $("mobileSheetHandle");
-const _mobileSheetTabsEl = $("sideTabs");
-const _mobileSheetTitleEl = $("mobileSheetTitle");
+const _compactSheetHandleEl = $("compactSheetHandle");
+const _compactSheetTabsEl = $("sideTabs");
+const _compactSheetTitleEl = $("compactSheetTitle");
 let _kfSuppressSideTabClickUntil = 0;
 let _kfActiveSideTab = "chat";
 let _kfChatScopePendingTap = null;
@@ -76,9 +76,9 @@ function _kfBindTapOrClick(el, handler) {
   });
 }
 
-function _kfUpdateMobileSheetTitle(tab) {
-  if (!_mobileSheetTitleEl) return;
-  _mobileSheetTitleEl.textContent =
+function _kfUpdateCompactSheetTitle(tab) {
+  if (!_compactSheetTitleEl) return;
+  _compactSheetTitleEl.textContent =
     tab === "map" ? "Map" :
     tab === "person" ? "People" :
     tab === "cluster" ? "Cluster" :
@@ -94,40 +94,40 @@ function _kfSyncSideTabChrome(tab) {
   document.querySelectorAll("#chatPanel .sidePane").forEach(pane => {
     pane.classList.toggle("on", tab !== "map" && pane.id === `${tab}Pane`);
   });
-  _kfUpdateMobileSheetTitle(tab);
+  _kfUpdateCompactSheetTitle(tab);
 }
 
 function _kfMarkMapTabActive() {
-  if (!_kfIsMobileLayout()) return;
+  if (!_kfIsCompactLayout()) return;
   _kfActiveSideTab = "map";
-  if (typeof _kfSetMobileUxState === "function") _kfSetMobileUxState({ tab: "map" });
+  if (typeof _kfSetLayoutUxState === "function") _kfSetLayoutUxState({ tab: "map" });
   _kfSyncSideTabChrome("map");
 }
 
-function _kfSyncMobileControlHeight() {
+function _kfSyncCompactControlHeight() {
   const ui = $("ui");
   if (!ui) return;
   const tabs = $("sideTabs");
-  const handle = $("mobileSheetHandle");
-  const tabsHeight = _kfIsMobileLayout() ? 0 : (tabs?.getBoundingClientRect().height || 0);
+  const handle = $("compactSheetHandle");
+  const tabsHeight = _kfIsCompactLayout() ? 0 : (tabs?.getBoundingClientRect().height || 0);
   const h = Math.ceil(
     ui.getBoundingClientRect().height +
     tabsHeight +
     (handle?.getBoundingClientRect().height || 0),
   ) + 8;
-  document.documentElement.style.setProperty("--kf-mobile-ui-h", `${Math.max(118, h)}px`);
+  document.documentElement.style.setProperty("--kf-compact-ui-h", `${Math.max(118, h)}px`);
 }
 
-function _kfSetMobileSheetState(state) {
+function _kfSetCompactSheetState(state) {
   const panel = $("panel");
   if (!panel) return;
   const next = state === "full" || state === "open" ? state : "peek";
   panel.dataset.sheet = next;
-  if (typeof _kfSetMobileUxState === "function") _kfSetMobileUxState({ sheet: next });
+  if (typeof _kfSetLayoutUxState === "function") _kfSetLayoutUxState({ sheet: next });
   if (next === "peek") _kfMarkMapTabActive();
-  if (_mobileSheetHandleEl) {
-    _mobileSheetHandleEl.setAttribute("aria-expanded", next !== "peek" ? "true" : "false");
-    _mobileSheetHandleEl.setAttribute(
+  if (_compactSheetHandleEl) {
+    _compactSheetHandleEl.setAttribute("aria-expanded", next !== "peek" ? "true" : "false");
+    _compactSheetHandleEl.setAttribute(
       "aria-label",
       next === "peek" ? "Open details panel" : "Adjust details panel",
     );
@@ -135,30 +135,30 @@ function _kfSetMobileSheetState(state) {
   requestAnimationFrame(() => { resize(); renderMigBar(); });
 }
 
-function _kfPromoteMobileSheet() {
+function _kfPromoteCompactSheet() {
   const cur = $("panel")?.dataset.sheet || "peek";
-  _kfSetMobileSheetState(cur === "peek" ? "open" : "full");
+  _kfSetCompactSheetState(cur === "peek" ? "open" : "full");
 }
 
-function _kfDemoteMobileSheet() {
+function _kfDemoteCompactSheet() {
   const cur = $("panel")?.dataset.sheet || "peek";
-  _kfSetMobileSheetState(cur === "full" ? "open" : "peek");
+  _kfSetCompactSheetState(cur === "full" ? "open" : "peek");
 }
 
-function _kfBumpMobileSheetForTab(tab) {
-  if (!_kfIsMobileLayout()) return;
+function _kfBumpCompactSheetForTab(tab) {
+  if (!_kfIsCompactLayout()) return;
   if (tab === "map") {
-    _kfSetMobileSheetState("peek");
+    _kfSetCompactSheetState("peek");
     return;
   }
-  _kfSetMobileSheetState("open");
+  _kfSetCompactSheetState("open");
 }
 
 function _kfSetSideTab(tab) {
   let next = tab === "map" || tab === "person" || tab === "cluster" || tab === "trees" || tab === "tour" ? tab : "chat";
-  if (next === "map" && !_kfIsMobileLayout()) next = "chat";
+  if (next === "map" && !_kfIsCompactLayout()) next = "chat";
   if (next === "tour" && _kfDerivedCacheReady && typeof _kfShowYearTour === "function") _kfShowYearTour(false);
-  if (_kfIsMobileLayout() && next !== "map" && playing) {
+  if (_kfIsCompactLayout() && next !== "map" && playing) {
     if (typeof _kfSetPlayback === "function") _kfSetPlayback(false, { clearStop: true });
     else {
       playing = false;
@@ -166,10 +166,10 @@ function _kfSetSideTab(tab) {
     }
   }
   _kfActiveSideTab = next;
-  if (typeof _kfSetMobileUxState === "function") _kfSetMobileUxState({ tab: next });
+  if (typeof _kfSetLayoutUxState === "function") _kfSetLayoutUxState({ tab: next });
   _kfSyncSideTabChrome(next);
   if (next === "chat" && typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
-  _kfBumpMobileSheetForTab(next);
+  _kfBumpCompactSheetForTab(next);
 }
 document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
   _kfBindTapOrClick(btn, e => {
@@ -181,29 +181,29 @@ document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
     _kfSetSideTab(btn.dataset.sideTab);
   });
 });
-if (_kfIsMobileLayout()) _kfMarkMapTabActive();
-else _kfUpdateMobileSheetTitle("chat");
-_kfSetMobileSheetState("peek");
-_kfSyncMobileControlHeight();
+if (_kfIsCompactLayout()) _kfMarkMapTabActive();
+else _kfUpdateCompactSheetTitle("chat");
+_kfSetCompactSheetState("peek");
+_kfSyncCompactControlHeight();
 window.addEventListener("resize", () => {
-  _kfSyncMobileControlHeight();
-  if (!_kfIsMobileLayout()) {
-    _kfSetMobileSheetState("peek");
+  _kfSyncCompactControlHeight();
+  if (!_kfIsCompactLayout()) {
+    _kfSetCompactSheetState("peek");
     if (_kfActiveSideTab === "map") _kfSetSideTab("chat");
   } else if (($("panel")?.dataset.sheet || "peek") === "peek") {
     _kfMarkMapTabActive();
   }
 });
-const _kfMobileUiResizeObserver = typeof ResizeObserver !== "undefined"
-  ? new ResizeObserver(() => _kfSyncMobileControlHeight())
+const _kfCompactUiResizeObserver = typeof ResizeObserver !== "undefined"
+  ? new ResizeObserver(() => _kfSyncCompactControlHeight())
   : null;
-if (_kfMobileUiResizeObserver && $("ui")) _kfMobileUiResizeObserver.observe($("ui"));
+if (_kfCompactUiResizeObserver && $("ui")) _kfCompactUiResizeObserver.observe($("ui"));
 
-function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
+function _kfInstallCompactSheetHandle(handleEl, opts = {}) {
   if (!handleEl) return;
   let drag = null;
   handleEl.addEventListener("pointerdown", e => {
-    if (!_kfIsMobileLayout()) return;
+    if (!_kfIsCompactLayout()) return;
     if (opts.ignoreDragSelector && e.target.closest(opts.ignoreDragSelector)) return;
     drag = {
       y: e.clientY,
@@ -229,31 +229,31 @@ function _kfInstallMobileSheetHandle(handleEl, opts = {}) {
     if (!moved) {
       if (ignoreTap) return;
       const cur = $("panel")?.dataset.sheet || "peek";
-      if (cur === "peek") _kfSetMobileSheetState("open");
-      else _kfSetMobileSheetState("peek");
+      if (cur === "peek") _kfSetCompactSheetState("open");
+      else _kfSetCompactSheetState("peek");
     } else if (dy < -45) {
-      _kfPromoteMobileSheet();
+      _kfPromoteCompactSheet();
     } else if (dy > 45) {
-      _kfDemoteMobileSheet();
+      _kfDemoteCompactSheet();
     }
   });
   handleEl.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const cur = $("panel")?.dataset.sheet || "peek";
-      _kfSetMobileSheetState(cur === "peek" ? "open" : "peek");
+      _kfSetCompactSheetState(cur === "peek" ? "open" : "peek");
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      _kfPromoteMobileSheet();
+      _kfPromoteCompactSheet();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      _kfDemoteMobileSheet();
+      _kfDemoteCompactSheet();
     }
   });
 }
-_kfInstallMobileSheetHandle(_mobileSheetHandleEl);
-_kfInstallMobileSheetHandle(_mobileSheetTabsEl, { ignoreTapSelector: "[data-side-tab]" });
-_kfInstallMobileSheetHandle($("ui"), { ignoreDragSelector: "button,input,select,textarea,.rangeMark" });
+_kfInstallCompactSheetHandle(_compactSheetHandleEl);
+_kfInstallCompactSheetHandle(_compactSheetTabsEl, { ignoreTapSelector: "[data-side-tab]" });
+_kfInstallCompactSheetHandle($("ui"), { ignoreDragSelector: "button,input,select,textarea,.rangeMark" });
 
 const EVENT_LABEL = {
   BIRT: "Born",
@@ -880,7 +880,7 @@ function _kfShowPersonCard(di) {
   _kfBindQuestionChips(_spEl);
   _spEl.querySelector(".sp-dismiss").addEventListener("click", () => {
     _kfHidePersonCard();
-    if (_kfIsMobileLayout()) _kfSetMobileSheetState("peek");
+    if (_kfIsCompactLayout()) _kfSetCompactSheetState("peek");
     highlightedDwell = -1;
     highlightInferredYear = -1;
     highlightInferredSrcYear = -1;
@@ -1265,7 +1265,7 @@ function _kfArtifactKindLabel(kind) {
 
 function _kfShowMapFromArtifact() {
   if (typeof _kfShowVizPane === "function") _kfShowVizPane(false);
-  if (typeof _kfSetSideTab === "function" && _kfIsMobileLayout()) _kfSetSideTab("map");
+  if (typeof _kfSetSideTab === "function" && _kfIsCompactLayout()) _kfSetSideTab("map");
 }
 
 async function _kfOpenAiArtifact(id) {
@@ -1280,7 +1280,7 @@ async function _kfOpenAiArtifact(id) {
     } else if (result?.error && typeof appendError === "function") {
       appendError(`Could not open artifact: ${result.error}`);
     }
-    if (typeof _kfSetSideTab === "function" && _kfIsMobileLayout()) _kfSetSideTab("map");
+    if (typeof _kfSetSideTab === "function" && _kfIsCompactLayout()) _kfSetSideTab("map");
     return;
   }
   if (artifact.action === "activateGroupSet" && window.kfApi?.activateGroupSet) {
@@ -2000,7 +2000,7 @@ function _kfRefreshChatScope(force = false) {
       : escChat(q.label);
     return `<button type="button" class="${cls}" data-chat-scope-question="${escChat(q.text)}" title="${escChat(q.text)}">${label}</button>`;
   };
-  const primaryCount = _kfIsMobileLayout() ? 3 : 4;
+  const primaryCount = _kfIsCompactLayout() ? 3 : 4;
   const { primary, secondary } = _kfOrderChatScopeQuestions(questions, primaryCount);
   chatScopeEl.innerHTML = questions.length
     ? `<div class="chatScopeHead">Suggested questions</div>` +

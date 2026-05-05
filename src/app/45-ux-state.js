@@ -34,7 +34,7 @@ const _kfUxState = {
     phase: KF_STARTUP_PHASE.BOOTING,
     message: "starting...",
   },
-  mobile: {
+  layout: {
     tab: "map",
     sheet: "peek",
   },
@@ -66,7 +66,7 @@ function _kfPatchUxSection(section, patch) {
 function _kfSetUxState(patch = {}) {
   if (patch.auth) _kfPatchUxSection("auth", patch.auth);
   if (patch.startup) _kfPatchUxSection("startup", patch.startup);
-  if (patch.mobile) _kfPatchUxSection("mobile", patch.mobile);
+  if (patch.layout) _kfPatchUxSection("layout", patch.layout);
   if (patch.people) _kfPatchUxSection("people", patch.people);
   if (patch.trees) _kfPatchUxSection("trees", patch.trees);
   for (const listener of _kfUxListeners) listener(_kfUxState);
@@ -103,8 +103,8 @@ function _kfSetTreeInventoryUxState(patch = {}) {
   _kfSetUxState({ trees: patch });
 }
 
-function _kfSetMobileUxState(patch = {}) {
-  _kfSetUxState({ mobile: patch });
+function _kfSetLayoutUxState(patch = {}) {
+  _kfSetUxState({ layout: patch });
 }
 
 function _kfSetPeopleUxState(patch = {}) {

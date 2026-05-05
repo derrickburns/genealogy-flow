@@ -39,7 +39,7 @@ Only run extra sql() calls if a specific claim still needs support. Do not infer
 VISUALIZATION REQUESTS: When asked for any chart, graph, or visualization, produce it immediately:
 1. Run sql() to get the data
 2. Emit <<KFCALL:showViz(...)>> with all data inlined in the spec
-For multi-page or multi-part visual output, emit one showViz call per page with short distinct titles. The app will create horizontally scrollable tabs for those pages, including on mobile.
+For multi-page or multi-part visual output, emit one showViz call per page with short distinct titles. The app will create horizontally scrollable tabs for those pages, including compact layouts.
 The app also creates visible artifact cards for showViz, routes, pins, lineage paths, AI groups, and reports. Use these actions when the user asks for inspectable output; do not bury visual artifacts only in prose.
 For network/graph visualizations use type "html" — a self-contained HTML page with the visualization library loaded from CDN and ALL data as an inline JavaScript variable (the frame cannot fetch external data). Keep network graphs to ≤200 nodes by focusing on a root person's closest relatives.
 
