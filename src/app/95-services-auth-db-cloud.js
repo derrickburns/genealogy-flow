@@ -343,6 +343,7 @@ async function updateAuthUI(user) {
 async function autoLoadStartupTrees() {
   if (_kfIsMobileLayout()) {
     await refreshSources();
+    await autoLoadVipCatalogTrees();
     if (!_kfHasSelectedVisualizationTree()) await autoLoadPublicDemoTree();
     _kfMaybeOpenTreesPanelForEmptySelection();
     autoIntroOnce();
