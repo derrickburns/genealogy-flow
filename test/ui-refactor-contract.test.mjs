@@ -183,7 +183,9 @@ test("tree inventory loading does not auto-switch from Trees to People", () => {
   const api = readFileSync("src/app/80-kf-api.js", "utf8");
 
   assert.match(panels, /function\s+_kfShowPersonCard\s*\(\s*di,\s*opts\s*=\s*\{\}\s*\)/);
-  assert.match(panels, /opts\.reveal\s*!==\s*false\)\s*_kfSetSideTab\("person"\)/);
+  assert.match(panels, /const shouldReveal = opts\.reveal !== false/);
+  assert.match(panels, /_kfUsesResponsiveShell\(\) && opts\.reveal !== true/);
+  assert.match(panels, /if \(shouldReveal\) _kfSetSideTab\("person"\)/);
   assert.match(trees, /loadCloudTree\(key,\s*\{\s*suppressAutosave:\s*true,\s*revealPersonCard:\s*false\s*\}\)/);
   assert.match(trees, /loadCatalogTree\(key,\s*\{\s*suppressAutosave:\s*true,\s*revealPersonCard:\s*false\s*\}\)/);
   assert.match(sources, /const revealPersonCard = sourceMeta\.revealPersonCard !== false/);
@@ -338,19 +340,22 @@ test("phone panels meet the Pencil readability scale", () => {
 
 test("short phone map-first state gives vertical space back to the map", () => {
   const styles = readFileSync("styles/app.css", "utf8");
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
   const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
 
-  assert.match(styles, /Pencil v6 map-first implementation/);
+  assert.match(styles, /Pencil v5 mobile map-first shell/);
   assert.match(styles, /@media \(max-width: 720px\) and \(max-height: 760px\)/);
-  assert.match(styles, /\.responsiveContextStrip\s*\{[^}]*display:none\s*!important/s);
-  assert.match(styles, /#ui\s*\{[^}]*min-height:86px\s*!important/s);
-  assert.match(styles, /#ui \.timelineOptions\s*\{[^}]*display:none\s*!important/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*min-height:58px/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*bottom:calc\(162px/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:64px/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*max-height:124px/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.responsiveContextStrip\s*\{[^}]*display:none\s*!important/s);
-  assert.match(styles, /#panel\[data-sheet="open"\]\s*\{[^}]*height:min\(62dvh, 520px\)/s);
+  assert.match(styles, /#authBar\s*\{[^}]*position:fixed/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\):not\(\.kf-has-selected-person\) \.mapStoryRibbon\s*\{[^}]*display:none\s*!important/s);
+  assert.match(styles, /body\.kf-has-selected-person:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*bottom:calc\(158px/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:78px/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*height:46px/s);
+  assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\]\s*\{[^}]*height:min\(34dvh, 300px\)/s);
+  assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\] #selectedPerson,[^}]*\{[^}]*display:none\s*!important/s);
+  assert.match(panels, /const shouldReveal = opts\.reveal !== false/);
+  assert.match(panels, /_kfUsesResponsiveShell\(\) && opts\.reveal !== true/);
+  assert.match(chrome, /classList\.toggle\("kf-has-selected-person", !!ind\)/);
   assert.match(smoke, /function\s+assertCompactMapVisible\s*\(/);
   assert.match(smoke, /function\s+assertDetailDrawerLeavesMapContext\s*\(/);
   assert.match(smoke, /\["map", \/Recorded years\|Patterns\|Story\|Tree scope\/i\]/);

@@ -1092,7 +1092,10 @@ function _kfShowPersonCard(di, opts = {}) {
   _spEl.hidden = false;
   if (_personEmptyEl) _personEmptyEl.hidden = true;
   _kfRenderLivingPeopleList(true);
-  if (opts.reveal !== false) _kfSetSideTab("person");
+  const shouldReveal = opts.reveal !== false &&
+    !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell() && opts.reveal !== true);
+  if (shouldReveal) _kfSetSideTab("person");
+  if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
 
   _kfBindPersonDetailControls(_spEl, {
     onDismiss: () => {

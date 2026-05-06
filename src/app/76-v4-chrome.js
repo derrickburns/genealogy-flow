@@ -291,6 +291,7 @@ function _kfRefreshV4Chrome() {
   const relEl = $("mapStoryRelation");
   const routeEl = $("mapStoryRoute");
   const avatarEl = $("mapStoryAvatar");
+  document.body?.classList.toggle("kf-has-selected-person", !!ind);
   if (avatarEl) avatarEl.textContent = _kfV4Initials(ind?.name);
   if (nameEl) {
     const life = _kfV4LifeSpan(ind);

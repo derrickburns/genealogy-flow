@@ -395,12 +395,16 @@ async function auditCompactInteractions(client, name) {
   assert.equal(await client.eval(`document.getElementById("filt")?.value`), "all", `${name} everyone filter should reset`);
   await tapSelector(client, "#v4PeopleKin", `${name} kin lines button`);
   assert.ok((await client.eval(`window.kfApi.getState().kinLines`)) > 0, `${name} kin lines should turn on`);
-  const displayOptionsWasHidden = await client.eval(`document.getElementById("peopleControlsBody")?.hidden`);
-  await tapSelector(client, "#peopleControlsToggle", `${name} display options toggle`);
-  assert.notEqual(
-    await client.eval(`document.getElementById("peopleControlsBody")?.hidden`),
-    displayOptionsWasHidden,
-    `${name} display options should toggle`,
+  assert.equal(
+    await client.eval(`(() => {
+      const el = document.getElementById("peopleControlsToggle");
+      if (!el) return true;
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return r.width === 0 || r.height === 0 || s.display === "none" || s.visibility === "hidden";
+    })()`),
+    true,
+    `${name} display options should stay out of the map-first phone overlay`,
   );
 
   await tapSelector(client, `#sideTabs [data-side-tab="map"]`, `${name} map tab before patterns controls`);
