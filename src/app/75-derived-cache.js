@@ -30,7 +30,7 @@ function _kfSourceSelectionKey() {
 
 function _kfFilterKey() {
   const surn = _kfSurnameFilter ? Array.from(_kfSurnameFilter).sort().join(",") : "";
-  return `${curFilter}|${_kfSexFilter || ""}|${surn}`;
+  return `${curFilter}|${_kfFocusedPersonId || ""}|${_kfSexFilter || ""}|${surn}`;
 }
 
 function _kfEventLabelForDwell(di) {
@@ -442,8 +442,7 @@ function _kfVisibleRowsForYear(yint) {
     const ind = lastIndividuals[idx];
     if (!ind) continue;
     if (!_kfPersonMayBeAliveAtYear(ind, yint)) continue;
-    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(idx)) continue;
-    if (curFilter === "blood" && lastBloodSet && !lastBloodSet.has(ind.id)) continue;
+    if (!_kfFilterAllowsIndiIdx(idx)) continue;
     if (_kfSexFilter && ind.sex !== _kfSexFilter) continue;
     if (_kfSurnameFilter) {
       const sn = _kfSurnameOf(ind.name);
@@ -777,7 +776,10 @@ function _kfExplainCurrentView() {
 
 function _kfViewModeLabel() {
   const cluster = clusterMode === "none" ? "not clustered" : `clustered by ${_kfClusterModeLabel(clusterMode).toLowerCase()}`;
-  const filter = curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
+  const focus = _kfFocusedPersonId && lastIndiById?.get(_kfFocusedPersonId);
+  const filter = curFilter === "person" && focus
+    ? `${_kfNameShort(focus.name)} only`
+    : curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
   const sex = _kfSexFilter === "M" ? "men" : _kfSexFilter === "F" ? "women" : "";
   return [filter, sex, cluster].filter(Boolean).join(" | ");
 }
@@ -791,7 +793,10 @@ function _kfResponsiveContextStripHtml(y, data, sourceCount) {
   const markerText = clusterMode === "none"
     ? `${data.count.toLocaleString()} alive/maybe alive`
     : `${data.count.toLocaleString()} people grouped`;
-  const scope = curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
+  const focus = _kfFocusedPersonId && lastIndiById?.get(_kfFocusedPersonId);
+  const scope = curFilter === "person" && focus
+    ? `${_kfNameShort(focus.name)} only`
+    : curFilter === "blood" ? "blood relatives" : curFilter === "ancestors" ? "ancestors" : "all people";
   return `<b>${y}</b> <span>${markerText} | ${treeText} | ${scope} | last known locations</span>`;
 }
 

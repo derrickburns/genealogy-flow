@@ -267,6 +267,32 @@ async function assertDetailDrawerLeavesMapContext(client, label) {
   assert.ok(budget.ok, `${label} detail drawer should preserve map context: ${JSON.stringify(budget)}`);
 }
 
+async function assertFollowPathFocusesPerson(client, label) {
+  const before = await client.eval(`window.kfApi?.getState?.()`);
+  await tapSelector(client, "#mapStoryAction", `${label} follow their path`);
+  const state = await waitFor(
+    client,
+    `(() => {
+      const state = window.kfApi?.getState?.();
+      if (!state) return null;
+      return {
+        ok: state.showFilter === "person" &&
+          !!state.focusedPerson &&
+          state.visiblePeople <= 1 &&
+          state.visiblePeople < ${Number(before?.visiblePeople || 2)},
+        showFilter: state.showFilter,
+        focusedPerson: state.focusedPerson,
+        visiblePeople: state.visiblePeople,
+        beforeVisiblePeople: ${Number(before?.visiblePeople || 0)}
+      };
+    })()`,
+    `${label} follow path focused-person filter`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.ok(state.ok, `${label} follow their path should narrow map markers to one person: ${JSON.stringify(state)}`);
+}
+
 async function dismissStartupDialogs(client) {
   await client.eval(`(() => {
     const terms = document.getElementById("termsModal");
@@ -444,6 +470,8 @@ async function runCase({ name, width, height, compact, mapOnly = false }) {
         console.log(`${name} map visibility smoke passed`);
         return;
       }
+    } else {
+      await assertFollowPathFocusesPerson(client, name);
     }
     if (compact) {
       await auditCompactInteractions(client, name);

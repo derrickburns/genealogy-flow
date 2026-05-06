@@ -1621,6 +1621,12 @@ function populateRootSelect(candidates) {
 
 function applyRoot(rootId, opts = {}) {
   if (!rootId) return;
+  if (curFilter === "person" && (!_kfFocusedPersonId || !lastIndiById?.has(_kfFocusedPersonId))) {
+    _kfFocusedPersonId = null;
+    curFilter = "all";
+    const sel = $("filt");
+    if (sel) sel.value = "all";
+  }
   lastRootId = rootId;
   lastSideById = classifySides(rootId, lastParentsOf, lastChildrenOf, lastIndividuals);
   lastAncestorSet = directAncestorSet(rootId, lastParentsOf);

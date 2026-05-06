@@ -913,8 +913,7 @@ function drawKinLines(lo, hi, y, dw) {
   for (let k = lo; k < hi; k++) {
     const i = dwellOrder[k];
     const dyy = y - dwellY[i]; if (dyy < 0) continue;
-    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(dwellIndi[i])) continue;
-    if (curFilter === "blood" && !dwellBlood[i]) continue;
+    if (!_kfFilterAllowsIndiIdx(dwellIndi[i])) continue;
     if (!typeFilter.has(dwellType[i])) continue;
     const sx = dwellSx[i], sy = dwellSy[i];
     if (sx < -10 || sx > W + 10 || sy < -10 || sy > H + 10) continue;

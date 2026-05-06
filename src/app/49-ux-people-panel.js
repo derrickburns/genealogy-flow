@@ -5,6 +5,7 @@ const KF_PEOPLE_SHOW_OPTIONS = [
   { value: "all", label: "Everyone", detail: "No relationship filter", help: "Use the selected trees without narrowing by family relationship." },
   { value: "blood", label: "Blood relatives", detail: "Direct biological kin", help: "Show only direct blood relatives of the home person." },
   { value: "ancestors", label: "Direct ancestors", detail: "Parents and grandparents", help: "Show only direct ancestors of the home person." },
+  { value: "person", label: "Focused path", detail: "One selected person", help: "Show only the person whose path is being followed." },
 ];
 
 const KF_PEOPLE_SEX_OPTIONS = [

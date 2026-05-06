@@ -1048,9 +1048,8 @@ function rebuildPersonMarkers() {
     const ind = lastIndividuals[idx];
     if (!ind) continue;
     if (!_kfPersonMayBeAliveAtYear(ind, yint)) continue;
-    // Lineage / blood / status filters still apply
-    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(idx)) continue;
-    if (curFilter === "blood" && lastBloodSet && !lastBloodSet.has(ind.id)) continue;
+    // Lineage, blood, focused-person, and status filters still apply.
+    if (!_kfFilterAllowsIndiIdx(idx)) continue;
     if (_kfSexFilter && ind.sex !== _kfSexFilter) continue;
     if (_kfSurnameFilter) {
       const sn = _kfSurnameOf(ind.name);
@@ -1584,8 +1583,7 @@ function makeFlowLayer() {
     const win = _kfFlowAnimationWindow(i);
     if (!win || y < win.start || y > win.end) continue;
     const fs = flowSide[i];
-    if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(flowIndi[i])) continue;
-    if (curFilter === "blood" && !flowBlood[i]) continue;
+    if (!_kfFilterAllowsIndiIdx(flowIndi[i])) continue;
     const span = Math.max(0.1, win.end - win.start);
     const t = Math.max(0, Math.min(1, (y - win.start) / span));
     const interp = _kfFlowInterpolators?.[i] || d3.geoInterpolate(
@@ -1629,9 +1627,7 @@ function makeFlowLayer() {
 const FLOW_AMBIGUOUS_GAP_YEARS = 5;
 
 function _kfFlowPassesFilter(i) {
-  if (curFilter === "ancestors" && !_kfIsDirectAncestorIndiIdx(flowIndi[i])) return false;
-  if (curFilter === "blood" && !flowBlood[i]) return false;
-  return true;
+  return _kfFilterAllowsIndiIdx(flowIndi[i]);
 }
 
 const FLOW_LONG_GAP_ANIMATION_YEARS = 5;

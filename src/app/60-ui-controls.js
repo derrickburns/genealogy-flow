@@ -333,7 +333,9 @@ $("rootSel").addEventListener("change", e => {
 });
 $("filt").addEventListener("change", e => {
   curFilter = e.target.value;
+  if (curFilter !== "person") _kfFocusedPersonId = null;
   fxCtx.clearRect(0, 0, W, H);
+  if (_kfDeckOverlay) updateDeckDwellLayer();
   if (typeof _kfSyncOptionSelectors === "function") _kfSyncOptionSelectors();
   _kfRefreshViewChrome(true);
 });

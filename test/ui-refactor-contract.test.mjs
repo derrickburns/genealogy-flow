@@ -291,3 +291,29 @@ test("short phone map-first state gives vertical space back to the map", () => {
   assert.match(smoke, /visibleMapHeight >= minimum/);
   assert.match(smoke, /compact-short/);
 });
+
+test("follow their path narrows the map to the focused person", () => {
+  const html = readFileSync("index.html", "utf8");
+  const state = readFileSync("src/app/00-state.js", "utf8");
+  const graph = readFileSync("src/app/40-gedcom-graph-geocode.js", "utf8");
+  const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
+  const render = readFileSync("src/app/20-render-layers.js", "utf8");
+  const derived = readFileSync("src/app/75-derived-cache.js", "utf8");
+  const api = readFileSync("src/app/80-kf-api.js", "utf8");
+  const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
+
+  assert.match(html, /<option value="person" hidden>focused person only<\/option>/);
+  assert.match(state, /let _kfFocusedPersonId = null/);
+  assert.match(graph, /function _kfSetFocusedPersonFilter\(id\)/);
+  assert.match(graph, /curFilter === "person"[^?]+ind\.id === _kfFocusedPersonId/s);
+  assert.match(chrome, /_kfSetFocusedPersonFilter\(ind\.id\)/);
+  assert.match(render, /if \(!_kfFilterAllowsIndiIdx\(idx\)\) continue/);
+  assert.match(render, /return _kfFilterAllowsIndiIdx\(flowIndi\[i\]\)/);
+  assert.match(derived, /\$\{curFilter\}\|\$\{_kfFocusedPersonId \|\| ""\}/);
+  assert.match(api, /const valid = \["all", "blood", "ancestors", "person"\]/);
+  assert.match(api, /showFilter:\s*curFilter/);
+  assert.match(api, /focusedPerson:\s*_kfFocusedPersonId/);
+  assert.match(smoke, /function\s+assertFollowPathFocusesPerson\s*\(/);
+  assert.match(smoke, /state\.showFilter === "person"/);
+  assert.match(smoke, /state\.visiblePeople <= 1/);
+});

@@ -316,6 +316,7 @@ function _kfV4FollowSelectedPath() {
   const events = _kfV4PlacedEvents(ind);
   const years = events.map(_kfV4EventYear).filter(Number.isFinite);
   const moves = window.kfApi?.getMigrations?.(ind.id);
+  if (typeof _kfSetFocusedPersonFilter === "function") _kfSetFocusedPersonFilter(ind.id);
   if (moves?.ok && moves.moves?.length && window.kfApi?.addRoute) {
     const points = [];
     const first = moves.moves[0].from;

@@ -223,6 +223,7 @@ function _kfSurnameOf(name) {
 let flowFromY, flowToY, flowFromLat, flowFromLon, flowToLat, flowToLon, flowSide, flowSrc, flowIndi, flowBlood, flowExact, flowFromLevel, flowToLevel;
 let flowFromSx, flowFromSy, flowToSx, flowToSy, flowFromOrder;
 let curFilter = "all";
+let _kfFocusedPersonId = null;
 let migrationViz = "continuous";
 let clusterMode = "none";
 let clusterRadius = 30;

@@ -423,6 +423,28 @@ function _kfIsDirectAncestorIndiIdx(idx) {
   return !!(ind && lastAncestorSet && lastAncestorSet.has(ind.id));
 }
 
+function _kfFilterAllowsIndiIdx(idx) {
+  const ind = lastIndividuals && lastIndividuals[idx];
+  if (!ind) return false;
+  if (curFilter === "person") return !!_kfFocusedPersonId && ind.id === _kfFocusedPersonId;
+  if (curFilter === "ancestors") return _kfIsDirectAncestorIndiIdx(idx);
+  if (curFilter === "blood") return !!(lastBloodSet && lastBloodSet.has(ind.id));
+  return true;
+}
+
+function _kfSetFocusedPersonFilter(id) {
+  if (!id || !lastIndiById?.has(id)) return false;
+  _kfFocusedPersonId = id;
+  curFilter = "person";
+  const sel = $("filt");
+  if (sel) sel.value = "person";
+  if (typeof _kfSyncOptionSelectors === "function") _kfSyncOptionSelectors();
+  if (typeof updateDeckDwellLayer === "function" && _kfDeckOverlay) updateDeckDwellLayer();
+  if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+  fxCtx?.clearRect?.(0, 0, W, H);
+  return true;
+}
+
 function ancestorsWithDepth(id, parentsOf, maxDepth = 30) {
   const out = new Map();
   const stack = [[id, 0]];

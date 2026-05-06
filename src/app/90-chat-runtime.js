@@ -134,7 +134,7 @@ Available tools. jsonArgs is a single JSON value:
   Strongly prefer "vega" for analytical charts (declarative, easiest to get right). The user can click the "spec" button in the viz tab header to inspect the raw JSON if a chart looks wrong.
 - setWindow(years)                 1..50 — visible-event window in years.
 - setStatusFilter(filter)          "all" | "living" | "dead"
-- setShowFilter(filter)            "all" | "blood" | "ancestors"
+- setShowFilter(filter)            "all" | "blood" | "ancestors" | "person" (person requires an active followed/selected path)
 - back()                           Undo the most recent view change.
 - setZoom(k)                       Absolute zoom level, 1..64. Reasonable values: 1 (whole world), 4 (continent), 8 (country), 16 (region), 32+ (city). Re-centers around current viewport center.
 - zoomIn(factor=2)                 Multiply current zoom by factor.

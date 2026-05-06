@@ -1351,10 +1351,11 @@ function _kfLatestDwellLatLon(ind) {
 function _kfApplySubtreeFilter(idsSet, label) {
   // Save original state once (don't double-save on re-apply).
   if (_kfSubtreeFilter == null) {
-    _kfSubtreeFilter = { prevBlood: lastBloodSet, prevFilter: curFilter, label };
+    _kfSubtreeFilter = { prevBlood: lastBloodSet, prevFilter: curFilter === "person" ? "all" : curFilter, label };
   } else {
     _kfSubtreeFilter.label = label;
   }
+  _kfFocusedPersonId = null;
   lastBloodSet = idsSet;
   rebuildSideArrays();
   curFilter = "blood";
@@ -1859,8 +1860,9 @@ window.kfApi = {
     return { ok: true, note: "status filter was removed; person markers always represent people alive at the current year" };
   },
   setShowFilter(filter) {
-    const valid = ["all", "blood", "ancestors"];
+    const valid = ["all", "blood", "ancestors", "person"];
     if (!valid.includes(filter)) return { error: "valid: " + valid.join(", ") };
+    if (filter === "person" && !_kfFocusedPersonId) return { error: "select or follow a person before using the person filter" };
     $("filt").value = filter;
     $("filt").dispatchEvent(new Event("change", { bubbles: true }));
     return { ok: true, show: filter };
@@ -1926,6 +1928,10 @@ window.kfApi = {
       projection: projectionName,
       kinLines: kinLinesN,
       clusterMode,
+      showFilter: curFilter,
+      focusedPerson: _kfFocusedPersonId && lastIndiById?.get(_kfFocusedPersonId)
+        ? { id: _kfFocusedPersonId, name: lastIndiById.get(_kfFocusedPersonId).name }
+        : null,
       total: lastIndividuals?.length || 0,
       visiblePeople: visible?.count || 0,
       visiblePeopleInViewport: viewportVisible,
