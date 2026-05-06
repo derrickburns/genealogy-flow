@@ -145,6 +145,7 @@ function _kfIsSideTabActive(tab) {
 function _kfBindTapOrClick(el, handler) {
   if (!el || typeof handler !== "function") return;
   let tap = null;
+  let touchTap = null;
   el.addEventListener("pointerdown", e => {
     if (e.pointerType === "mouse" || el.disabled) return;
     tap = { x: e.clientX, y: e.clientY, canceled: false };
@@ -168,6 +169,33 @@ function _kfBindTapOrClick(el, handler) {
     handler(e);
     setTimeout(() => { delete el.dataset.kfTapHandled; }, 500);
   });
+  el.addEventListener("touchstart", e => {
+    if (el.disabled || el.dataset.kfTapHandled === "1") return;
+    const t = e.changedTouches?.[0];
+    if (!t) return;
+    touchTap = { x: t.clientX, y: t.clientY, canceled: false };
+  }, { passive: true });
+  el.addEventListener("touchmove", e => {
+    if (!touchTap) return;
+    const t = e.changedTouches?.[0];
+    if (!t) return;
+    if (Math.abs(t.clientX - touchTap.x) > 10 || Math.abs(t.clientY - touchTap.y) > 10) {
+      touchTap.canceled = true;
+    }
+  }, { passive: true });
+  el.addEventListener("touchcancel", () => { touchTap = null; }, { passive: true });
+  el.addEventListener("touchend", e => {
+    if (!touchTap || touchTap.canceled || el.disabled || el.dataset.kfTapHandled === "1") {
+      touchTap = null;
+      return;
+    }
+    touchTap = null;
+    el.dataset.kfTapHandled = "1";
+    e.preventDefault();
+    e.stopPropagation();
+    handler(e);
+    setTimeout(() => { delete el.dataset.kfTapHandled; }, 500);
+  }, { passive: false });
   el.addEventListener("click", e => {
     if (el.dataset.kfTapHandled === "1" || el.disabled) {
       e.preventDefault();

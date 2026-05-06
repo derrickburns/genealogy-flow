@@ -670,10 +670,10 @@ async function autoLoadCloudGedcom() {
         top_pci_score: tree.top_pci_score ?? null,
         common_name: _kfSourceNameFromFileName(tree.name || "saved"),
       };
-      if (window._kfLoadFiles) await window._kfLoadFiles([file]);
+      if (window._kfLoadFiles) await window._kfLoadFiles([file], { persistSelection: false });
     }
     if (defaultTree?.name && window.kfApi?.setActiveTree) {
-      window.kfApi.setActiveTree(defaultTree.name);
+      window.kfApi.setActiveTree({ name: defaultTree.name, persist: false });
     }
     // Replace restoring message with the auto-intro once the tree is loaded
     if (typeof chatHistory !== "undefined") {

@@ -695,10 +695,11 @@ function updateSliderMarkers() {
   }
 }
 
-async function handleFiles(files) {
+async function handleFiles(files, opts = {}) {
   const arr = Array.from(files || []);
   const geds = arr.filter(f => /\.(ged|gedcom)$/i.test(f.name));
   const jsons = arr.filter(f => /\.json$/i.test(f.name));
+  const persistSelection = opts.persistSelection !== false;
   for (const j of jsons) {
     try {
       const txt = await j.text();
@@ -715,9 +716,17 @@ async function handleFiles(files) {
       stats.textContent = `error reading ${j.name}: ${e.message}`;
     }
   }
+  if (persistSelection && geds.length && typeof _kfMarkTreeSelectionTouched === "function") {
+    _kfMarkTreeSelectionTouched();
+  }
+  let loadedGed = false;
   for (const ged of geds) {
     try { await processFile(ged); }
-    catch (e) { stats.textContent = "error: " + e.message; console.error(e); }
+    catch (e) { stats.textContent = "error: " + e.message; console.error(e); continue; }
+    loadedGed = true;
+  }
+  if (persistSelection && loadedGed && typeof _kfPersistSelectedTrees === "function") {
+    _kfPersistSelectedTrees();
   }
 }
 

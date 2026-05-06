@@ -278,6 +278,72 @@ async function assertDetailDrawerLeavesMapContext(client, label) {
   assert.ok(budget.ok, `${label} detail drawer should preserve map context: ${JSON.stringify(budget)}`);
 }
 
+async function assertMobileVizTimelineRail(client, label) {
+  await client.eval(`window.kfApi?.showViz?.({
+    type: "svg",
+    title: "Mobile timeline rail smoke",
+    spec: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'><rect width='640' height='360' fill='#eff6ff'/><path d='M48 292 C160 150 254 248 344 126 S510 184 592 72' fill='none' stroke='#2563eb' stroke-width='18' stroke-linecap='round'/><circle cx='48' cy='292' r='18' fill='#16a34a'/><circle cx='592' cy='72' r='18' fill='#dc2626'/></svg>"
+  })`);
+  const state = await waitFor(
+    client,
+    `(() => {
+      const pane = document.getElementById("vizPane");
+      const frame = document.getElementById("vizFrame");
+      const ui = document.getElementById("ui");
+      const play = document.getElementById("play");
+      const caption = document.getElementById("timelineCaption");
+      const hist = document.getElementById("yearHist");
+      const options = document.querySelector("#ui .timelineOptions");
+      if (!pane || !frame || !ui || !play) return null;
+      const visible = el => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+      };
+      const uiRect = ui.getBoundingClientRect();
+      const frameRect = frame.getBoundingClientRect();
+      const playRect = play.getBoundingClientRect();
+      const clearVizHeight = Math.max(0, Math.min(frameRect.bottom, uiRect.top) - frameRect.top);
+      const minimumClear = Math.min(420, Math.max(260, window.innerHeight * 0.46));
+      return {
+        ok: pane.classList.contains("on") &&
+          uiRect.height <= 50 &&
+          playRect.height <= 32 &&
+          !visible(caption) &&
+          !visible(hist) &&
+          !visible(options) &&
+          clearVizHeight >= minimumClear,
+        ui: { top: uiRect.top, bottom: uiRect.bottom, height: uiRect.height },
+        play: { width: playRect.width, height: playRect.height },
+        frame: { top: frameRect.top, bottom: frameRect.bottom, height: frameRect.height },
+        clearVizHeight,
+        minimumClear,
+        captionVisible: visible(caption),
+        histVisible: visible(hist),
+        optionsVisible: visible(options),
+        viewport: { width: window.innerWidth, height: window.innerHeight }
+      };
+    })()`,
+    `${label} visualization timeline rail`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.ok(state.ok, `${label} visualization should keep the mobile timeline as a short rail: ${JSON.stringify(state)}`);
+  await client.eval(`document.querySelector("#vizTabBar .tabClose")?.click()`);
+  await client.eval(`if (typeof _kfClearChatArtifacts === "function") _kfClearChatArtifacts()`);
+  await waitFor(
+    client,
+    `(() => {
+      const pane = document.getElementById("vizPane");
+      const bar = document.getElementById("vizTabBar");
+      return !pane?.classList.contains("on") && !!bar?.hidden;
+    })()`,
+    `${label} visualization cleanup`,
+    10000,
+  );
+}
+
 async function assertFollowPathFocusesPerson(client, label) {
   const before = await client.eval(`window.kfApi?.getState?.()`);
   await tapSelector(client, "#mapStoryAction", `${label} follow their path`);
@@ -333,24 +399,33 @@ function paneAssertion(tab, textPattern) {
     const visibleText = ${JSON.stringify(tab)} === "map"
       ? document.body.innerText
       : activePane?.innerText || "";
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-    const controls = [...(activePane || document).querySelectorAll("button,input,select,textarea,[role='button']")]
-      .filter(el => {
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      const controls = [...(activePane || document).querySelectorAll("button,input,select,textarea,[role='button']")]
+        .filter(el => {
         const r = el.getBoundingClientRect();
         const s = getComputedStyle(el);
         return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
-      })
-      .map(el => {
-        const r = el.getBoundingClientRect();
-        return {
-          label: el.innerText || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.id || el.tagName,
-          left: r.left,
-          right: r.right,
-          width: r.width,
-          height: r.height
-        };
-      });
-    const offscreen = controls.filter(c => c.left < -1 || c.right > viewportWidth + 1 || c.width < 8 || c.height < 8);
+        })
+        .map(el => {
+          const r = el.getBoundingClientRect();
+          let insideHorizontalScroller = false;
+          for (let p = el.parentElement; p && p !== activePane && p !== document.body; p = p.parentElement) {
+            const ps = getComputedStyle(p);
+            if (p.scrollWidth > p.clientWidth + 2 && /auto|scroll/.test(ps.overflowX)) {
+              insideHorizontalScroller = true;
+              break;
+            }
+          }
+          return {
+            label: el.innerText || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.id || el.tagName,
+            left: r.left,
+            right: r.right,
+            width: r.width,
+            height: r.height,
+            insideHorizontalScroller
+          };
+        });
+    const offscreen = controls.filter(c => !c.insideHorizontalScroller && (c.left < -1 || c.right > viewportWidth + 1 || c.width < 8 || c.height < 8));
     const horizontalOverflow = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > viewportWidth + 2;
     return {
       ok: tree.layout.tab === ${JSON.stringify(tab)} &&
@@ -481,6 +556,7 @@ async function runCase({ name, width, height, compact, mapOnly = false }) {
       assert.equal(initialSnapshot.layout.tab, "map", `${name} should start map-first after tree load`);
       assert.equal(initialSnapshot.layout.sheet, "peek", `${name} should keep the sheet collapsed after tree load`);
       await assertCompactMapVisible(client, name);
+      await assertMobileVizTimelineRail(client, name);
       if (mapOnly) {
         console.log(`${name} map visibility smoke passed`);
         return;

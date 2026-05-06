@@ -48,6 +48,10 @@ class CdpClient {
       if (message.error) reject(new Error(JSON.stringify(message.error)));
       else resolve(message.result || {});
     });
+    this.ws.addEventListener("close", () => {
+      for (const { reject } of this.pending.values()) reject(new Error("CDP websocket closed"));
+      this.pending.clear();
+    });
   }
 
   async send(method, params = {}) {
@@ -252,12 +256,17 @@ async function assertMobileImmigrationQuestionTap() {
         const btn = [...document.querySelectorAll("[data-chat-scope-question]")]
           .find(el => /immigration waves/i.test(el.textContent || ""));
         if (!btn) return null;
+        btn.scrollIntoView({ block: "center", inline: "nearest" });
         const r = btn.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        const hit = document.elementFromPoint(x, y);
         return {
           text: btn.getAttribute("data-chat-scope-question") || "",
-          x: r.left + r.width / 2,
-          y: r.top + r.height / 2,
-          visible: r.width > 20 && r.height > 20 && r.bottom > 0 && r.top < window.innerHeight,
+          x,
+          y,
+          visible: r.width > 20 && r.height > 20 && r.bottom > 0 && r.top < window.innerHeight &&
+            hit && (hit === btn || hit.closest("[data-chat-scope-question]") === btn),
         };
       })()`,
       "mobile Immigration waves suggested question",
@@ -275,6 +284,173 @@ async function assertMobileImmigrationQuestionTap() {
     const captured = await client.eval(`window._kfAiRegressionSuggestedQuestions || []`);
     assert.equal(captured.length, 1, "double-tapping Immigration waves should dispatch one question");
     assert.match(captured[0], /waves of immigration/i, "mobile tap should dispatch Immigration waves");
+  } finally {
+    try { await client.send("Page.close"); } catch (_) {}
+    client.close();
+  }
+}
+
+function suggestedButtonLookupScript(question) {
+  const text = JSON.stringify(String(question?.text || ""));
+  const label = JSON.stringify(String(question?.label || "").toLowerCase());
+  return `(() => {
+    const expectedText = ${text};
+    const label = ${label};
+    const buttons = [...document.querySelectorAll("[data-chat-scope-question]")];
+    const questionText = el => el.getAttribute("data-chat-scope-question") || "";
+    const exact = buttons.find(el => questionText(el) === expectedText);
+    if (exact) return exact;
+    const original = expectedText.toLowerCase();
+    const wants = needle => label.includes(needle) || original.includes(needle);
+    if (wants("home person") || wants("selected person")) {
+      const person = buttons.find(el => /^(why is .+ shown here|what should i notice about .+ family)\\b/i.test(questionText(el)));
+      if (person) return person;
+    }
+    if (wants("this year") || /explain this year/i.test(original)) {
+      const currentYear = buttons.find(el => /^Explain this year in plain language\\.?$/i.test(questionText(el)));
+      if (currentYear) return currentYear;
+    }
+    if (wants("migration story") || /migration story for the visible people/i.test(original)) {
+      const migration = buttons.find(el => /^Summarize the migration story for the visible people in \\d{3,4}\\./i.test(questionText(el)));
+      if (migration) return migration;
+    }
+    if (wants("visible people") || /these people visible/i.test(original)) {
+      const visible = buttons.find(el => /^Why are these people visible in \\d{3,4}\\?$/i.test(questionText(el)));
+      if (visible) return visible;
+    }
+    if (wants("cluster pattern") || /biggest place or cluster pattern/i.test(original)) {
+      const cluster = buttons.find(el => /^Explain the biggest place or cluster pattern in \\d{3,4}\\.?$/i.test(questionText(el)));
+      if (cluster) return cluster;
+    }
+    if (wants("weak evidence") || /weakest location evidence/i.test(original)) {
+      const weak = buttons.find(el => /^Find the weakest location evidence in the checked trees at \\d{3,4}\\.?$/i.test(questionText(el)));
+      if (weak) return weak;
+    }
+    if (wants("simplify view") || /simplest way to understand/i.test(original)) {
+      const simple = buttons.find(el => /^Give me the simplest way to understand these \\d+ visible people\\.?$/i.test(questionText(el)));
+      if (simple) return simple;
+    }
+    return null;
+  })()`;
+}
+
+async function clickSuggestedQuestionForAnswer(client, question, { mobile = false } = {}) {
+  await showExploreTab(client);
+  await waitFor(
+    client,
+    `!document.querySelector("[data-chat-scope-question][aria-busy='true']") && !document.getElementById("chatSend")?.disabled`,
+    "chat suggestion controls idle",
+    10000,
+  );
+  await sleep(180);
+  await client.eval(`(() => {
+    const more = document.querySelector("[data-chat-more]");
+    if (more && more.getAttribute("aria-expanded") !== "true") more.click();
+  })()`);
+  const targetButton = await waitFor(
+    client,
+    `(() => {
+      const btn = ${suggestedButtonLookupScript(question)};
+      if (!btn) return null;
+      btn.scrollIntoView({ block: "center", inline: "nearest" });
+      const r = btn.getBoundingClientRect();
+      return {
+        text: btn.getAttribute("data-chat-scope-question") || "",
+        x: r.left + r.width / 2,
+        y: r.top + r.height / 2,
+        visible: r.width > 20 && r.height > 20 && r.bottom > 0 && r.top < window.innerHeight,
+      };
+    })()`,
+    `suggested question visible: ${question.label}`,
+    10000,
+    value => value?.visible,
+  );
+  if (mobile) await tapPoint(client, targetButton.x, targetButton.y);
+  else await client.eval(`(() => {
+    const btn = ${suggestedButtonLookupScript(question)};
+    btn?.click();
+  })()`);
+  await waitFor(
+    client,
+    `document.querySelector("#chatAnswer .chatActiveQuestion p")?.textContent?.trim() === ${JSON.stringify(targetButton.text)}`,
+    `active answer question: ${question.label}`,
+    10000,
+  );
+  return targetButton.text;
+}
+
+async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
+  const target = await createTarget();
+  const client = new CdpClient(target.webSocketDebuggerUrl);
+  try {
+    await client.send("Page.enable");
+    await client.send("Runtime.enable");
+    await client.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `localStorage.setItem("kf-anthropic-key", "smoke-test-key");`,
+    });
+    if (mobile) {
+      await client.send("Emulation.setDeviceMetricsOverride", {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 2,
+        mobile: true,
+        screenWidth: 390,
+        screenHeight: 844,
+      });
+      await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    } else {
+      await client.send("Emulation.setDeviceMetricsOverride", {
+        width: 1200,
+        height: 850,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+    }
+    const url = `${appUrl}${appUrl.includes("?") ? "&" : "?"}suggestions-smoke=${mobile ? "mobile" : "desktop"}-${Date.now()}`;
+    await client.send("Page.navigate", { url });
+    await waitFor(client, "document.readyState === 'complete'", `${mobile ? "mobile" : "desktop"} suggestions document load`);
+    await dismissStartupDialogs(client);
+    await waitFor(
+      client,
+      `window.kfApi && window.kfDebug && window.kfDebug.treeSnapshot && window.kfDebug.treeSnapshot().trees.loaded_count >= 1`,
+      `${mobile ? "mobile" : "desktop"} loaded tree and kfApi`,
+      40000,
+    );
+    const questions = await collectAllSuggestedQuestions(client);
+    const isContextQuestion = q => /\bYEAR\b/i.test(q.label || "") ||
+      /\b(this year|visible people|shown here|visible in|migration story|cluster pattern|weak evidence|simplest way)\b/i.test(q.text || "");
+    const orderedQuestions = questions.slice().sort((a, b) =>
+      Number(isContextQuestion(b)) - Number(isContextQuestion(a))
+    );
+    for (const question of orderedQuestions) {
+      const before = await client.eval(`(() => ({
+        viz: window.kfDebug?.vizState?.().list?.length || 0
+      }))()`);
+      const clickedText = await clickSuggestedQuestionForAnswer(client, question, { mobile });
+      const state = await waitFor(
+        client,
+        `(() => {
+          const activeQuestion = document.querySelector("#chatAnswer .chatActiveQuestion p")?.textContent?.trim() || "";
+          const text = document.getElementById("chatAnswer")?.innerText || "";
+          const viz = window.kfDebug?.vizState?.().list || [];
+          return {
+            ok: activeQuestion === ${JSON.stringify(clickedText)} &&
+              viz.length > ${before.viz} &&
+              /In the tree/i.test(text) &&
+              /Inspect/i.test(text) &&
+              !/\\*\\[error\\]|API \\d+|No Anthropic API key|_thinking/i.test(text),
+            activeQuestion,
+            text: text.slice(0, 900),
+            vizCount: viz.length,
+            errors: window.kfDebug?.clientErrors?.() || [],
+          };
+        })()`,
+        `${mobile ? "mobile" : "desktop"} ${question.label} text and visualization`,
+        20000,
+        value => !!value?.ok,
+      );
+      assert.deepEqual(state.errors, [], `${mobile ? "mobile" : "desktop"} ${question.label} should not record client errors`);
+    }
   } finally {
     try { await client.send("Page.close"); } catch (_) {}
     client.close();
@@ -501,6 +677,8 @@ async function main() {
     const questions = await collectAllSuggestedQuestions(client);
     await clickEverySuggestedQuestion(client, questions);
     await assertMobileImmigrationQuestionTap();
+    await assertAllSuggestedQuestionsTextAndViz({ mobile: false });
+    await assertAllSuggestedQuestionsTextAndViz({ mobile: true });
     await assertKfCallParser(client);
     const names = await personNames(client);
     await assertMapRenderingActions(client, names);

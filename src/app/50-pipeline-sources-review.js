@@ -568,9 +568,108 @@ function _kfGetLoadedSourcesList() {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const KF_SELECTED_TREES_LS = "kf-selected-trees-v1";
+let _kfTreeSelectionTouchedThisSession = false;
+
+function _kfMarkTreeSelectionTouched() {
+  _kfTreeSelectionTouchedThisSession = true;
+}
+
+function _kfNormalizedTreeSelectionHash(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(text) ? text : "";
+}
+
+function _kfTreeSelectionRefForSource(src) {
+  if (!src) return null;
+  const name = _kfFamiliarTreeName(src) || src.common_name || src.name || "";
+  const canonicalName = _kfCanonicalTreeName(name || src.name || "");
+  const ref = {
+    source_kind: src.source_kind || (src.catalog_key ? "catalog" : src.tree_uuid ? "cloud" : "local"),
+    catalog_key: src.catalog_key || null,
+    tree_uuid: src.tree_uuid || null,
+    content_hash: _kfNormalizedTreeSelectionHash(src.content_hash),
+    owner_email: String(src.owner_email || "").trim().toLowerCase() || null,
+    name,
+    canonical_name: canonicalName || "",
+  };
+  return (ref.tree_uuid || ref.catalog_key || ref.content_hash || ref.canonical_name) ? ref : null;
+}
+
+function _kfReadSelectedTreeRefs() {
+  try {
+    const raw = localStorage.getItem(KF_SELECTED_TREES_LS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const refs = Array.isArray(parsed?.refs) ? parsed.refs : [];
+    return refs
+      .map(ref => ({
+        source_kind: ref?.source_kind || null,
+        catalog_key: ref?.catalog_key || null,
+        tree_uuid: ref?.tree_uuid || null,
+        content_hash: _kfNormalizedTreeSelectionHash(ref?.content_hash),
+        owner_email: String(ref?.owner_email || "").trim().toLowerCase() || null,
+        name: String(ref?.name || "").trim(),
+        canonical_name: ref?.canonical_name || _kfCanonicalTreeName(ref?.name || ""),
+      }))
+      .filter(ref => ref.tree_uuid || ref.catalog_key || ref.content_hash || ref.canonical_name);
+  } catch (_) {
+    return [];
+  }
+}
+
+function _kfTreeSelectionRefMatchesSource(ref, src) {
+  if (!ref || !src) return false;
+  const srcHash = _kfNormalizedTreeSelectionHash(src.content_hash);
+  if (ref.tree_uuid && src.tree_uuid && String(ref.tree_uuid) === String(src.tree_uuid)) return true;
+  if (ref.catalog_key && src.catalog_key && String(ref.catalog_key) === String(src.catalog_key)) return true;
+  if (ref.content_hash && srcHash && ref.content_hash === srcHash) return true;
+
+  const refName = ref.canonical_name || _kfCanonicalTreeName(ref.name || "");
+  const srcName = _kfCanonicalTreeName(_kfFamiliarTreeName(src) || src.common_name || src.name || "");
+  if (!refName || !srcName || refName !== srcName) return false;
+  const refOwner = String(ref.owner_email || "").trim().toLowerCase();
+  const srcOwner = String(src.owner_email || "").trim().toLowerCase();
+  if (refOwner && srcOwner) return refOwner === srcOwner;
+  return _kfKnownServerTreeName(srcName) || (!refOwner && !srcOwner);
+}
+
+function _kfApplyPersistedSelectedTrees() {
+  const refs = _kfReadSelectedTreeRefs();
+  if (!refs.length || !_kfLoadedSources.size) return false;
+  const matched = [..._kfLoadedSources.values()]
+    .filter(src => refs.some(ref => _kfTreeSelectionRefMatchesSource(ref, src)));
+  if (!matched.length) return false;
+  _kfSelectedSourceIds = new Set(matched.map(src => src.source_id));
+  if (!_kfActiveTreeName || !matched.some(src => src.name === _kfActiveTreeName)) {
+    _kfActiveTreeName = matched[0]?.name || _kfActiveTreeName;
+  }
+  return true;
+}
+
+function _kfPersistSelectedTrees() {
+  const refs = [..._kfLoadedSources.values()]
+    .filter(src => _kfSelectedSourceIds.has(src.source_id))
+    .map(_kfTreeSelectionRefForSource)
+    .filter(Boolean);
+  const payload = {
+    version: 1,
+    updated_at: new Date().toISOString(),
+    refs,
+  };
+  try {
+    localStorage.setItem(KF_SELECTED_TREES_LS, JSON.stringify(payload));
+  } catch (e) {
+    console.warn("[kf] persist selected trees:", e?.message || e);
+  }
+  _kfMarkTreeSelectionTouched();
+  return payload;
+}
+
 function _kfEnsureSelectedSources() {
   const validIds = new Set([..._kfLoadedSources.values()].map(s => s.source_id));
   _kfSelectedSourceIds = new Set([..._kfSelectedSourceIds].filter(id => validIds.has(id)));
+  if (!_kfTreeSelectionTouchedThisSession && _kfApplyPersistedSelectedTrees()) return;
   if (_kfSelectedSourceIds.size === 0) {
     for (const id of validIds) _kfSelectedSourceIds.add(id);
   }
@@ -1164,6 +1263,7 @@ function _kfRefreshStatsSummary(opts = {}) {
 async function deleteSource(id) {
   const src = [..._kfLoadedSources.values()].find(s => s.source_id === id);
   if (!src) return false;
+  _kfMarkTreeSelectionTouched();
   _kfLoadedSources.delete(src.name);
   _kfTreeCache.delete(src.name);
   _kfSelectedSourceIds.delete(id);
@@ -1172,6 +1272,7 @@ async function deleteSource(id) {
     _kfActiveTreeName = remaining[0]?.name || null;
   }
   _kfEnsureSelectedSources();
+  _kfPersistSelectedTrees();
   buildBrowserDb();
   _kfRebuildSelectedVisualization({ preserveYear: true });
   return true;

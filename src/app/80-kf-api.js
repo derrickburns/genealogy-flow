@@ -1948,6 +1948,9 @@ window.kfApi = {
   //                      structured timeline, kinship label, screenshot) ----
 
   setActiveTree(name) {
+    const opts = name && typeof name === "object" ? name : {};
+    const persistSelection = opts.persist !== false;
+    name = opts.name || name;
     if (!name || typeof name !== "string") return { error: "name required" };
     let target = _kfLoadedSources.has(name) || _kfTreeCache.has(name) ? name : null;
     if (!target) {
@@ -1963,6 +1966,7 @@ window.kfApi = {
       if (src?.source_id && !_kfSelectedSourceIds.has(src.source_id)) {
         _kfSelectedSourceIds.add(src.source_id);
         _kfEnsureSelectedSources();
+        if (persistSelection && typeof _kfPersistSelectedTrees === "function") _kfPersistSelectedTrees();
         _kfRefreshBrowserViews();
         _kfRebuildSelectedVisualization({ preserveYear: true, preferredSourceName: target, preferActiveRoot: true });
         renderSources(_kfGetLoadedSourcesList());
@@ -1975,6 +1979,7 @@ window.kfApi = {
       const src = _kfLoadedSources.get(target);
       if (src?.source_id) _kfSelectedSourceIds.add(src.source_id);
       _kfEnsureSelectedSources();
+      if (persistSelection && typeof _kfPersistSelectedTrees === "function") _kfPersistSelectedTrees();
       _kfRefreshBrowserViews();
       _kfRebuildSelectedVisualization({
         preserveYear: true,
@@ -1988,6 +1993,7 @@ window.kfApi = {
     }
     const text = _kfTreeCache.get(target);
     const fake = new File([text], target + ".ged", { type: "text/plain" });
+    if (!persistSelection) fake._kfTreeMeta = { suppressSelectionPersist: true };
     _kfSkipNextProxyLoad = true;
     _kfSkipNextSeed = true;
     // Fire and forget: processFile is async but we return synchronously so

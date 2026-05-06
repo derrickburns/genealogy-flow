@@ -59,6 +59,12 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   const persistFn = services.match(/async function _kfMaybePersistLoadedTreeByHash[\s\S]*?\n}/)?.[0] || "";
   assert.ok(persistFn, "_kfMaybePersistLoadedTreeByHash should exist");
   assert.doesNotMatch(persistFn, /_kfIsCompactLayout/);
+  assert.match(sources, /const KF_SELECTED_TREES_LS = "kf-selected-trees-v1"/);
+  assert.match(sources, /function\s+_kfTreeSelectionRefForSource\s*\(/);
+  assert.match(sources, /function\s+_kfTreeSelectionRefMatchesSource\s*\(/);
+  assert.match(sources, /function\s+_kfApplyPersistedSelectedTrees\s*\(/);
+  assert.match(sources, /function\s+_kfPersistSelectedTrees\s*\(/);
+  assert.match(sources, /if \(!_kfTreeSelectionTouchedThisSession && _kfApplyPersistedSelectedTrees\(\)\) return/);
 });
 
 test("tree sharing creates an application auth invitation", () => {
@@ -292,6 +298,7 @@ test("people panel includes a compact scrolling living-people list after selecte
 test("suggested Explore questions use mobile-safe taps and dedupe active repeats", () => {
   const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
   const derived = readFileSync("src/app/75-derived-cache.js", "utf8");
+  const runtime = readFileSync("src/app/90-chat-runtime.js", "utf8");
   const styles = readFileSync("styles/app.css", "utf8");
   const smoke = readFileSync("scripts/smoke-ai-regression.mjs", "utf8");
 
@@ -316,7 +323,28 @@ test("suggested Explore questions use mobile-safe taps and dedupe active repeats
   assert.match(styles, /\.chatQuestionChip em\s*\{/);
   assert.match(styles, /\.chatActiveQuestion small\s*\{/);
   assert.match(styles, /\.chat-scope-question\s*\{[^}]*touch-action:manipulation/s);
+  assert.match(runtime, /function\s+_kfTryAnswerSuggestedQuestion\s*\(/);
+  for (const method of [
+    "getImmigrationWaves",
+    "getSurnameMigrationDistances",
+    "getUrbanizationShift",
+    "getFamilyCrossroads",
+    "getStableBranches",
+    "getCoMigratingFamilies",
+    "getHistoricalOverlaps",
+    "getDistantBranchMarriages",
+    "getDeepestAncestryBranches",
+    "getMigrationJumps",
+  ]) {
+    assert.match(runtime, new RegExp(method));
+  }
+  assert.match(runtime, /window\.kfApi\.showViz\(\{\s*type: "vega"/s);
+  assert.match(runtime, /const suggested = await _kfTryAnswerSuggestedQuestion\(userText\)/);
   assert.match(smoke, /function\s+assertMobileImmigrationQuestionTap\s*\(/);
+  assert.match(smoke, /function\s+assertAllSuggestedQuestionsTextAndViz\s*\(/);
+  assert.match(smoke, /desktop.*text and visualization/s);
+  assert.match(smoke, /mobile.*text and visualization/s);
+  assert.match(smoke, /Inspect/i);
   assert.match(smoke, /double-tapping Immigration waves should dispatch one question/);
 });
 
@@ -350,10 +378,13 @@ test("responsive bottom tabs are tap targets, not sheet drag handles", () => {
 
 test("responsive sheet panes remain vertical touch scroll containers", () => {
   const styles = readFileSync("styles/app.css", "utf8");
+  const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
 
   assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*overflow-y:auto/s);
   assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*-webkit-overflow-scrolling:touch/s);
   assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*touch-action:pan-y/s);
+  assert.match(smoke, /insideHorizontalScroller/);
+  assert.match(smoke, /overflowX/);
 });
 
 test("phone shell uses primary destinations with contextual patterns and story access", () => {
@@ -416,6 +447,21 @@ test("short phone map-first state gives vertical space back to the map", () => {
   assert.match(smoke, /maxRun >= 320/);
   assert.match(smoke, /visibleMapHeight >= minimum/);
   assert.match(smoke, /compact-short/);
+});
+
+test("mobile visualization tabs collapse the timeline into a short scrub rail", () => {
+  const styles = readFileSync("styles/app.css", "utf8");
+  const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
+
+  assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:44px/s);
+  assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui \.timelineDeck\s*\{[^}]*grid-template-columns:30px minmax\(0, 1fr\)/s);
+  assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui \.timelineOptions,[\s\S]*display:none\s*!important/s);
+  assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui #yearHist,[\s\S]*display:none\s*!important/s);
+  assert.match(styles, /#vizArea:has\(#vizPane\.on\) #timelineCurrentYear\s*\{[^}]*font-size:16px/s);
+  assert.match(styles, /max-height: 760px[\s\S]*#vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:40px/s);
+  assert.match(smoke, /function\s+assertMobileVizTimelineRail\s*\(/);
+  assert.match(smoke, /uiRect\.height <= 50/);
+  assert.match(smoke, /clearVizHeight >= minimumClear/);
 });
 
 test("follow their path narrows the map to the focused person", () => {

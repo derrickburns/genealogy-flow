@@ -1017,12 +1017,537 @@ async function parseAndRunKfCalls(text) {
 }
 
 const MAX_TOOL_ROUNDS = 10;
+function _kfIsImmigrationWavesRequest(text) {
+  const q = _kfNormalizeQuestionForCache(text).toLowerCase();
+  return /\b(waves of immigration|immigration waves|immigration in my family|summarize .*immigration)\b/.test(q);
+}
+
+function _kfTopCountText(rows, limit = 4) {
+  return (rows || [])
+    .slice(0, limit)
+    .map(row => `${row.name} (${row.count})`)
+    .join(", ");
+}
+
+function _kfImmigrationWaveVizSpec(waves) {
+  const values = (waves || []).map(wave => ({
+    period: wave.period || "",
+    year_range: wave.yearRange || "",
+    route: wave.route || "unknown route",
+    count: Number(wave.count) || 0,
+    surnames: _kfTopCountText(wave.surnames, 5),
+    examples: (wave.examples || []).slice(0, 3).map(ex => ex.person).filter(Boolean).join(", "),
+  }));
+  return {
+    $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+    width: "container",
+    height: Math.max(260, Math.min(460, values.length * 24)),
+    data: { values },
+    mark: { type: "bar", tooltip: true, cornerRadiusEnd: 3 },
+    encoding: {
+      y: {
+        field: "route",
+        type: "nominal",
+        sort: "-x",
+        title: "Route",
+        axis: { labelLimit: 240 },
+      },
+      x: {
+        field: "count",
+        type: "quantitative",
+        title: "Recorded signals",
+      },
+      color: {
+        field: "period",
+        type: "nominal",
+        title: "Period",
+      },
+      tooltip: [
+        { field: "period", type: "nominal", title: "Period" },
+        { field: "year_range", type: "nominal", title: "Years" },
+        { field: "route", type: "nominal", title: "Route" },
+        { field: "count", type: "quantitative", title: "Signals" },
+        { field: "surnames", type: "nominal", title: "Surnames" },
+        { field: "examples", type: "nominal", title: "Example people" },
+      ],
+    },
+  };
+}
+
+function _kfImmigrationWaveAnswer(data, vizResult) {
+  const waves = Array.isArray(data?.waves) ? data.waves : [];
+  const trees = data?.scope?.selectedTrees?.length ? data.scope.selectedTrees.join(", ") : "the selected trees";
+  if (!waves.length) {
+    return `**In the tree**\n\nI don't know from the selected trees. I did not find explicit immigration/emigration records or cross-country transitions between consecutive placed records in **${trees}**.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened a chart tab named **${vizResult.title}**, but there are no wave rows to plot.` : "No immigration-wave chart was opened because there were no wave rows to plot."}`;
+  }
+  const top = waves[0];
+  const topSurnames = _kfTopCountText(top.surnames, 5) || "no dominant surname";
+  const examples = (top.examples || [])
+    .slice(0, 4)
+    .map(ex => `${ex.person}${ex.year ? ` (${ex.year})` : ""}`)
+    .join(", ");
+  const routeList = waves
+    .slice(0, 4)
+    .map((wave, i) => `${i + 1}. **${wave.period} ${wave.route}** - ${wave.count} signal${wave.count === 1 ? "" : "s"} (${wave.yearRange})`)
+    .join("\n");
+  const important = _kfTopCountText(data.importantSurnames, 6);
+  const vizLine = vizResult?.ok
+    ? `I opened **${vizResult.title}** as a chart tab. It uses ${waves.length} route/period row${waves.length === 1 ? "" : "s"} with \`period\`, \`route\`, and \`count\` fields.`
+    : `I tried to open the chart, but the visualization failed: ${vizResult?.error || "unknown error"}.`;
+  return `**In the tree**\n\nI found **${Number(data?.totals?.signals || 0).toLocaleString()} immigration or cross-country transition signals** across **${trees}**. These include explicit immigration/emigration records and inferred country-to-country movement between consecutive placed records.\n\n${routeList}\n\n**The tree suggests**\n\nThe strongest wave is **${top.period} ${top.route}** with **${top.count} signal${top.count === 1 ? "" : "s"}**. The most visible surnames in that wave are ${topSurnames}.${examples ? ` Example people include ${examples}.` : ""}\n\n${important ? `Across all returned waves, the recurring surnames are ${important}.` : ""}\n\n**Historical context**\n\nThis chart is tree evidence plus conservative transition inference. It does not prove motive, route taken, border crossing details, or external historical cause unless those facts are recorded in the selected trees.\n\n**Inspect**\n\n${vizLine}`;
+}
+
+async function _kfTryAnswerImmigrationWavesQuestion(userText) {
+  if (!_kfIsImmigrationWavesRequest(userText)) return null;
+  return _kfTryAnswerStandardSuggestionByKind("immigrationWaves");
+}
+
+function _kfStandardSuggestionKind(text) {
+  const q = _kfNormalizeQuestionForCache(text).toLowerCase();
+  const standard = typeof _KF_STANDARD_AI_QUESTIONS !== "undefined" ? _KF_STANDARD_AI_QUESTIONS : [];
+  const exact = standard.find(item => _kfNormalizeQuestionForCache(item.text).toLowerCase() === q);
+  const label = String(exact?.label || "").toLowerCase();
+  if (label === "immigration waves" || _kfIsImmigrationWavesRequest(q)) return "immigrationWaves";
+  if (label === "farthest-moving surnames" || /\bfarthest[- ]moving surnames\b|\bsurnames moved the farthest\b/.test(q)) return "surnameMigrationDistances";
+  if (label === "rural to city" || /\brural places to cities\b|\brural to city\b|\burbanization\b/.test(q)) return "urbanizationShift";
+  if (label === "family crossroads" || /\bfamily crossroads\b|\bplaces acted as family crossroads\b/.test(q)) return "familyCrossroads";
+  if (label === "stable branches" || /\bstable branches\b|\bstayed geographically stable\b/.test(q)) return "stableBranches";
+  if (label === "moved together" || /\bmigrated together\b|\bmoved together\b|\bco-?migrat/.test(q)) return "coMigratingFamilies";
+  if (label === "history overlaps" || /\balive during slavery\b|\bhistorical overlaps\b|\bmajor historical transitions\b/.test(q)) return "historicalOverlaps";
+  if (label === "distant marriages" || /\bdistant marriages\b|\bmarriages joined geographically distant\b/.test(q)) return "distantBranchMarriages";
+  if (label === "deepest branches" || /\bdeepest documented ancestry\b|\bdeepest branch\b/.test(q)) return "deepestAncestryBranches";
+  if (label === "migration jumps" || /\bbiggest unexplained migration jumps\b|\bmigration jumps\b/.test(q)) return "migrationJumps";
+  return "";
+}
+
+function _kfStandardSuggestionDef(kind) {
+  return {
+    immigrationWaves: { method: "getImmigrationWaves", title: "Immigration waves", valueTitle: "Signals" },
+    surnameMigrationDistances: { method: "getSurnameMigrationDistances", title: "Farthest-moving surnames", valueTitle: "Total miles" },
+    urbanizationShift: { method: "getUrbanizationShift", title: "Rural to city shift", valueTitle: "City-level records (%)" },
+    familyCrossroads: { method: "getFamilyCrossroads", title: "Family crossroads", valueTitle: "People" },
+    stableBranches: { method: "getStableBranches", title: "Stable branches", valueTitle: "Dominant place share (%)" },
+    coMigratingFamilies: { method: "getCoMigratingFamilies", title: "Families moving together", valueTitle: "People" },
+    historicalOverlaps: { method: "getHistoricalOverlaps", title: "Historical overlaps", valueTitle: "People" },
+    distantBranchMarriages: { method: "getDistantBranchMarriages", title: "Distant branch marriages", valueTitle: "Miles" },
+    deepestAncestryBranches: { method: "getDeepestAncestryBranches", title: "Deepest documented branches", valueTitle: "Generations" },
+    migrationJumps: { method: "getMigrationJumps", title: "Migration jumps", valueTitle: "Miles" },
+  }[kind] || null;
+}
+
+function _kfTextList(items, limit = 4) {
+  return (items || []).map(String).filter(Boolean).slice(0, limit).join(", ");
+}
+
+function _kfSuggestionScopeLabel(data) {
+  const names = Array.isArray(data?.scope?.selectedTrees) ? data.scope.selectedTrees : [];
+  if (names.length) return names.map(name => String(name || "").replace(/\.ged$/i, "")).join(", ");
+  const sources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
+  const selected = sources.map(src => String(src?.common_name || src?.name || "").replace(/\.ged$/i, "")).filter(Boolean);
+  return selected.length ? selected.join(", ") : "the selected trees";
+}
+
+function _kfSuggestionExampleText(examples, limit = 3) {
+  return _kfTextList((examples || []).map(ex => ex?.person || ex?.name || ex?.spouseA?.name || ""), limit);
+}
+
+function _kfStandardSuggestionValues(kind, data) {
+  switch (kind) {
+    case "immigrationWaves":
+      return (data?.waves || []).map(w => ({
+        label: w.route || "unknown route",
+        group: w.period || "period unknown",
+        count: Number(w.count) || 0,
+        detail: w.yearRange || "",
+        examples: _kfSuggestionExampleText(w.examples, 4),
+      }));
+    case "surnameMigrationDistances":
+      return (data?.surnames || []).map(row => ({
+        label: row.surname || "(unknown)",
+        group: `${row.people || 0} people`,
+        count: Number(row.totalMiles) || 0,
+        detail: `max ${Math.round(row.maxMiles || 0)} miles across ${row.moveCount || 0} moves`,
+        examples: _kfSuggestionExampleText(row.examples, 3),
+      }));
+    case "urbanizationShift":
+      return (data?.series || []).map(row => ({
+        label: `${row.decade}s`,
+        group: "city share",
+        count: Number(row.cityShare) || 0,
+        detail: `${row.cityEvents || 0} of ${row.events || 0} placed records are city-level`,
+        examples: _kfSuggestionExampleText(row.examples, 3),
+      }));
+    case "familyCrossroads":
+      return (data?.crossroads || []).map(row => ({
+        label: row.place || "unknown place",
+        group: row.yearRange || "",
+        count: Number(row.people) || 0,
+        detail: `${row.events || 0} events; ${row.surnameCount || 0} surnames`,
+        examples: _kfTopCountText(row.topSurnames, 4),
+      }));
+    case "stableBranches":
+      return (data?.stableBranches || []).map(row => ({
+        label: row.surname || "(unknown)",
+        group: row.dominantRegion || "unknown region",
+        count: Number(row.dominantShare) || 0,
+        detail: `${row.people || 0} people; ${row.events || 0} records; ${row.yearRange || ""}`,
+        examples: _kfSuggestionExampleText(row.examples, 3),
+      }));
+    case "coMigratingFamilies":
+      return (data?.coMigratingGroups || []).map(row => ({
+        label: row.route || "unknown route",
+        group: `${row.decade}s`,
+        count: Number(row.people) || Number(row.moves) || 0,
+        detail: `${row.moves || 0} moves; surnames ${_kfTopCountText(row.surnames, 4)}`,
+        examples: _kfSuggestionExampleText(row.examples, 3),
+      }));
+    case "historicalOverlaps":
+      return (data?.periods || []).map(row => ({
+        label: row.period || "historical period",
+        group: row.years || "",
+        count: Number(row.people) || 0,
+        detail: `top surnames ${_kfTopCountText(row.topSurnames, 4)}`,
+        examples: _kfSuggestionExampleText(row.examples, 3),
+      }));
+    case "distantBranchMarriages":
+      return (data?.distantMarriages || []).map(row => ({
+        label: `${row.spouseA?.name || "spouse"} + ${row.spouseB?.name || "spouse"}`,
+        group: `${row.countryA || "?"} -> ${row.countryB || "?"}`,
+        count: Number(row.miles) || 0,
+        detail: `${row.placeA || "unknown"} / ${row.placeB || "unknown"}`,
+        examples: `${row.yearA || "?"} / ${row.yearB || "?"}`,
+      }));
+    case "deepestAncestryBranches":
+      return (data?.deepestPeople || []).map(row => ({
+        label: row.person || "unknown person",
+        group: row.surname || "(unknown)",
+        count: Number(row.generations) || 0,
+        detail: `${row.birth ?? "?"}-${row.death ?? "?"}; ${row.tree || ""}`,
+        examples: row.surname || "",
+      }));
+    case "migrationJumps":
+      return (data?.jumps || []).map(row => ({
+        label: row.person || "unknown person",
+        group: row.ambiguity || "record sequence",
+        count: Math.round(Number(row.miles) || 0),
+        detail: `${row.fromRegion || row.from || "unknown"} -> ${row.toRegion || row.to || "unknown"}; ${row.yearsElapsed || 0} years`,
+        examples: row.surname || "",
+      }));
+    default:
+      return [];
+  }
+}
+
+function _kfStandardSuggestionVizSpec(title, values, valueTitle = "Count") {
+  const rows = values.length ? values : [{
+    label: "No matching records",
+    group: "selected trees",
+    count: 0,
+    detail: "The selected tree scope did not return rows for this analysis.",
+    examples: "",
+  }];
+  return {
+    $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+    width: "container",
+    height: Math.max(240, Math.min(520, rows.length * 30)),
+    data: { values: rows },
+    mark: { type: "bar", tooltip: true, cornerRadiusEnd: 3 },
+    encoding: {
+      y: { field: "label", type: "nominal", sort: "-x", title: null, axis: { labelLimit: 260 } },
+      x: { field: "count", type: "quantitative", title: valueTitle },
+      color: { field: "group", type: "nominal", title: null },
+      tooltip: [
+        { field: "label", type: "nominal", title: title },
+        { field: "group", type: "nominal", title: "Group" },
+        { field: "count", type: "quantitative", title: valueTitle },
+        { field: "detail", type: "nominal", title: "Evidence detail" },
+        { field: "examples", type: "nominal", title: "Examples" },
+      ],
+    },
+  };
+}
+
+function _kfStandardSuggestionAnswer(kind, data, values, vizResult) {
+  if (kind === "immigrationWaves") return _kfImmigrationWaveAnswer(data, vizResult);
+  const def = _kfStandardSuggestionDef(kind);
+  const scope = _kfSuggestionScopeLabel(data);
+  const top = values[0] || null;
+  const countText = values.length.toLocaleString();
+  const topLines = values.slice(0, 4).map((row, i) =>
+    `${i + 1}. **${row.label}** - ${row.count.toLocaleString()}${row.group ? ` (${row.group})` : ""}${row.detail ? `; ${row.detail}` : ""}`
+  ).join("\n");
+  const noRows = `**In the tree**\n\nI don't know from the selected trees. The efficient ${def.title.toLowerCase()} helper did not return matching rows for **${scope}**.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened **${vizResult.title}** with a no-rows marker so the empty result is visible.` : "The visualization could not be opened."}`;
+  if (!top) return noRows;
+  let context = "This is a tree-data summary. It does not prove motive, travel path, or historical cause unless those facts are recorded in the selected trees.";
+  if (kind === "historicalOverlaps") {
+    context = "Overlap with a historical period means a person's known life or record span intersects that period. It does not prove participation.";
+  } else if (kind === "migrationJumps") {
+    context = "A jump is the distance between two consecutive placed records. A large jump with a long gap should be read as an evidence gap, not as a precise continuous journey.";
+  } else if (kind === "distantBranchMarriages") {
+    context = "Distance is computed from the earliest placed records for the spouses; it does not prove where they met.";
+  }
+  const vizLine = vizResult?.ok
+    ? `I opened **${vizResult.title}** as a chart tab using ${values.length} row${values.length === 1 ? "" : "s"}.`
+    : `I tried to open the chart, but the visualization failed: ${vizResult?.error || "unknown error"}.`;
+  return `**In the tree**\n\nFor **${scope}**, I found **${countText} ranked result${values.length === 1 ? "" : "s"}** for **${def.title.toLowerCase()}**.\n\n${topLines}\n\n**The tree suggests**\n\nThe strongest signal is **${top.label}**${top.group ? ` in **${top.group}**` : ""}. ${top.detail || "That row has the largest value returned by the bounded analysis helper."}${top.examples ? ` Example evidence: ${top.examples}.` : ""}\n\n**Historical context**\n\n${context}\n\n**Inspect**\n\n${vizLine}`;
+}
+
+async function _kfTryAnswerStandardSuggestionByKind(kind) {
+  const def = _kfStandardSuggestionDef(kind);
+  if (!def || !window.kfApi || typeof window.kfApi[def.method] !== "function" || typeof window.kfApi.showViz !== "function") return null;
+  const result = await window.kfApi[def.method]({ limit: 14 });
+  if (result?.error) return { role: "bot", content: `*[error]* ${result.error}` };
+  const values = _kfStandardSuggestionValues(kind, result);
+  const vizResult = kind === "immigrationWaves"
+    ? window.kfApi.showViz({
+        type: "vega",
+        title: "Immigration waves",
+        spec: _kfImmigrationWaveVizSpec(Array.isArray(result?.waves) ? result.waves : []),
+      })
+    : window.kfApi.showViz({
+        type: "vega",
+        title: def.title,
+        spec: _kfStandardSuggestionVizSpec(def.title, values, def.valueTitle),
+      });
+  return { role: "bot", content: _kfStandardSuggestionAnswer(kind, result, values, vizResult) };
+}
+
+async function _kfTryAnswerStandardSuggestedQuestion(userText) {
+  const kind = _kfStandardSuggestionKind(userText);
+  if (!kind) return null;
+  return _kfTryAnswerStandardSuggestionByKind(kind);
+}
+
+function _kfExtractQuestionYear(text) {
+  const match = String(text || "").match(/\b(1[5-9]\d{2}|20\d{2})\b/);
+  return match ? Number(match[1]) : Math.floor(curYear || new Date().getFullYear());
+}
+
+function _kfContextSuggestionKind(text) {
+  const q = _kfNormalizeQuestionForCache(text).toLowerCase();
+  if (/^why is .+ shown here in \d{3,4}\??$/.test(q)) return "person";
+  if (/^what should i notice about .+ family in \d{3,4}\??$/.test(q)) return "home";
+  if (q === "explain this year in plain language.") return "year";
+  if (/^why are these people visible in \d{3,4}\??$/.test(q)) return "visible";
+  if (/^summarize the migration story for the visible people in \d{3,4}\./.test(q)) return "migration";
+  if (/^explain the biggest place or cluster pattern in \d{3,4}\./.test(q)) return "cluster";
+  if (/^find the weakest location evidence in the checked trees at \d{3,4}\./.test(q)) return "weak";
+  if (/^give me the simplest way to understand these \d+ visible people\./.test(q)) return "simplify";
+  return "";
+}
+
+function _kfVisiblePlaceValuesForYear(y, limit = 12) {
+  const data = typeof _kfVisibleRowsForYear === "function" ? _kfVisibleRowsForYear(y) : null;
+  const places = data?.placeCounts instanceof Map ? data.placeCounts : new Map();
+  return Array.from(places.entries())
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, limit)
+    .map(([place, count]) => ({
+      label: place || "unknown place",
+      group: `${y}`,
+      count,
+      detail: "visible people in current map filters",
+      examples: _kfTextList((data?.rows || []).filter(row => row.placeShort === place || row.place?.startsWith(place)).map(row => row.ind?.name), 3),
+    }));
+}
+
+function _kfPersonTimelineValues(ind) {
+  return (ind?.events || [])
+    .filter(ev => Number.isFinite(Number(ev.year)))
+    .sort((a, b) => Number(a.year) - Number(b.year))
+    .slice(0, 40)
+    .map(ev => ({
+      year: Number(ev.year),
+      event: typeof _kfEventPlainLabel === "function" ? _kfEventPlainLabel(ev.type, { noun: true }) : String(ev.type || "event"),
+      place: ev.place || "",
+    }));
+}
+
+function _kfPersonTimelineVizSpec(name, values) {
+  const rows = values.length ? values : [{ year: Math.floor(curYear || 0), event: "No dated records", place: "" }];
+  return {
+    $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+    width: "container",
+    height: Math.max(180, Math.min(420, rows.length * 26)),
+    data: { values: rows },
+    mark: { type: "point", filled: true, size: 90, tooltip: true },
+    encoding: {
+      x: { field: "year", type: "quantitative", title: "Year", scale: { zero: false } },
+      y: { field: "event", type: "nominal", title: null, axis: { labelLimit: 200 } },
+      color: { field: "event", type: "nominal", title: null },
+      tooltip: [
+        { field: "year", type: "quantitative", title: "Year" },
+        { field: "event", type: "nominal", title: "Event" },
+        { field: "place", type: "nominal", title: "Place" },
+      ],
+    },
+    title: name,
+  };
+}
+
+function _kfMovedRouteValuesForYear(y, limit = 12) {
+  const data = typeof _kfYearDigestData === "function" ? _kfYearDigestData(y) : null;
+  const counts = new Map();
+  for (const moved of data?.moved || []) {
+    const from = moved.prev?.placeShort || (typeof _kfShortPlace === "function" ? _kfShortPlace(moved.prev?.place, 1) : moved.prev?.place) || "unknown";
+    const to = moved.row?.placeShort || (typeof _kfShortPlace === "function" ? _kfShortPlace(moved.row?.place, 1) : moved.row?.place) || "unknown";
+    const key = `${from} -> ${to}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([route, count]) => ({ label: route, group: `${y}`, count, detail: "visible people whose latest location changed from prior year", examples: "" }));
+}
+
+function _kfWeakEvidenceValuesForYear(y, limit = 12) {
+  const data = typeof _kfVisibleRowsForYear === "function" ? _kfVisibleRowsForYear(y) : null;
+  return (data?.rows || [])
+    .map(row => {
+      const facts = typeof _kfFactsForInd === "function" ? _kfFactsForInd(row.ind) : null;
+      const issue = facts?.issues?.[0] || "";
+      const score = (issue ? 6 : 0) + (row.evidence?.rank || 0);
+      return { row, issue, score };
+    })
+    .filter(item => item.score >= 3)
+    .sort((a, b) => b.score - a.score || String(a.row.ind?.name || "").localeCompare(String(b.row.ind?.name || "")))
+    .slice(0, limit)
+    .map(item => ({
+      label: item.row.ind?.name || "unknown person",
+      group: item.row.evidence?.label || "place evidence",
+      count: item.score,
+      detail: item.issue || `${item.row.eventLabel || "record"} ${item.row.year || y} at ${item.row.place || "unknown place"}`,
+      examples: item.row.source || "",
+    }));
+}
+
+function _kfContextViz(title, values, valueTitle = "People") {
+  return window.kfApi.showViz({
+    type: "vega",
+    title,
+    spec: _kfStandardSuggestionVizSpec(title, values, valueTitle),
+  });
+}
+
+function _kfContextSelectedPerson(kind, question) {
+  if (kind === "home" && lastRootId && lastIndiById?.has(lastRootId)) return lastIndiById.get(lastRootId);
+  if (highlightedDwell >= 0 && lastIndividuals && dwellIndi) {
+    const ind = lastIndividuals[dwellIndi[highlightedDwell]];
+    if (ind) return ind;
+  }
+  const name = String(question || "").match(/^why is (.+?) shown here in/i)?.[1] || "";
+  return name && typeof _kfFindIndi === "function" ? _kfFindIndi(name) : null;
+}
+
+async function _kfTryAnswerContextSuggestedQuestion(userText) {
+  const kind = _kfContextSuggestionKind(userText);
+  if (!kind || !window.kfApi || typeof window.kfApi.showViz !== "function") return null;
+  const y = _kfExtractQuestionYear(userText);
+  const scope = _kfSuggestionScopeLabel({});
+  if (kind === "person" || kind === "home") {
+    const ind = _kfContextSelectedPerson(kind, _kfNormalizeQuestionForCache(userText));
+    const rows = typeof _kfVisibleRowsForYear === "function" ? _kfVisibleRowsForYear(y).rows : [];
+    const visibleRow = ind ? rows.find(row => row.ind?.id === ind.id) : null;
+    const values = _kfPersonTimelineValues(ind);
+    const vizResult = window.kfApi.showViz({
+      type: "vega",
+      title: ind?.name ? `${ind.name} timeline` : "Selected person timeline",
+      spec: _kfPersonTimelineVizSpec(ind?.name || "Selected person", values),
+    });
+    const current = visibleRow
+      ? `In **${y}**, **${ind.name}** is shown at **${visibleRow.place || "an unplaced record"}** from a **${visibleRow.eventLabel || "recorded event"}** marker.`
+      : ind
+        ? `I found **${ind.name}**, but I do not see that person as a visible marker in **${y}** under the current filters.`
+        : `I do not know which person this refers to from the selected trees.`;
+    return {
+      role: "bot",
+      content: `**In the tree**\n\n${current}\n\n**The tree suggests**\n\nUse this as a person timeline, not a biography. The records show where this person is placed over time; they do not explain motive or lived experience unless a record says so.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened **${vizResult.title}** with ${values.length || 1} dated record row${values.length === 1 ? "" : "s"}.` : "The person timeline chart could not be opened."}`,
+    };
+  }
+
+  const current = typeof _kfVisibleRowsForYear === "function" ? _kfVisibleRowsForYear(y) : null;
+  const placeValues = _kfVisiblePlaceValuesForYear(y);
+  const digest = typeof _kfYearDigestData === "function" ? _kfYearDigestData(y) : null;
+  let title = `Visible places in ${y}`;
+  let values = placeValues;
+  let valueTitle = "Visible people";
+  let body = "";
+
+  if (kind === "migration") {
+    const movedValues = _kfMovedRouteValuesForYear(y);
+    if (movedValues.length) {
+      title = `Visible movement in ${y}`;
+      values = movedValues;
+      body = `The visible movement story in **${y}** has **${movedValues.length} route pattern${movedValues.length === 1 ? "" : "s"}** from people whose latest visible place changed from **${y - 1}**.`;
+    } else {
+      body = `I do not see visible people changing places from **${y - 1}** to **${y}** under the current filters. The chart shows where the visible people are concentrated instead.`;
+    }
+  } else if (kind === "cluster") {
+    title = `Biggest place patterns in ${y}`;
+    body = `The biggest visible pattern in **${y}** is place concentration: **${placeValues[0]?.label || "no dominant place"}** has **${placeValues[0]?.count || 0} visible marker${placeValues[0]?.count === 1 ? "" : "s"}**. Current clustering is **${clusterMode || "none"}**.`;
+  } else if (kind === "weak") {
+    title = `Weak evidence in ${y}`;
+    values = _kfWeakEvidenceValuesForYear(y);
+    valueTitle = "Review priority";
+    body = values.length
+      ? `I found **${values.length} visible record${values.length === 1 ? "" : "s"}** that deserve review first because the place evidence is vague or a chronology issue is attached.`
+      : `I do not see weak visible place evidence or chronology warnings in **${y}** under the current filters.`;
+  } else if (kind === "simplify") {
+    body = `The simplest reading of **${y}** is: **${(current?.count || 0).toLocaleString()} visible people**, concentrated first in **${placeValues[0]?.label || "no dominant place"}**. Start by reading the top places before individual markers.`;
+  } else if (kind === "visible") {
+    body = `These people are visible in **${y}** because their lifespan estimate includes the year, they pass the current relationship/filter settings, and they have a placed record or inferred latest location.`;
+  } else {
+    body = `In **${y}**, the current view shows **${(current?.count || 0).toLocaleString()} visible people** from **${scope}**.`;
+  }
+
+  const topPlaces = placeValues.slice(0, 3).map(row => `**${row.label}** (${row.count})`).join(", ") || "no visible places";
+  const changeLine = digest
+    ? `Compared with **${y - 1}**, the view has **${digest.appeared.length} newly visible**, **${digest.disappeared.length} no longer visible**, and **${digest.moved.length} moved** marker${digest.moved.length === 1 ? "" : "s"}.`
+    : "";
+  const vizResult = _kfContextViz(title, values, valueTitle);
+  return {
+    role: "bot",
+    content: `**In the tree**\n\n${body}\n\nTop visible places: ${topPlaces}.\n\n**The tree suggests**\n\n${changeLine || "This is a snapshot of the current filters and year, not a complete biography or a claim about everyone in the tree."}\n\n**Historical context**\n\nThis answer describes the selected tree records and current map filters. It does not infer motive, cause, or unrecorded travel.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened **${vizResult.title}** as a chart tab so the same answer has a visual reference.` : "The chart could not be opened."}`,
+  };
+}
+
+async function _kfTryAnswerSuggestedQuestion(userText) {
+  const standard = await _kfTryAnswerStandardSuggestedQuestion(userText);
+  if (standard?.content) return standard;
+  const context = await _kfTryAnswerContextSuggestedQuestion(userText);
+  if (context?.content) return context;
+  return null;
+}
+
+async function _kfTryAnswerImmigrationWavesQuestionLegacy(userText) {
+  if (!_kfIsImmigrationWavesRequest(userText)) return null;
+  if (!window.kfApi || typeof window.kfApi.getImmigrationWaves !== "function" || typeof window.kfApi.showViz !== "function") return null;
+  const data = await window.kfApi.getImmigrationWaves({ limit: 14 });
+  if (data?.error) return { role: "bot", content: `*[error]* ${data.error}` };
+  const waves = Array.isArray(data?.waves) ? data.waves : [];
+  const vizResult = window.kfApi.showViz({
+    type: "vega",
+    title: "Immigration waves",
+    spec: _kfImmigrationWaveVizSpec(waves),
+  });
+  return {
+    role: "bot",
+    content: _kfImmigrationWaveAnswer(data, vizResult),
+  };
+}
+
 async function runChatTurn(userText) {
   const deterministic = typeof _kfTryAnswerAncestryByRegionQuestion === "function"
     ? _kfTryAnswerAncestryByRegionQuestion(userText)
     : null;
   if (deterministic?.content) {
     chatHistory.push(deterministic);
+    renderChat();
+    return;
+  }
+  const suggested = await _kfTryAnswerSuggestedQuestion(userText);
+  if (suggested?.content) {
+    chatHistory.push(suggested);
     renderChat();
     return;
   }

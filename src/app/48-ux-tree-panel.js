@@ -96,8 +96,10 @@ async function _kfLoadTreeFromInventory(kind, key) {
   const busyKey = _kfTreeBusyKey(kind, key);
   _kfSetTreeInventoryBusyKey(busyKey);
   try {
+    if (typeof _kfMarkTreeSelectionTouched === "function") _kfMarkTreeSelectionTouched();
     if (kind === "cloud") await loadCloudTree(key, { suppressAutosave: true, revealPersonCard: false });
     else await loadCatalogTree(key, { suppressAutosave: true, revealPersonCard: false });
+    if (typeof _kfPersistSelectedTrees === "function") _kfPersistSelectedTrees();
   } catch (e) {
     stats.textContent = `could not load tree: ${e?.message || e}`;
     console.warn("[kf] tree inventory load:", e?.message || e);
@@ -113,6 +115,7 @@ function _kfSetLoadedTreeSelected(sourceId, selected) {
   if (selected) _kfSelectedSourceIds.add(id);
   else _kfSelectedSourceIds.delete(id);
   _kfEnsureSelectedSources();
+  if (typeof _kfPersistSelectedTrees === "function") _kfPersistSelectedTrees();
   _kfRefreshBrowserViews();
   _kfRebuildSelectedVisualization({ preserveYear: true });
   if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
@@ -132,6 +135,9 @@ async function _kfRenameLoadedTreeFromInventory(sourceId, value) {
     if (_clerkToken && _clerkUserTier !== "anon") {
       await _kfSaveLoadedTreesToCloud([src]);
       await refreshSharePanel();
+    }
+    if (_kfSelectedSourceIds.has(src.source_id) && typeof _kfPersistSelectedTrees === "function") {
+      _kfPersistSelectedTrees();
     }
     await refreshSources();
   } catch (e) {
