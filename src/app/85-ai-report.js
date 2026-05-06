@@ -1,5 +1,5 @@
-// ---------- AI Report Export ----------
-// Produces a printable local report from the current AI session. Browsers do
+// ---------- Exploration Report Export ----------
+// Produces a printable local report from the current exploration session. Browsers do
 // not let us silently write a PDF, so the report opens a print-ready window
 // with an explicit "Save as PDF" action.
 
@@ -74,9 +74,9 @@ async function _kfReportMapSnapshot() {
 
 function _kfReportTranscriptHtml(messages) {
   if (!messages.length) {
-    return `<section class="card"><h2>AI Conversation</h2><p class="muted">No AI questions or answers are in this session yet.</p></section>`;
+    return `<section class="card"><h2>Exploration Conversation</h2><p class="muted">No exploration questions or answers are in this session yet.</p></section>`;
   }
-  return `<section class="card"><h2>AI Conversation</h2>` + messages.map(m => {
+  return `<section class="card"><h2>Exploration Conversation</h2>` + messages.map(m => {
     const raw = _kfReportVisibleMessageText(m);
     const body = m.role === "user" ? `<p>${_kfReportEsc(raw)}</p>` : renderMd(raw);
     const who = m.role === "user" ? "Question" : (m.cached ? "Answer (cached)" : "Answer");
@@ -85,7 +85,7 @@ function _kfReportTranscriptHtml(messages) {
 }
 
 function _kfReportPlainText(messages) {
-  const lines = ["Kindred Flow AI Report", ""];
+  const lines = ["Kindred Flow Exploration Report", ""];
   for (const m of messages) {
     const label = m.role === "user" ? "Question" : "Answer";
     const raw = _kfReportVisibleMessageText(m);
@@ -136,7 +136,7 @@ function _kfReportHtml({ messages, snapshot, email = "" }) {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Kindred Flow AI Report</title>
+  <title>Kindred Flow Exploration Report</title>
   <style>
     :root { color-scheme: light; --ink:#151c2c; --muted:#5f6d86; --line:#dce5f0; --panel:#fff; --soft:#f4f7fb; }
     * { box-sizing:border-box; }
@@ -177,7 +177,7 @@ function _kfReportHtml({ messages, snapshot, email = "" }) {
 <body>
   <div class="toolbar"><button onclick="window.print()">Save as PDF</button>${emailTools}</div>
   <header>
-    <h1>Kindred Flow AI Report</h1>
+    <h1>Kindred Flow Exploration Report</h1>
     <div class="meta">
       <span>Generated ${_kfReportEsc(generated)}</span>
       <span>Year ${_kfReportEsc(String(Math.floor(curYear)))}</span>
@@ -198,7 +198,7 @@ async function _kfExportAiReport() {
   const email = typeof _kfCurrentAuthEmail === "function" ? _kfCurrentAuthEmail() : "";
   const html = _kfReportHtml({ messages, snapshot, email });
   const emailHtml = _kfReportHtml({ messages, snapshot, email: "" });
-  const subject = `Kindred Flow AI report - ${new Date().toLocaleDateString()}`;
+  const subject = `Kindred Flow exploration report - ${new Date().toLocaleDateString()}`;
   const filename = _kfReportFilename();
   const text = _kfReportPlainText(messages);
   const win = window.open("", "_blank", "width=1100,height=900");
@@ -234,7 +234,7 @@ async function _kfExportAiReport() {
   if (typeof _kfRecordAiArtifact === "function") {
     _kfRecordAiArtifact({
       kind: "report",
-      title: "AI session report",
+      title: "Exploration session report",
       subtitle: `${messages.filter(m => m.role === "user").length} questions, ${_kfVizList.length} visualizations`,
       action: "exportAiReport",
       key: `report:${filename}`,

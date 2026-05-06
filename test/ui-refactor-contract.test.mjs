@@ -130,3 +130,78 @@ test("responsive shell naming stays presentation-only", () => {
   assert.match(derived, /_kfResponsiveContextStripHtml/);
   assert.match(services, /responsive_shell:/);
 });
+
+test("mobile tree loading keeps automatic root detail from taking over the map", () => {
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
+  const api = readFileSync("src/app/80-kf-api.js", "utf8");
+
+  assert.match(panels, /function\s+_kfShowPersonCard\s*\(\s*di,\s*opts\s*=\s*\{\}\s*\)/);
+  assert.match(panels, /opts\.reveal\s*!==\s*false\)\s*_kfSetSideTab\("person"\)/);
+  assert.match(sources, /_kfShowPersonCard\(latest,\s*\{\s*reveal:\s*!\(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell\(\)\)\s*\}\)/);
+  assert.match(api, /_kfShowPersonCard\(highlightedDwell,\s*\{\s*reveal:\s*!\(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell\(\)\)\s*\}\)/);
+});
+
+test("local production Clerk sign-in is handled before invoking Clerk modal", () => {
+  const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
+
+  assert.match(services, /function\s+_kfUsesProductionClerkKeyLocally\s*\(/);
+  assert.match(services, /throw new Error\('Production Keys are only allowed for domain "kindredsearch\.com"\.'\)/);
+  assert.match(services, /_kfShowAuthNotice\(_kfAuthUnavailableMessage\(\),\s*\{\s*actionHref:\s*_kfLiveSignInUrl\(\)/);
+  assert.match(services, /_clerkInstance\?\.loaded === false/);
+  assert.doesNotMatch(services, /alert\(`Could not start sign-in:/);
+  assert.match(styles, /#authNotice \.authNoticeAction/);
+});
+
+test("cluster panel has one clustering command surface", () => {
+  const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
+  const cluster = readFileSync("src/app/49-ux-cluster-panel.js", "utf8");
+
+  assert.match(cluster, /id:\s*"clusterModeChoice"/);
+  assert.match(cluster, /onChange:\s*e => _kfApplyClusterMode\(e\.currentTarget\.value\)/);
+  assert.match(chrome, /clusterLensNote/);
+  assert.doesNotMatch(chrome, /v4Cluster(?:Places|Lineage|Trees|Declutter)/);
+});
+
+test("declutter clustering is active at the current zoom", () => {
+  const renderLayers = readFileSync("src/app/20-render-layers.js", "utf8");
+  const mapRuntime = readFileSync("src/app/30-map-runtime.js", "utf8");
+  const cluster = readFileSync("src/app/49-ux-cluster-panel.js", "utf8");
+
+  assert.match(cluster, /value:\s*"dispersion",\s*label:\s*"Declutter",\s*detail:\s*"Group nearby markers"/);
+  assert.doesNotMatch(renderLayers, /clusterMode === "dispersion" && zoomTransform\.k < 2/);
+  assert.doesNotMatch(mapRuntime, /clusterMode === "dispersion" && zoomTransform\.k < 2/);
+  assert.match(mapRuntime, /clusterMode === "group"\s+\|\|\s+clusterMode === "dispersion"/);
+});
+
+test("live exploration contract does not render a tagline headline", () => {
+  const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
+
+  assert.match(chrome, /id="v4ExploreContract"/);
+  assert.doesNotMatch(chrome, /Make the data felt without making it up/);
+});
+
+test("people panel uses person connection buttons as the relationship control", () => {
+  const people = readFileSync("src/app/49-ux-people-panel.js", "utf8");
+  const controls = readFileSync("src/app/60-ui-controls.js", "utf8");
+  const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
+
+  assert.match(chrome, /id="v4PeopleAll"/);
+  assert.match(chrome, /id="v4PeopleBlood"/);
+  assert.match(chrome, /id="v4PeopleAncestors"/);
+  assert.match(people, /onPointerUp:\s*_kfTogglePeopleControlsFromPointer/);
+  assert.doesNotMatch(people, /id:\s*"showFilterChoice"/);
+  assert.doesNotMatch(people, /label:\s*"People shown"/);
+  assert.doesNotMatch(controls, /showFilterChoice/);
+});
+
+test("responsive bottom tabs are tap targets, not sheet drag handles", () => {
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
+
+  assert.match(panels, /_kfInstallResponsiveSheetDrag\(_responsiveSheetHandleEl\)/);
+  assert.doesNotMatch(panels, /_kfInstallResponsiveSheetDrag\(_responsiveSheetTabsEl/);
+  assert.match(styles, /#sideTabs\s*\{[^}]*touch-action:pan-x/s);
+  assert.match(styles, /#sideTabs button\s*\{[^}]*touch-action:manipulation/s);
+});

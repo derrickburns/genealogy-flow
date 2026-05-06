@@ -92,6 +92,151 @@ async function waitFor(client, expression, label, timeoutMs = 20000, predicate =
   throw new Error(`Timed out waiting for ${label}. Last value: ${JSON.stringify(lastValue)}`);
 }
 
+async function tapSelector(client, selector, label) {
+  const encoded = JSON.stringify(selector);
+  await client.eval(`document.querySelector(${encoded})?.scrollIntoView({ block: "center", inline: "center" })`);
+  await sleep(80);
+  const rect = await waitFor(
+    client,
+    `(() => {
+      const el = document.querySelector(${encoded});
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return {
+        x: r.left + r.width / 2,
+        y: r.top + r.height / 2,
+        width: r.width,
+        height: r.height,
+        visible: r.width > 0 && r.height > 0 &&
+          r.left >= 0 && r.right <= (window.innerWidth || document.documentElement.clientWidth) &&
+          r.top >= 0 && r.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+          style.visibility !== "hidden" && style.display !== "none",
+        disabled: !!el.disabled
+      };
+    })()`,
+    label,
+    10000,
+    value => value?.visible && !value?.disabled,
+  );
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: rect.x, y: rect.y, id: 1, radiusX: 4, radiusY: 4, force: 1 }],
+  });
+  await sleep(60);
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(180);
+}
+
+function paneAssertion(tab, textPattern) {
+  return `(() => {
+    const tree = window.kfDebug.treeSnapshot();
+    const panel = document.getElementById("panel");
+    const activePane = ${JSON.stringify(tab)} === "map"
+      ? document.getElementById("mapWrap")
+      : document.querySelector("#chatPanel .sidePane.on");
+    const visibleText = ${JSON.stringify(tab)} === "map"
+      ? document.body.innerText
+      : activePane?.innerText || "";
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const controls = [...(activePane || document).querySelectorAll("button,input,select,textarea,[role='button']")]
+      .filter(el => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
+      })
+      .map(el => {
+        const r = el.getBoundingClientRect();
+        return {
+          label: el.innerText || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.id || el.tagName,
+          left: r.left,
+          right: r.right,
+          width: r.width,
+          height: r.height
+        };
+      });
+    const offscreen = controls.filter(c => c.left < -1 || c.right > viewportWidth + 1 || c.width < 8 || c.height < 8);
+    const horizontalOverflow = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > viewportWidth + 2;
+    return {
+      ok: tree.layout.tab === ${JSON.stringify(tab)} &&
+        panel?.dataset.activeTab === ${JSON.stringify(tab)} &&
+        (${JSON.stringify(tab)} === "map" ? tree.layout.sheet === "peek" : tree.layout.sheet !== "peek") &&
+        ${textPattern}.test(visibleText) &&
+        !horizontalOverflow &&
+        offscreen.length === 0,
+      tab: tree.layout.tab,
+      sheet: tree.layout.sheet,
+      activeTab: panel?.dataset.activeTab,
+      horizontalOverflow,
+      offscreen,
+      visibleText: visibleText.slice(0, 900),
+      errors: window.kfDebug.clientErrors?.() || []
+    };
+  })()`;
+}
+
+async function auditCompactInteractions(client, name) {
+  const tabs = [
+    ["map", /alive\/maybe alive|last known locations/i],
+    ["person", /Person connection|visible now/i],
+    ["cluster", /Pattern discovery|How to group people/i],
+    ["trees", /Trees|Visualized/i],
+    ["tour", /Why this view looks this way|this view/i],
+    ["chat", /Live exploration|Evidence first/i],
+  ];
+  for (const [tab, pattern] of tabs) {
+    await tapSelector(client, `#sideTabs [data-side-tab="${tab}"]`, `${name} ${tab} tab`);
+    const state = await waitFor(client, paneAssertion(tab, pattern), `${name} ${tab} visual utility`, 15000, value => !!value?.ok);
+    assert.equal(state.errors.length, 0, `${name} ${tab} should not record client errors`);
+  }
+
+  await tapSelector(client, `#sideTabs [data-side-tab="person"]`, `${name} people tab`);
+  await tapSelector(client, "#v4PeopleBlood", `${name} blood relatives button`);
+  assert.equal(await client.eval(`document.getElementById("filt")?.value`), "blood", `${name} blood filter should activate`);
+  await tapSelector(client, "#v4PeopleAncestors", `${name} ancestors button`);
+  assert.equal(await client.eval(`document.getElementById("filt")?.value`), "ancestors", `${name} ancestors filter should activate`);
+  await tapSelector(client, "#v4PeopleAll", `${name} everyone button`);
+  assert.equal(await client.eval(`document.getElementById("filt")?.value`), "all", `${name} everyone filter should reset`);
+  await tapSelector(client, "#v4PeopleKin", `${name} kin lines button`);
+  assert.ok((await client.eval(`window.kfApi.getState().kinLines`)) > 0, `${name} kin lines should turn on`);
+  const displayOptionsWasHidden = await client.eval(`document.getElementById("peopleControlsBody")?.hidden`);
+  await tapSelector(client, "#peopleControlsToggle", `${name} display options toggle`);
+  assert.notEqual(
+    await client.eval(`document.getElementById("peopleControlsBody")?.hidden`),
+    displayOptionsWasHidden,
+    `${name} display options should toggle`,
+  );
+
+  await tapSelector(client, `#sideTabs [data-side-tab="cluster"]`, `${name} cluster tab`);
+  await client.eval(`(() => {
+    const select = document.getElementById("clusterModeChoice");
+    select.value = "dispersion";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  await waitFor(client, `window.kfApi.getState().clusterMode === "dispersion"`, `${name} declutter mode`);
+  await client.eval(`(() => {
+    const range = document.getElementById("clusterRadiusMain");
+    range.value = "44";
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  assert.equal(await client.eval(`document.getElementById("clusterRadiusMainLabel")?.textContent`), "44", `${name} cluster radius label should update`);
+
+  await tapSelector(client, `#sideTabs [data-side-tab="chat"]`, `${name} explore tab`);
+  const chatToolsVisible = await client.eval(`(() => {
+    const el = document.getElementById("chatTools");
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+  })()`);
+  if (chatToolsVisible) {
+    await tapSelector(client, "#chatTools", `${name} chat tools toggle`);
+    assert.match(await client.eval(`document.getElementById("chatTools")?.textContent || ""`), /tools/i, `${name} tools toggle remains visible`);
+  } else {
+    assert.match(await client.eval(`document.getElementById("chatLock")?.innerText || ""`), /Live exploration|API key|Sign in/i, `${name} locked Explore state should explain access`);
+  }
+}
+
 async function runCase({ name, width, height, compact }) {
   const target = await createTarget();
   const client = new CdpClient(target.webSocketDebuggerUrl);
@@ -106,6 +251,9 @@ async function runCase({ name, width, height, compact }) {
       screenWidth: width,
       screenHeight: height,
     });
+    if (compact) {
+      await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    }
     const url = `${appUrl}${appUrl.includes("?") ? "&" : "?"}smoke=${encodeURIComponent(name)}-${Date.now()}`;
     await client.send("Page.navigate", { url });
     await waitFor(client, "document.readyState === 'complete'", `${name} document load`);
@@ -115,7 +263,17 @@ async function runCase({ name, width, height, compact }) {
       `${name} demo tree load`,
       30000,
     );
-    await client.eval(`document.querySelector('#sideTabs [data-side-tab="trees"]')?.click()`);
+    const initialSnapshot = await client.eval(`window.kfDebug.treeSnapshot()`);
+    if (compact) {
+      assert.equal(initialSnapshot.layout.tab, "map", `${name} should start map-first after tree load`);
+      assert.equal(initialSnapshot.layout.sheet, "peek", `${name} should keep the sheet collapsed after tree load`);
+    }
+    if (compact) {
+      await auditCompactInteractions(client, name);
+      await tapSelector(client, `#sideTabs [data-side-tab="trees"]`, `${name} trees tab`);
+    } else {
+      await client.eval(`document.querySelector('#sideTabs [data-side-tab="trees"]')?.click()`);
+    }
     const snapshot = await waitFor(
       client,
       `(() => {

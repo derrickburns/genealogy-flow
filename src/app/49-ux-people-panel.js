@@ -58,7 +58,6 @@ function _kfPeopleControlsModel() {
     kin,
     surname,
     surnameOptions,
-    showHelp: showOption.help,
     sexHelp: sexOption.help,
     kinHelp: kinOption.help,
     surnameHelp: surnameOptions.length
@@ -71,14 +70,6 @@ function _kfPeopleControlsModel() {
       kin ? `${kin} kin lines` : "no lines",
     ].join(" · "),
   };
-}
-
-function _kfApplyPeopleShowFilter(value) {
-  const hiddenFilter = $("filt");
-  if (!hiddenFilter) return;
-  hiddenFilter.value = value || "all";
-  hiddenFilter.dispatchEvent(new Event("change", { bubbles: true }));
-  _kfRenderPeopleControls();
 }
 
 function _kfApplyPeopleSurname(value) {
@@ -112,6 +103,27 @@ function _kfTogglePeopleControls() {
   _kfRenderPeopleControls();
 }
 
+function _kfTogglePeopleControlsFromPointer(e) {
+  if (e?.pointerType === "mouse") return;
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  const target = e?.currentTarget;
+  if (target) {
+    target.dataset.kfTapHandled = "1";
+    setTimeout(() => { delete target.dataset.kfTapHandled; }, 500);
+  }
+  _kfTogglePeopleControls();
+}
+
+function _kfTogglePeopleControlsFromClick(e) {
+  if (e?.currentTarget?.dataset.kfTapHandled === "1") {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  _kfTogglePeopleControls();
+}
+
 function _kfSetPeopleControlsCollapsed(collapsed) {
   if (typeof _kfSetPeopleUxState === "function") _kfSetPeopleUxState({ controlsCollapsed: !!collapsed });
   _kfRenderPeopleControls();
@@ -141,7 +153,8 @@ function KfPeopleControls({ model }) {
       type: "button",
       "aria-expanded": model.collapsed ? "false" : "true",
       "aria-controls": "peopleControlsBody",
-      onClick: _kfTogglePeopleControls,
+      onPointerUp: _kfTogglePeopleControlsFromPointer,
+      onClick: _kfTogglePeopleControlsFromClick,
     },
       h("span", null, "Display options"),
       h("small", { id: "peopleControlsSummary" }, model.summary),
@@ -151,15 +164,6 @@ function KfPeopleControls({ model }) {
       class: "paneDisclosureBody optionSelectorGrid peopleSelectorGrid",
       hidden: model.collapsed,
     },
-      h(KfPeopleSelect, {
-        id: "showFilterChoice",
-        helpId: "showFilterHelp",
-        label: "People shown",
-        value: model.show,
-        options: KF_PEOPLE_SHOW_OPTIONS,
-        help: model.showHelp,
-        onChange: _kfApplyPeopleShowFilter,
-      }),
       h("section", { class: "optionCard peopleOptionCard" },
         h("label", { for: "surnameSelect" }, "Surname"),
         h("span", {

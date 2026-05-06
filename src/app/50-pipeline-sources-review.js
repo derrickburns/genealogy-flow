@@ -1557,7 +1557,9 @@ async function processFile(file) {
       highlightedDwell = latest;
       highlightInferredYear = -1;
       highlightInferredSrcYear = -1;
-      if (typeof _kfShowPersonCard === "function") _kfShowPersonCard(latest);
+      if (typeof _kfShowPersonCard === "function") {
+        _kfShowPersonCard(latest, { reveal: !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell()) });
+      }
     }
   }
   // Start playback from 1900 so the user immediately sees migration in motion.

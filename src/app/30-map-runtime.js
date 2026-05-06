@@ -11,7 +11,7 @@ function _kfIsClusterSelectionMode() {
   return clusterMode !== "none" && !!_kfActiveLens === false &&
     (clusterMode === "aggregate" || clusterMode === "pie" || clusterMode === "parents" ||
      clusterMode === "gender"    || clusterMode === "tree" || clusterMode === "state" ||
-     clusterMode === "group"     || (clusterMode === "dispersion" && zoomTransform.k < 2));
+     clusterMode === "group"     || clusterMode === "dispersion");
 }
 
 function _kfPickDeckClusterAt(x, y) {
@@ -32,7 +32,7 @@ function _kfPickDeckClusterAt(x, y) {
 }
 
 function _kfPickClusterAt(x, y) {
-  if (clusterMode === "aggregate" || (clusterMode === "dispersion" && zoomTransform.k < 2)) {
+  if (clusterMode === "aggregate" || clusterMode === "dispersion") {
     return _kfPickDeckClusterAt(x, y);
   }
   return _kfHitTestFxCluster(x, y);
@@ -478,13 +478,13 @@ function updateMapLegend() {
     html += hdr("US States");
     html += `<div style="font-size:10px;color:#566480;">Color and label show the state abbreviation. Circle size = people count.</div>`;
   } else if (clusterMode === "group") {
-    html += hdr(_kfActiveGroupSetLabel ? _kfActiveGroupSetLabel() : "AI groups");
+    html += hdr(_kfActiveGroupSetLabel ? _kfActiveGroupSetLabel() : "Exploration groups");
     const entries = groupLegendEntries || [];
     if (entries.length) {
       for (const entry of entries) html += dot(entry.color, entry.label, entry.total, entry.visible);
-      html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count. Color = AI-defined group.</div>`;
+      html += `<div style="font-size:10px;color:#9aa6bc;margin-top:3px;">Circle size = people count. Color = exploration-defined group.</div>`;
     } else {
-      html += `<div style="font-size:10px;color:#566480;">No active AI group members are visible for this year.</div>`;
+      html += `<div style="font-size:10px;color:#566480;">No active exploration-group members are visible for this year.</div>`;
     }
   } else {
     // "none" or unknown — show individual particle legend
@@ -685,13 +685,13 @@ function frame(activeTrailFade) {
   const lo = lowerBound(dwellY, dwellOrder, y - dw), hi = lowerBound(dwellY, dwellOrder, y + 1);
   fxCtx.textAlign = "left"; fxCtx.textBaseline = "middle";
   const renderClusters = clusterMode !== "none" && clusterMode !== "dispersion";
-  const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
+  const useDispersion = clusterMode === "dispersion";
   const useClusterReplace = renderClusters;
   // Aggregate and dispersion (at low zoom) cluster modes are drawn by deck.gl.
   // The fxCanvas cluster path is only kept for "pie" which has no clean deck.gl equivalent.
   const clusterOnDeck = !!_kfDeckOverlay && (
        clusterMode === "aggregate"
-    || (clusterMode === "dispersion" && zoomTransform.k < 2)
+    || clusterMode === "dispersion"
   );
   if ((renderClusters || useDispersion) && !clusterOnDeck) {
     // Cluster aggregation now uses the person-marker set — one dwell entry
@@ -1426,6 +1426,7 @@ function tick(now) {
       const pct = (curYear - parseFloat(range.min)) / Math.max(1, parseFloat(range.max) - parseFloat(range.min));
       yearThumbLabelEl.style.setProperty("--year-pos", (pct * 100) + "%");
     }
+    if (typeof _kfRefreshTimelineChrome === "function") _kfRefreshTimelineChrome();
     updateMapLegend();
     _kfRefreshLoopControls();
     if (_kfIsCompactLayout() && typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome();

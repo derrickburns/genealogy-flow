@@ -1100,7 +1100,7 @@ function _kfDwellLayersReplaced() {
   // Cluster modes replace the dot view with a different visualization. Hide
   // the person layer when one of those is active so deck doesn't paint dots
   // underneath the cluster overlay.
-  const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
+  const useDispersion = clusterMode === "dispersion";
   return clusterMode === "aggregate" || clusterMode === "pie"
       || clusterMode === "parents"   || clusterMode === "gender"
       || clusterMode === "tree"      || clusterMode === "state"
@@ -1456,7 +1456,7 @@ function _kfGetClustersForDeck() {
 
 function makeAggregateLayer() {
   const isAggregate = clusterMode === "aggregate"
-                   || (clusterMode === "dispersion" && zoomTransform.k < 2);
+                   || clusterMode === "dispersion";
   if (!isAggregate) return null;
   if (!deck || !deck.ScatterplotLayer) return null;
   const data = _kfGetClustersForDeck();
@@ -1485,7 +1485,7 @@ function makeAggregateLayer() {
 
 function makeAggregateLabelsLayer() {
   const isAggregate = clusterMode === "aggregate"
-                   || (clusterMode === "dispersion" && zoomTransform.k < 2);
+                   || clusterMode === "dispersion";
   if (!isAggregate) return null;
   if (!deck || !deck.TextLayer) return null;
   const data = _kfGetClustersForDeck();
@@ -1560,7 +1560,7 @@ function makeFlowLayer() {
   if (!flowFromLat || !flowFromLat.length) return null;
   if (typeof deck === "undefined" || !deck.ScatterplotLayer) return null;
   // Same cluster-mode hide as dwells.
-  const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
+  const useDispersion = clusterMode === "dispersion";
   const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
                     || clusterMode === "parents"   || clusterMode === "gender"
                     || clusterMode === "tree"      || clusterMode === "state"
@@ -1664,7 +1664,7 @@ function _kfObservationPulse(i, y = curYear) {
 function makeFlowOriginUncertaintyLayer() {
   if (!flowFromLat || !flowFromLat.length) return null;
   if (typeof deck === "undefined" || !deck.ScatterplotLayer) return null;
-  const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
+  const useDispersion = clusterMode === "dispersion";
   const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
                     || clusterMode === "parents"   || clusterMode === "gender"
                     || clusterMode === "tree"      || clusterMode === "state"
@@ -1780,7 +1780,7 @@ function makeFlowObservationArcLayer() {
 function makeFlowDestLayer() {
   if (!flowFromLat || !flowFromLat.length) return null;
   if (typeof deck === "undefined" || !deck.ScatterplotLayer) return null;
-  const useDispersion = clusterMode === "dispersion" && zoomTransform.k < 2;
+  const useDispersion = clusterMode === "dispersion";
   const replaceMode = clusterMode === "aggregate" || clusterMode === "pie"
                     || clusterMode === "parents"   || clusterMode === "gender"
                     || clusterMode === "tree"      || clusterMode === "state"

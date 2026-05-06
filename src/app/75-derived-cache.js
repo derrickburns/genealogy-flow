@@ -322,7 +322,7 @@ async function _kfAskQuestion(text, opts = {}) {
     }
     chatInputEl.value = displayText || requestText;
     chatInputEl.focus();
-    return { error: "Claude is already answering a question" };
+    return { error: "Live exploration is already answering a question" };
   }
   if (typeof _kfActiveChatTurnKey !== "undefined") _kfActiveChatTurnKey = "";
   chatHistory.push({ role: "user", content: displayText || requestText });
@@ -600,7 +600,7 @@ function _kfResponsiveConceptCardsHtml() {
   if (typeof _kfUsesResponsiveShell === "function" && !_kfUsesResponsiveShell()) return "";
   return `<div class="responsiveConceptCards" aria-label="How to read this view">` +
     `<div class="responsiveConceptCard"><b>Time changes the map.</b><span>Markers are people alive or possibly alive in the selected year.</span></div>` +
-    `<div class="responsiveConceptCard"><b>Trees define scope.</b><span>Checked trees control the map, clusters, AI, and search.</span></div>` +
+    `<div class="responsiveConceptCard"><b>Trees define scope.</b><span>Checked trees control the map, clusters, context, and live exploration.</span></div>` +
     `<div class="responsiveConceptCard"><b>Movement is evidence.</b><span>Long gaps animate near the destination year so we do not imply decades of travel.</span></div>` +
     `<div class="responsiveConceptCard"><b>Clusters are shortcuts.</b><span>Tap a cluster to understand a branch before reading individual records.</span></div>` +
     `</div>`;
@@ -608,14 +608,22 @@ function _kfResponsiveConceptCardsHtml() {
 
 function _kfYearTourHtml() {
   if (!timelineLoaded || !lastIndividuals) {
-    return _kfYearDigestHeaderHtml("Guided tour") +
+    return `<div class="contextSheet">` +
+      `<section class="contextHeroCard">` +
+        `<div class="sheetEyebrow">What you are seeing</div>` +
+        `<h3>Load a tree to make the movement visible</h3>` +
+        `<p>Select one or more trees, then scrub the timeline to see people, places, uncertainty halos, and relationship patterns.</p>` +
+      `</section>` +
       _kfResponsiveConceptCardsHtml() +
-      `<ul class="year-digest-list"><li>Load one or more GEDCOM trees to enable the year tour.</li></ul>`;
+    `</div>`;
   }
   const y = Math.floor(curYear);
   const d = _kfYearDigestData(y);
   const sourceBits = _kfMapTopLabels(d.current.sourceCounts, 3);
   const placeBits = _kfMapTopLabels(d.current.placeCounts, 3);
+  const selected = highlightedDwell >= 0 && lastIndividuals ? lastIndividuals[dwellIndi[highlightedDwell]] : null;
+  const root = lastRootId && lastIndiById ? lastIndiById.get(lastRootId) : null;
+  const anchor = selected || root || null;
   const lines = [];
   lines.push(`${d.current.count.toLocaleString()} people are visible under the current tree/filter scope.`);
   if (sourceBits.length) lines.push(`Largest loaded sources in this view: ${sourceBits.join(", ")}.`);
@@ -630,15 +638,37 @@ function _kfYearTourHtml() {
   }
   if (_kfShowDataQualityConcerns && d.weak.length) lines.push(`${d.weak.length.toLocaleString()} visible markers have weak place evidence; use "weak evidence" to review them.`);
   if (!lines.length) lines.push("This year has no notable marker changes under the current filters.");
-  return _kfYearDigestHeaderHtml(`Guided tour for ${y}`, _kfViewModeLabel()) +
-    _kfResponsiveConceptCardsHtml() +
-    `<div class="year-digest-metrics">` +
-      _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
-      _kfYearDigestMetricHtml(d.current.exact.toLocaleString(), "specific") +
-      (_kfShowDataQualityConcerns ? _kfYearDigestMetricHtml(d.current.weak.toLocaleString(), "weak") : "") +
-      _kfYearDigestMetricHtml(d.moved.length.toLocaleString(), "move") +
-    `</div>` +
-    `<ul class="year-digest-list">${lines.slice(0, 6).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>`;
+  const movementLine = d.moved.length
+    ? `${d.moved.length.toLocaleString()} visible ${d.moved.length === 1 ? "person has" : "people have"} a changed recorded place since ${y - 1}.`
+    : `No visible person-marker changed place since ${y - 1}.`;
+  const placeLine = placeBits.length
+    ? `The current records point most often to ${placeBits.join(", ")}.`
+    : "No dominant recorded place stands out under the current filters.";
+  const uncertaintyLine = d.weak.length
+    ? `${d.weak.length.toLocaleString()} visible marker${d.weak.length === 1 ? "" : "s"} use weak place evidence. Halos show approximation, not precision.`
+    : "Visible markers have no obvious weak-place warning under the current setting.";
+  return `<div class="contextSheet">` +
+    `<section class="contextHeroCard">` +
+      `<div class="sheetEyebrow">What you are seeing</div>` +
+      `<h3>${escHtml(y)} · ${escHtml(_kfViewModeLabel())}</h3>` +
+      `<p>${escHtml(movementLine)}</p>` +
+      `<div class="year-digest-metrics">` +
+        _kfYearDigestMetricHtml(d.current.count.toLocaleString(), "shown") +
+        _kfYearDigestMetricHtml(d.current.exact.toLocaleString(), "specific") +
+        (_kfShowDataQualityConcerns ? _kfYearDigestMetricHtml(d.current.weak.toLocaleString(), "weak") : "") +
+        _kfYearDigestMetricHtml(d.moved.length.toLocaleString(), "move") +
+      `</div>` +
+    `</section>` +
+    `<section class="contextCardGrid">` +
+      `<div class="contextInfoCard primary"><b>Place feeling</b><span>${escHtml(placeLine)}</span></div>` +
+      `<div class="contextInfoCard"><b>Person connection</b><span>${escHtml(anchor ? `${_kfNameShort(anchor.name)} anchors the current story ribbon.` : "Select a marker to connect this year to a specific person.")}</span></div>` +
+      `<div class="contextInfoCard warn"><b>I don't know is a real answer</b><span>${escHtml(uncertaintyLine)}</span></div>` +
+    `</section>` +
+    `<section class="contextNotesCard">` +
+      `<div class="sheetEyebrow">Current evidence notes</div>` +
+      `<ul class="year-digest-list">${lines.slice(0, 6).map(line => `<li>${escHtml(line)}</li>`).join("")}</ul>` +
+    `</section>` +
+  `</div>`;
 }
 
 function _kfHideYearDigest() {
@@ -704,7 +734,7 @@ function _kfShowOutlierReport(limit = 8) {
     content: _kfOutlierReportMarkdown(limit),
     chips: [
       {
-        label: "Ask Claude to investigate",
+        label: "Explore evidence",
         method: "chat",
         args: `Find the weakest location evidence in the checked trees at ${Math.floor(curYear)} and explain what should be verified first.`,
       },
@@ -738,7 +768,7 @@ function _kfExplainCurrentView() {
     role: "bot",
     content: _kfCurrentViewExplanationMarkdown(),
     chips: [
-      { label: "Tour this year", method: "showYearTour", args: null },
+      { label: "Explain this year", method: "showYearTour", args: null },
       ...(_kfShowDataQualityConcerns ? [{ label: "Review weak evidence", method: "showOutliers", args: 8 }] : []),
     ],
   });

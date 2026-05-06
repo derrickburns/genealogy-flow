@@ -204,7 +204,9 @@ function _kfRebuildSelectedVisualization(opts = {}) {
   highlightInferredYear = -1;
   highlightInferredSrcYear = -1;
   if (highlightedDwell >= 0 && opts.centerRoot) centerOnGeo(dwellLon[highlightedDwell], dwellLat[highlightedDwell]);
-  if (highlightedDwell >= 0 && opts.selectRoot && typeof _kfShowPersonCard === "function") _kfShowPersonCard(highlightedDwell);
+  if (highlightedDwell >= 0 && opts.selectRoot && typeof _kfShowPersonCard === "function") {
+    _kfShowPersonCard(highlightedDwell, { reveal: !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell()) });
+  }
 
   _kfBuildSurnameTopN(12);
   _kfRenderSurnameChips();
@@ -1663,30 +1665,30 @@ window.kfApi = {
     const valid = ["none", "pie", "parents", "gender", "tree", "state", "group", "dispersion"];
     if (!valid.includes(mode)) return { error: "valid modes: " + valid.join(", ") };
     if (mode === "group" && !(typeof _kfEnsureActiveGroupRuntime === "function" && _kfEnsureActiveGroupRuntime())) {
-      return { error: "create or activate an AI group set before selecting AI group clustering" };
+      return { error: "create or activate an exploration group set before selecting exploration group clustering" };
     }
     $("clusterMode").value = mode;
     $("clusterMode").dispatchEvent(new Event("change", { bubbles: true }));
     return { ok: true, clusterMode: mode };
   },
   createGroupSet(input) {
-    if (typeof _kfCreateGroupSet !== "function") return { error: "AI group sets are not ready" };
+    if (typeof _kfCreateGroupSet !== "function") return { error: "exploration group sets are not ready" };
     return _kfCreateGroupSet(input);
   },
   activateGroupSet(input) {
-    if (typeof _kfActivateGroupSet !== "function") return { error: "AI group sets are not ready" };
+    if (typeof _kfActivateGroupSet !== "function") return { error: "exploration group sets are not ready" };
     return _kfActivateGroupSet(input);
   },
   listGroupSets() {
-    if (typeof _kfListGroupSets !== "function") return { error: "AI group sets are not ready" };
+    if (typeof _kfListGroupSets !== "function") return { error: "exploration group sets are not ready" };
     return _kfListGroupSets();
   },
   saveGroupSet(input) {
-    if (typeof _kfSaveGroupSet !== "function") return { error: "AI group sets are not ready" };
+    if (typeof _kfSaveGroupSet !== "function") return { error: "exploration group sets are not ready" };
     return _kfSaveGroupSet(input);
   },
   deleteGroupSet(input) {
-    if (typeof _kfDeleteGroupSet !== "function") return { error: "AI group sets are not ready" };
+    if (typeof _kfDeleteGroupSet !== "function") return { error: "exploration group sets are not ready" };
     return _kfDeleteGroupSet(input);
   },
   showYearTour() {
@@ -2312,7 +2314,7 @@ window.kfApi = {
   },
 
   exportAiReport() {
-    if (typeof _kfExportAiReport !== "function") return { error: "AI report export is not ready" };
+    if (typeof _kfExportAiReport !== "function") return { error: "exploration report export is not ready" };
     return _kfExportAiReport();
   },
 

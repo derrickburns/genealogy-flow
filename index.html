@@ -19,7 +19,7 @@
     <div class="splashKicker">Kindred Series</div>
     <h1 id="splashTitle">Kindred Flow maps family history through time.</h1>
     <p>Kindred Flow is a genealogy viewer produced by Parthenian, LLC as part of the Kindred series of products. It turns family-tree data into an interactive map and timeline so you can see where people lived, how families moved, and how branches relate across places and generations.</p>
-    <p>You can load GEDCOM family-tree files, select one or more trees, animate migration over time, inspect people and clusters, ask the Kindred AI genealogist questions, and share trees with other signed-in users.</p>
+    <p>You can load GEDCOM family-tree files, select one or more trees, animate migration over time, inspect people and clusters, explore the selected data with evidence-backed questions, and share trees with other signed-in users.</p>
     <p class="splashDeviceNote">Sign in on any device to see the trees you own and the trees shared with you. You can load GEDCOM family-tree files, save loaded tree data on Kindred servers for 7 days free of charge, and share tree data with other signed-in users. Shared tree data is stored on Kindred servers, and you may delete or update it at any time.</p>
     <button type="button" id="splashDismiss">Enter Kindred Flow</button>
   </div>
@@ -31,7 +31,7 @@
     <p>Kindred Flow is provided by Parthenian, LLC for exploratory genealogy visualization. You must accept these terms to continue.</p>
     <div class="termsScroll" tabindex="0">
       <h3>Use at your own risk</h3>
-      <p>The service, maps, visualizations, geocoding, AI responses, and data-quality workarounds are provided "as is" and "as available" without warranties of any kind. Genealogy records can be incomplete, incorrect, ambiguous, or private. AI responses can be wrong.</p>
+      <p>The service, maps, visualizations, geocoding, live exploration responses, and data-quality workarounds are provided "as is" and "as available" without warranties of any kind. Genealogy records can be incomplete, incorrect, ambiguous, or private. Exploration responses can be wrong.</p>
       <h3>No professional advice</h3>
       <p>Kindred Flow does not provide legal, medical, financial, historical-certification, or professional genealogy advice. You are responsible for independently verifying any conclusion before relying on it.</p>
       <h3>Your data and permissions</h3>
@@ -39,7 +39,7 @@
       <h3>Privacy of living people</h3>
       <p>You should not upload or share sensitive information about living people unless you have appropriate permission. The public DEMO tree anonymizes living people for privacy.</p>
       <h3>Third-party services</h3>
-      <p>The app may use third-party services for authentication, hosting, geocoding, maps, issue reporting, email delivery, and AI. Their services may fail, change, or process data under their own terms.</p>
+      <p>The app may use third-party services for authentication, hosting, geocoding, maps, issue reporting, email delivery, and language-model exploration. Their services may fail, change, or process data under their own terms.</p>
       <h3>Limitation of liability</h3>
       <p>To the maximum extent permitted by law, Parthenian, LLC and its owners, employees, contractors, and affiliates are not liable for indirect, incidental, consequential, special, exemplary, punitive, or data-loss damages, or for decisions made from app output.</p>
       <h3>Indemnity</h3>
@@ -63,8 +63,16 @@
   </div>
 </div>
 <div id="authBar">
-  <div class="topBrand">Kindred Flow</div>
+  <div class="topBrand"><span class="topBrandDot" aria-hidden="true"></span><span>Kindred Flow</span></div>
+  <div class="topProduct">Genealogy workbench</div>
   <span class="authSpacer"></span>
+  <div id="topScopeChip" class="topScopeChip" aria-live="polite">
+    <span class="topScopeDot" aria-hidden="true"></span>
+    <span id="topScopeText">Tree scope · loading...</span>
+  </div>
+  <span class="authSpacer secondary"></span>
+  <button id="reportIssueTop" type="button">Report issue</button>
+  <button id="helpBtn" type="button">Help</button>
   <button id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false" title="Account">
     <span id="accountIcon" aria-hidden="true"></span>
     <span id="accountLabel">Sign in</span>
@@ -94,7 +102,7 @@
     <input type="range" id="rot" min="-180" max="180" step="1" value="0">
     <select id="colorMode"><option value="lineage" selected>maternal/paternal</option><option value="gender">gender</option><option value="tree">tree</option></select>
     <select id="borderLayer"><option value="modern">modern</option><option value="historical" selected>historical</option></select>
-    <select id="clusterMode"><option value="none" selected>none</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="group">AI groups</option><option value="dispersion">on zoom</option></select>
+    <select id="clusterMode"><option value="none" selected>none</option><option value="pie">lineage pies</option><option value="parents">parent knowledge</option><option value="gender">gender breakdown</option><option value="tree">by gedcom tree</option><option value="state">by US state</option><option value="group">exploration groups</option><option value="dispersion">on zoom</option></select>
     <input type="range" id="clusterRadius" min="10" max="80" step="2" value="30"><b id="clusterRadiusLabel">30</b>
     <input type="range" id="kinN" min="0" max="20" step="1" value="0"><b id="kinNLabel">0</b>
     <div id="clusterSection"></div>
@@ -111,27 +119,52 @@
 <div id="vizTabBar" hidden></div>
 <div id="mapWrap"><div id="map"></div><canvas id="gl"></canvas><canvas id="base"></canvas><canvas id="fx"></canvas><div id="yearWatermark"></div><div id="hoverTip" class="hoverTip"></div><div id="responsiveContextStrip" class="responsiveContextStrip" hidden></div>
 <div id="mapLegend" class="hidden" style="position:absolute;bottom:28px;left:10px;z-index:10;background:rgba(255,255,255,0.88);border:1px solid #c0ccd8;border-radius:7px;padding:7px 10px;font-size:11px;color:#566480;line-height:1.7;pointer-events:none;min-width:150px;"></div>
+<div id="mapStoryRibbon" class="mapStoryRibbon" aria-live="polite">
+  <div id="mapStoryAvatar" class="mapStoryAvatar">KF</div>
+  <div class="mapStoryBody">
+    <div class="mapStoryHead">
+      <span id="mapStoryName">Select a person to feel the path</span>
+      <span id="mapStoryRelation">evidence-backed movement</span>
+    </div>
+    <div id="mapStoryRoute" class="mapStoryRoute">Use the timeline and map markers to see how recorded places connect across generations.</div>
+  </div>
+  <button id="mapStoryAction" type="button">Follow their path</button>
+</div>
 <div id="vizPane">
   <div id="vizPaneHeader">
-    <button id="vizSpecToggle" title="Toggle between rendered visualization and the raw spec Claude sent" style="background:none; border:1px solid #c0ccd8; border-radius:3px; padding:2px 8px; cursor:pointer; font:inherit; font-size:11px; color:#566480; margin-right:6px;">spec</button>
+    <button id="vizSpecToggle" title="Toggle between rendered visualization and the raw spec" style="background:none; border:1px solid #c0ccd8; border-radius:3px; padding:2px 8px; cursor:pointer; font:inherit; font-size:11px; color:#566480; margin-right:6px;">spec</button>
   </div>
   <iframe id="vizFrame" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Visualization (sandboxed)"></iframe>
 </div>
 </div>
   <div id="ui">
-    <div class="uirow primary">
-      <span id="startYearLabel" style="font-size:11px; color:#566480; white-space:nowrap; margin-right:2px;">-</span>
+    <div class="uirow primary timelineDeck" aria-label="Timeline playback">
+      <div class="timelinePlayCluster">
+        <span class="timelineDeckLabel">Time</span>
       <button id="play" disabled aria-label="Play" title="Play">▶</button>
-      <label class="speedControl mapSpeedControl">speed <select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
-      <label class="speedControl mapModeControl">migration <select id="migrationView"><option value="continuous" selected>continuous</option><option value="observations">observation pulses</option></select></label>
-      <div class="rangeWrap" style="position:relative;">
-        <canvas id="yearHist"></canvas>
-        <input type="range" id="range" min="1700" max="2026" step="1" value="1900">
-        <div id="yearThumbLabel" aria-hidden="true"></div>
-        <div class="rangeMark" id="markBlood" style="display:none;"></div>
-        <div class="rangeMark ancestor" id="markAncestor" style="display:none;"></div>
-        <div class="rangeMark loop begin" id="markLoopBegin" style="display:none;"></div>
-        <div class="rangeMark loop end" id="markLoopEnd" style="display:none;"></div>
+      </div>
+      <div class="timelineScrubCluster">
+        <div class="timelineMeta">
+          <span id="timelineCaption">Recorded years</span>
+          <strong id="timelineCurrentYear">-</strong>
+        </div>
+        <div class="rangeWrap">
+          <canvas id="yearHist"></canvas>
+          <input type="range" id="range" min="1700" max="2026" step="1" value="1900" aria-label="Timeline year">
+          <div id="yearThumbLabel" aria-hidden="true"></div>
+          <div class="rangeMark" id="markBlood" style="display:none;"></div>
+          <div class="rangeMark ancestor" id="markAncestor" style="display:none;"></div>
+          <div class="rangeMark loop begin" id="markLoopBegin" style="display:none;"></div>
+          <div class="rangeMark loop end" id="markLoopEnd" style="display:none;"></div>
+        </div>
+        <div class="timelineEndpoints" aria-hidden="true">
+          <span id="startYearLabel">-</span>
+          <span id="endYearLabel">-</span>
+        </div>
+      </div>
+      <div class="timelineOptions">
+        <label class="speedControl mapSpeedControl"><span>speed</span><select id="speed"><option value="0.5">0.5y/s</option><option value="1">1y/s</option><option value="2">2y/s</option><option value="5">5y/s</option><option value="10" selected>10y/s</option><option value="25">25y/s</option></select></label>
+        <label class="speedControl mapModeControl"><span>motion</span><select id="migrationView"><option value="continuous" selected>continuous</option><option value="observations">observation pulses</option></select></label>
       </div>
     </div>
     <div id="migBar" class="empty"></div>
@@ -148,8 +181,15 @@
       <button type="button" data-side-tab="person">People</button>
       <button type="button" data-side-tab="cluster">Cluster</button>
       <button type="button" data-side-tab="trees">Trees</button>
-      <button type="button" data-side-tab="tour">Tour</button>
-      <button type="button" class="on" data-side-tab="chat">AI</button>
+      <button type="button" data-side-tab="tour">Context</button>
+      <button type="button" class="on" data-side-tab="chat">Explore</button>
+    </div>
+    <div id="v4PanelHeader">
+      <div>
+        <div id="v4PanelTitle">Explore this branch</div>
+        <div id="v4PanelSub">Ask, inspect route, and verify evidence before conclusions.</div>
+      </div>
+      <div id="v4LensChip">Lens · Migration patterns</div>
     </div>
     <div id="personPane" class="sidePane">
       <div id="homePersonBlock" class="homePersonBlock">
@@ -207,25 +247,18 @@
     </div>
     <div id="tourPane" class="sidePane">
       <div id="tourPaneContent"></div>
-    </div>
-    <div id="chatPane" class="sidePane on">
-      <div id="chatLock">
-        <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">How to use Kindred Flow</div>
-        <ul style="text-align:left; font-size:12px; color:#566480; line-height:1.7; margin:0 0 12px 0; padding-left:18px;">
-          <li>The map shows each person as a moving dot over their lifetime</li>
-          <li>Press the play icon to animate births, deaths &amp; migrations through time</li>
-          <li>Use the <b>Cluster</b> tab to group by lineage, gender, or geography</li>
-          <li>Use the <b>People</b> tab to focus on blood relatives, ancestors, men, or women</li>
-          <li>Click any dot to select that person and see their events in the right panel</li>
-          <li>Type a name in the <b>home person</b> box to re-center the tree on someone else</li>
-          <li class="apiKeyHelp">Save your Anthropic key or sign in as VIP to unlock AI chat. Keys are NOT stored on Kindred servers; they are only used locally to communicate with your LLM.</li>
-        </ul>
+      </div>
+      <div id="chatPane" class="sidePane on">
+        <div id="chatLock">
+        <div class="chatLockTitle">Live exploration</div>
+        <p class="chatLockCopy">Use VIP access or a local Anthropic key to ask evidence-grounded questions about the selected people, places, branches, and migrations.</p>
+        <p class="chatLockCopy apiKeyHelp">Keys are stored only in this browser and are used locally to communicate with your LLM.</p>
         <button type="button" class="apiKeyHelp" onclick="document.getElementById('apiKeyInput').focus()" style="padding:5px 16px; border:1px solid #2a4a8c; border-radius:5px; background:#2a4a8c; color:#fff; font:inherit; cursor:pointer;">Add API key</button>
         <button type="button" onclick="document.getElementById('authBtn').click()" style="padding:5px 16px; border:1px solid #c0ccd8; border-radius:5px; background:#fff; color:#2a4a8c; font:inherit; cursor:pointer;">Sign in</button>
       </div>
       <div id="chatInsightHeader">
         <div>
-          <div class="chatInsightTitle">AI insight workspace</div>
+          <div class="chatInsightTitle">Explore this branch</div>
           <div id="chatInsightScope">Selected trees and year appear here.</div>
         </div>
         <div id="chatInsightMode">Evidence first</div>
@@ -243,11 +276,11 @@
         <div id="chatHistory"></div>
       </details>
       <form id="chatForm">
-        <textarea id="chatInput" rows="3" placeholder="Ask about this tree, the visible places, the current year, anyone selected..."></textarea>
+        <textarea id="chatInput" rows="3" placeholder="Ask about this branch, a migration, a relationship, or what the current view means..."></textarea>
         <div id="chatBar">
           <button type="button" id="chatTools" title="Show or hide tool-call entries in the chat log">tools off</button>
           <button type="button" id="chatReview" title="Review cross-tree link candidates" hidden>review</button>
-          <button type="button" id="chatPdf" title="Create a printable PDF report from this AI session">PDF</button>
+          <button type="button" id="chatPdf" title="Create a printable PDF report from this exploration session">PDF</button>
           <button type="button" id="chatClear" title="Clear conversation">clear</button>
           <button type="submit" id="chatSend">Send</button>
         </div>

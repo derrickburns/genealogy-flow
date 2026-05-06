@@ -83,8 +83,8 @@ function _kfUpdateResponsiveSheetTitle(tab) {
     tab === "person" ? "People" :
     tab === "cluster" ? "Cluster" :
     tab === "trees" ? "Trees" :
-    tab === "tour" ? "Tour" :
-    "AI";
+    tab === "tour" ? "Context" :
+    "Explore";
 }
 
 function _kfSyncSideTabChrome(tab) {
@@ -94,6 +94,8 @@ function _kfSyncSideTabChrome(tab) {
   document.querySelectorAll("#chatPanel .sidePane").forEach(pane => {
     pane.classList.toggle("on", tab !== "map" && pane.id === `${tab}Pane`);
   });
+  const panel = $("panel");
+  if (panel) panel.dataset.activeTab = tab;
   _kfUpdateResponsiveSheetTitle(tab);
 }
 
@@ -124,7 +126,6 @@ function _kfSetResponsiveSheetState(state) {
   const next = state === "full" || state === "open" ? state : "peek";
   panel.dataset.sheet = next;
   if (typeof _kfSetLayoutUxState === "function") _kfSetLayoutUxState({ sheet: next });
-  if (next === "peek") _kfMarkMapTabActive();
   if (_responsiveSheetHandleEl) {
     _responsiveSheetHandleEl.setAttribute("aria-expanded", next !== "peek" ? "true" : "false");
     _responsiveSheetHandleEl.setAttribute(
@@ -168,7 +169,10 @@ function _kfSetSideTab(tab) {
   _kfActiveSideTab = next;
   if (typeof _kfSetLayoutUxState === "function") _kfSetLayoutUxState({ tab: next });
   _kfSyncSideTabChrome(next);
-  if (next === "chat" && typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
+  if (next === "chat") {
+    if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
+    if (typeof _kfRefreshChatInsightHeader === "function") _kfRefreshChatInsightHeader();
+  }
   _kfRevealResponsiveSheetForTab(next);
 }
 document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
@@ -181,18 +185,27 @@ document.querySelectorAll("#sideTabs [data-side-tab]").forEach(btn => {
     _kfSetSideTab(btn.dataset.sideTab);
   });
 });
-if (_kfUsesResponsiveShell()) _kfMarkMapTabActive();
-else _kfUpdateResponsiveSheetTitle("chat");
+if (_kfUsesResponsiveShell()) {
+  _kfActiveSideTab = "map";
+  if (typeof _kfSetLayoutUxState === "function") _kfSetLayoutUxState({ tab: "map" });
+  _kfSyncSideTabChrome("map");
+} else {
+  _kfUpdateResponsiveSheetTitle("chat");
+}
 _kfSetResponsiveSheetState("peek");
 _kfSyncResponsiveControlHeight();
+let _kfResponsiveShellWasOn = _kfUsesResponsiveShell();
 window.addEventListener("resize", () => {
+  const responsiveNow = _kfUsesResponsiveShell();
   _kfSyncResponsiveControlHeight();
-  if (!_kfUsesResponsiveShell()) {
+  if (responsiveNow && !_kfResponsiveShellWasOn) {
+    _kfSetSideTab("map");
+    _kfSetResponsiveSheetState("peek");
+  } else if (!responsiveNow) {
     _kfSetResponsiveSheetState("peek");
     if (_kfActiveSideTab === "map") _kfSetSideTab("chat");
-  } else if (($("panel")?.dataset.sheet || "peek") === "peek") {
-    _kfMarkMapTabActive();
   }
+  _kfResponsiveShellWasOn = responsiveNow;
 });
 const _kfResponsiveUiResizeObserver = typeof ResizeObserver !== "undefined"
   ? new ResizeObserver(() => _kfSyncResponsiveControlHeight())
@@ -252,7 +265,6 @@ function _kfInstallResponsiveSheetDrag(handleEl, opts = {}) {
   });
 }
 _kfInstallResponsiveSheetDrag(_responsiveSheetHandleEl);
-_kfInstallResponsiveSheetDrag(_responsiveSheetTabsEl, { ignoreTapSelector: "[data-side-tab]" });
 _kfInstallResponsiveSheetDrag($("ui"), { ignoreDragSelector: "button,input,select,textarea,.rangeMark" });
 
 const EVENT_LABEL = {
@@ -320,7 +332,7 @@ function _kfClusterModeLabel(mode = clusterMode) {
     gender: "Gender",
     tree: "Tree",
     state: "State",
-    group: "AI groups",
+    group: "Exploration groups",
   })[mode] || "Cluster";
 }
 
@@ -397,7 +409,7 @@ function _kfClusterBreakdownHtml(c) {
   if (c.abbr) rows.push(["Region", c.abbr]);
   const entries = _kfClusterSliceEntries(c).filter(e => e.count);
   if (entries.length) rows.push([
-    clusterMode === "parents" ? "Parents" : clusterMode === "gender" ? "Gender" : clusterMode === "tree" ? "Trees" : clusterMode === "group" ? "AI groups" : "Lineage",
+    clusterMode === "parents" ? "Parents" : clusterMode === "gender" ? "Gender" : clusterMode === "tree" ? "Trees" : clusterMode === "group" ? "Exploration groups" : "Lineage",
     entries.map(e => `${e.label} ${e.count}`).join(" · "),
   ]);
   return `<div class="cluster-breakdown">` + rows.map(([k, v]) =>
@@ -784,7 +796,7 @@ function _kfLivingAgeLabel(ind) {
   return `age ${thisYear - birthYear}`;
 }
 
-function _kfShowPersonCard(di) {
+function _kfShowPersonCard(di, opts = {}) {
   if (!_spEl || !lastIndividuals) return;
   const idx = dwellIndi[di];
   const ind = lastIndividuals[idx];
@@ -863,7 +875,7 @@ function _kfShowPersonCard(di) {
     `</div>`;
   _spEl.hidden = false;
   if (_personEmptyEl) _personEmptyEl.hidden = true;
-  _kfSetSideTab("person");
+  if (opts.reveal !== false) _kfSetSideTab("person");
 
   _spEl.querySelectorAll(".sp-tab").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1228,7 +1240,13 @@ let _chatShowTools = _chatToolsPref === "1";
 function _kfChatTreeScopeLabel() {
   if (typeof _kfSelectedVizSourceList !== "function") return "No selected trees";
   const sources = _kfSelectedVizSourceList();
-  if (!sources.length) return "No selected trees";
+  if (!sources.length) {
+    if (lastIndividuals?.length) {
+      const fallback = String(_kfActiveTreeName || lastFileName || "DEMO").replace(/\.(ged|gedcom|json)$/i, "");
+      return fallback || "Selected tree";
+    }
+    return "No selected trees";
+  }
   const names = sources.map(s => String(s.common_name || s.name || "Tree").replace(/\.(ged|gedcom|json)$/i, ""));
   if (names.length <= 2) return names.join(" + ");
   return `${names.slice(0, 2).join(" + ")} + ${names.length - 2} more`;
@@ -1529,7 +1547,7 @@ function _kfAnswerMessagesForTurn(turn) {
 function _kfRenderActiveAnswer(turns) {
   if (!chatAnswerEl) return;
   if (!turns.length) {
-    chatAnswerEl.innerHTML = `<div class="empty">Ask anything: "Where did the family migrate between 1880 and 1940?", "Who's selected and how are we related?", "Summarize my paternal line." Set your Anthropic API key with the key button — stored locally only.</div>`;
+    chatAnswerEl.innerHTML = `<div class="empty">Ask about a branch, a migration, a relationship, or what the current view means. Evidence-grounded exploration requires VIP access or a local Anthropic key.</div>`;
     return;
   }
   let turn = turns.find(t => t.key === _kfActiveChatTurnKey);
@@ -1641,7 +1659,7 @@ async function _kfDispatchChip(chip) {
     chatHistory.push({
       role: "bot",
       kind: "tool",
-      content: `\u2717 **broken chip**: ${err}${preview}\n\n*The most common cause is multi-line SQL in \`args\` with raw newlines instead of \`\\n\`. Ask Claude to re-emit chips with single-line JSON or compact SQL.*`,
+      content: `\u2717 **broken chip**: ${err}${preview}\n\n*The most common cause is multi-line SQL in \`args\` with raw newlines instead of \`\\n\`. Ask live exploration to re-emit chips with single-line JSON or compact SQL.*`,
     });
     renderChat();
     return false;

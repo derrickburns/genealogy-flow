@@ -250,6 +250,91 @@ const VIP_EMAILS = new Set([
 ]);
 
 let _clerkReady = false;
+let _clerkInitError = "";
+let _kfAuthNoticeTimer = 0;
+
+function _kfIsLocalAuthHost() {
+  return /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(window.location.hostname || "");
+}
+
+function _kfClerkPublishableKey() {
+  return document.querySelector("script[data-clerk-publishable-key]")?.dataset?.clerkPublishableKey || "";
+}
+
+function _kfUsesProductionClerkKeyLocally() {
+  return _kfIsLocalAuthHost() && /^pk_live_/i.test(_kfClerkPublishableKey());
+}
+
+function _kfLiveSignInUrl() {
+  const url = new URL("https://flow.kindredsearch.com/");
+  url.searchParams.set("signin", "1");
+  return url.href;
+}
+
+function _kfAuthUnavailableMessage() {
+  const err = String(_clerkInitError || "");
+  if (_kfUsesProductionClerkKeyLocally() || (_kfIsLocalAuthHost() && /Production Keys are only allowed/i.test(err))) {
+    return "Sign-in is configured for flow.kindredsearch.com and cannot run from localhost with the production Clerk key. Open the live app to sign in, or use a Clerk development key for local testing.";
+  }
+  if (err) return `Authentication is not available: ${err}`;
+  return "Authentication is still loading. Try again in a moment.";
+}
+
+function _kfShowAuthNotice(message, opts = {}) {
+  let notice = document.getElementById("authNotice");
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = "authNotice";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    notice.innerHTML =
+      '<div class="authNoticeBody"></div>' +
+      '<a class="authNoticeAction" hidden target="_blank" rel="noopener noreferrer"></a>' +
+      '<button type="button" aria-label="Dismiss authentication notice">&times;</button>';
+    document.body.appendChild(notice);
+    notice.querySelector("button")?.addEventListener("click", () => {
+      notice.hidden = true;
+    });
+  }
+  const body = notice.querySelector(".authNoticeBody");
+  if (body) body.textContent = message;
+  const action = notice.querySelector(".authNoticeAction");
+  if (action) {
+    if (opts.actionHref) {
+      action.hidden = false;
+      action.href = opts.actionHref;
+      action.textContent = opts.actionText || "Open";
+    } else {
+      action.hidden = true;
+      action.removeAttribute("href");
+      action.textContent = "";
+    }
+  }
+  notice.hidden = false;
+  clearTimeout(_kfAuthNoticeTimer);
+  _kfAuthNoticeTimer = setTimeout(() => {
+    const current = document.getElementById("authNotice");
+    if (current) current.hidden = true;
+  }, 14000);
+}
+
+function _kfMarkAuthUnavailable(message) {
+  const statusEl = document.getElementById("authStatus");
+  const btnEl = document.getElementById("authBtn");
+  const accountBtn = document.getElementById("accountBtn");
+  if (statusEl) {
+    statusEl.textContent = "auth unavailable";
+    statusEl.className = "authTier anon";
+  }
+  if (btnEl) btnEl.textContent = "Sign in";
+  if (accountBtn) {
+    accountBtn.classList.remove("signedIn");
+    accountBtn.title = message;
+  }
+  if (typeof _kfSetAuthUxState === "function") {
+    _kfSetAuthUxState("auth-unavailable", { tier: "anon", email: "" });
+  }
+}
 
 function _kfSyncUploadCloudVisibility() {
   const uploadCloudBtn = document.getElementById("uploadCloud");
@@ -330,6 +415,10 @@ async function fetchServerAuthContext() {
 
 async function initClerk() {
   try {
+    _clerkInitError = "";
+    if (_kfUsesProductionClerkKeyLocally()) {
+      throw new Error('Production Keys are only allowed for domain "kindredsearch.com".');
+    }
     // clerk.browser.js auto-initializes via data-clerk-publishable-key attribute.
     // Wait up to 10s for window.Clerk to be ready.
     let attempts = 0;
@@ -345,6 +434,8 @@ async function initClerk() {
   } catch (e) {
     console.error("Clerk init failed:", e);
     _clerkReady = false;
+    _clerkInitError = e?.message || String(e || "Clerk failed to initialize");
+    _kfMarkAuthUnavailable(_kfAuthUnavailableMessage());
     autoLoadPublicDemoTree().catch(err => console.warn("[kf] autoLoadPublicDemoTree:", err?.message || err));
   }
 }
@@ -880,12 +971,22 @@ function _kfRequireNamesForUpload(trees, opts = {}) {
 }
 
 async function _kfBeginClerkSignIn() {
-  if (!_clerkReady) {
-    alert("Authentication is not available. Check the browser console for errors.");
+  if (_kfUsesProductionClerkKeyLocally()) {
+    _clerkReady = false;
+    _clerkInitError = 'Production Keys are only allowed for domain "kindredsearch.com".';
+    _kfMarkAuthUnavailable(_kfAuthUnavailableMessage());
+    _kfShowAuthNotice(_kfAuthUnavailableMessage(), {
+      actionHref: _kfLiveSignInUrl(),
+      actionText: "Open live sign-in",
+    });
+    return;
+  }
+  if (!_clerkReady || _clerkInstance?.loaded === false) {
+    _kfShowAuthNotice(_kfAuthUnavailableMessage());
     return;
   }
   if (!_clerkInstance) {
-    alert("Authentication is still loading. Try again in a moment.");
+    _kfShowAuthNotice("Authentication is still loading. Try again in a moment.");
     return;
   }
   const returnUrl = window.location.href;
@@ -907,13 +1008,18 @@ async function _kfBeginClerkSignIn() {
     throw new Error("Clerk sign-in method is unavailable");
   } catch (e) {
     console.error("[kf] Clerk sign-in failed:", e);
-    alert(`Could not start sign-in: ${e?.message || e}`);
+    _clerkInitError = e?.message || String(e || "Could not start sign-in");
+    _clerkReady = false;
+    _kfMarkAuthUnavailable(_kfAuthUnavailableMessage());
+    _kfShowAuthNotice(_kfAuthUnavailableMessage(), _kfUsesProductionClerkKeyLocally()
+      ? { actionHref: _kfLiveSignInUrl(), actionText: "Open live sign-in" }
+      : {});
   }
 }
 
 document.getElementById("authBtn").addEventListener("click", async () => {
-  if (!_clerkReady) {
-    alert("Authentication is not available. Check the browser console for errors.");
+  if (!_clerkReady || _kfUsesProductionClerkKeyLocally() || _clerkInstance?.loaded === false) {
+    await _kfBeginClerkSignIn();
     return;
   }
   if (_clerkInstance.user) {

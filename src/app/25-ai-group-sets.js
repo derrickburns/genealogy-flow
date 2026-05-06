@@ -161,7 +161,7 @@ function _kfNormalizeGroupSetInput(input = {}) {
     if (refs.length) groups.push({ label, reason, refs });
   }
   return {
-    name: String(obj.name || obj.title || "AI groups").trim(),
+    name: String(obj.name || obj.title || "Exploration groups").trim(),
     question: String(obj.question || obj.prompt || "").trim(),
     groups,
     unresolved,
@@ -218,7 +218,7 @@ function _kfEnsureActiveGroupRuntime() {
 }
 
 function _kfActiveGroupSetLabel() {
-  return _kfEnsureActiveGroupRuntime()?.set?.name || "AI groups";
+  return _kfEnsureActiveGroupRuntime()?.set?.name || "Exploration groups";
 }
 
 function _kfGroupIndexForIndiIdx(idx) {
@@ -300,7 +300,7 @@ function _kfOpenGroupSetTimeline(set) {
   const range = runtime.groups.map(g => _kfRgb(g.color));
   return window.kfApi.showViz({
     type: "vega",
-    title: `${set.name || "AI groups"} timeline`,
+    title: `${set.name || "Exploration groups"} timeline`,
     spec: {
       "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
       width: "container",
@@ -310,7 +310,7 @@ function _kfOpenGroupSetTimeline(set) {
       encoding: {
         x: { field: "year", type: "quantitative", title: "Year" },
         y: { field: "count", type: "quantitative", stack: "zero", title: "People alive or presumed alive" },
-        color: { field: "group", type: "nominal", scale: { domain, range }, title: "AI group" },
+        color: { field: "group", type: "nominal", scale: { domain, range }, title: "Exploration group" },
         tooltip: [
           { field: "year", type: "quantitative" },
           { field: "group", type: "nominal" },
@@ -329,7 +329,7 @@ function _kfCreateGroupSet(input = {}) {
   }
   const set = {
     id: _kfGroupSetId(),
-    name: normalized.name || "AI groups",
+    name: normalized.name || "Exploration groups",
     question: normalized.question,
     tree_key: _kfCurrentGroupTreeKey(),
     created_at: new Date().toISOString(),

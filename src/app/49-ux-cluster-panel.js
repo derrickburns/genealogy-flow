@@ -5,11 +5,11 @@ const KF_CLUSTER_MODE_OPTIONS = [
   { value: "none", label: "Off", detail: "Individual people", help: "Show each visible person as an individual marker." },
   { value: "state", label: "Places", detail: "State/country regions", help: "Group people by state or country so migration regions are easier to scan." },
   { value: "tree", label: "Trees", detail: "Compare selected data sets", help: "Color and group people by loaded family tree." },
-  { value: "group", label: "AI groups", detail: "From Claude answers", help: "Show groups that the AI analysis has created during this session." },
+  { value: "group", label: "Exploration groups", detail: "From live answers", help: "Show groups created while exploring this session." },
   { value: "pie", label: "Lineage", detail: "Paternal/maternal branches", help: "Summarize paternal, maternal, and other branches inside each cluster." },
   { value: "gender", label: "Gender", detail: "Recorded sex mix", help: "Summarize recorded male, female, and unknown sex inside each cluster." },
   { value: "parents", label: "Parent knowledge", detail: "Missing parents", help: "Summarize how complete parent records are for clustered people." },
-  { value: "dispersion", label: "Declutter", detail: "Group when zoomed out", help: "Automatically combine nearby points when the map is zoomed out." },
+  { value: "dispersion", label: "Declutter", detail: "Group nearby markers", help: "Combine nearby points at the current zoom so dense places stay readable." },
 ];
 
 function _kfClusterModeOption(value = clusterMode) {

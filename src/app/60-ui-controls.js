@@ -483,7 +483,6 @@ function _kfSetSelectValue(id, value) {
 
 function _kfSyncOptionSelectors() {
   _kfSetSelectValue("clusterModeChoice", clusterMode);
-  _kfSetSelectValue("showFilterChoice", curFilter);
   _kfSetSelectValue("sexFilterChoice", _kfSexFilter || "all");
   const clusterRadiusMain = document.getElementById("clusterRadiusMain");
   const clusterRadiusMainLabel = document.getElementById("clusterRadiusMainLabel");
