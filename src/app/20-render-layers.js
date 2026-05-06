@@ -1196,6 +1196,9 @@ function updateDeckDwellLayer() {
     makePinLabelsLayer(),
   ].filter(Boolean);
   _kfDeckOverlay.setProps({ layers });
+  if (typeof _kfRenderLivingPeopleList === "function" && typeof _kfIsSideTabActive === "function" && _kfIsSideTabActive("person")) {
+    _kfRenderLivingPeopleList();
+  }
 }
 
 function buildDeckFlowData() {

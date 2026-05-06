@@ -1767,13 +1767,44 @@ html, body {
   .livingPeopleHead span { display:block; margin-top:2px; color:#64748b; font-size:11px; line-height:1.3; }
   .livingPeopleHead strong { flex:0 0 auto; color:#1e40af; font-size:18px; line-height:1; font-variant-numeric:tabular-nums; }
   .livingPeopleRows { max-height:min(46dvh, 520px); overflow-y:auto; -webkit-overflow-scrolling:touch; }
-  .livingPersonRow { display:grid; grid-template-columns:minmax(0, 1.4fr) 70px 62px minmax(0, 1fr); gap:8px; align-items:center; padding:8px 10px; border-bottom:1px solid #eef2f7; color:#334155; font-size:12px; line-height:1.25; }
-  .livingPersonRow:last-child { border-bottom:0; }
-  .livingPersonRow.selected { background:#eef3ff; box-shadow:inset 3px 0 0 #1e40af; }
+  .livingPersonItem { border-bottom:1px solid #eef2f7; color:#334155; }
+  .livingPersonItem:last-child { border-bottom:0; }
+  .livingPersonItem.selected { background:#eef3ff; box-shadow:inset 3px 0 0 #1e40af; }
+  .livingPersonItem.expanded { background:#f8fbff; }
+  .livingPersonRow { width:100%; display:grid; grid-template-columns:minmax(0, 1.4fr) 70px 62px minmax(0, 1fr) 18px; gap:8px; align-items:center; padding:8px 10px; border:0; background:transparent; color:inherit; font:inherit; font-size:12px; line-height:1.25; text-align:left; cursor:pointer; }
+  .livingPersonRow:hover { background:#f8fbff; }
   .livingName { min-width:0; color:#102033; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .livingGender,
   .livingAge { color:#64748b; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .livingRelation { min-width:0; color:#475569; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .livingExpand { color:#64748b; text-align:right; transition:transform 0.12s ease; }
+  .livingPersonItem.expanded .livingExpand { transform:rotate(180deg); }
+  .livingPersonDetail { margin:0 10px 10px; border:1px solid #d6dde7; border-radius:8px; background:#fff; padding:10px; }
+  .personDetailCard { font-size:11.5px; color:#1c2433; }
+  .personDetailCard .sp-name { font-weight:800; font-size:13px; color:#0a1426; margin-bottom:2px; }
+  .personDetailCard .sp-sub { color:#566480; font-size:11px; margin-bottom:4px; }
+  .personDetailCard .sp-events { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
+  .personDetailCard .sp-ev { background:#fff; border:1px solid #d0dae8; border-radius:4px; padding:2px 7px; font-size:10.5px; color:#2a3a58; white-space:nowrap; }
+  .personDetailCard .sp-ev.highlight { background:#2a4a8c; color:#fff; border-color:#2a4a8c; }
+  .personDetailCard .sp-tabs { display:flex; gap:0; border-bottom:1px solid #d6dde7; margin:6px 0 4px; }
+  .personDetailCard .sp-tab { padding:5px 12px; font-size:10px; font-weight:700; color:#566480; background:transparent; border:none; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; letter-spacing:0.06em; text-transform:uppercase; }
+  .personDetailCard .sp-tab.on { color:#1e40af; border-bottom-color:#1e40af; }
+  .personDetailCard .sp-pane { display:none; }
+  .personDetailCard .sp-pane.on { display:block; }
+  .personDetailCard .sp-timeline, .personDetailCard .sp-lineage { list-style:none; margin:6px 0 8px; padding:0; }
+  .personDetailCard .sp-tl-item { display:grid; grid-template-columns:38px 14px 1fr; align-items:center; column-gap:6px; padding:3px 0; }
+  .personDetailCard .sp-tl-year { font-size:10.5px; color:#566480; font-variant-numeric:tabular-nums; text-align:right; font-weight:600; }
+  .personDetailCard .sp-tl-dot { width:9px; height:9px; border-radius:50%; background:#fff; border:2px solid #2a4a8c; justify-self:center; }
+  .personDetailCard .sp-tl-body, .personDetailCard .sp-rel-head { font-size:11.5px; color:#1c2433; }
+  .personDetailCard .sp-tl-label, .personDetailCard .sp-rel-name { font-weight:700; }
+  .personDetailCard .sp-tl-place, .personDetailCard .sp-rel-life { color:#566480; }
+  .personDetailCard .sp-section { border-top:1px solid #d6dde7; margin-top:8px; padding-top:6px; }
+  .personDetailCard .sp-section-head { font-weight:700; color:#566480; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:4px; }
+  .personDetailCard .sp-rel { margin-bottom:6px; }
+  .personDetailCard .sp-rel-label { color:#566480; font-weight:600; font-size:9.5px; text-transform:uppercase; letter-spacing:0.04em; margin-right:4px; }
+  .personDetailCard .sp-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .personDetailCard .sp-ask { background:#2a4a8c; color:#fff; border:none; border-radius:5px; padding:5px 10px; font:inherit; font-size:11px; cursor:pointer; }
+  .personDetailCard .sp-dismiss { background:none; border:1px solid #c0ccd8; border-radius:5px; padding:5px 8px; font:inherit; font-size:11px; color:#566480; cursor:pointer; }
   .livingPeopleEmpty { padding:12px; color:#64748b; font-size:12px; line-height:1.35; }
   @media (max-width:720px) {
     .livingPeopleHead span { font-size:13px; }
@@ -1789,6 +1820,7 @@ html, body {
     .livingGender { grid-area:gender; }
     .livingAge { grid-area:age; }
     .livingRelation { grid-area:relation; text-align:right; }
+    .livingExpand { display:none; }
   }
   .homePersonBlock { margin:10px 12px 0; padding:10px; border:1px solid #d6dde7; border-radius:10px; background:#fff; display:grid; gap:7px; }
   .homePersonHead { color:#102033; font-size:10px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; }

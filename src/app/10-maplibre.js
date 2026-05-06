@@ -44,7 +44,11 @@ function initMapLibre() {
   // composite) per tick during drag — avoids the blink that comes from
   // clearing on every move event while frame() redraws asynchronously.
   _kfMap.on("movestart", () => { _kfMapMoving = true; });
-  _kfMap.on("moveend",   () => { _kfMapMoving = false; updateMapLegend(); });
+  _kfMap.on("moveend",   () => {
+    _kfMapMoving = false;
+    updateMapLegend();
+    if (typeof _kfRenderLivingPeopleList === "function") _kfRenderLivingPeopleList(true);
+  });
   _kfMap.on("move", () => {
     const k = Math.pow(2, _kfMap.getZoom());
     zoomTransform = { k, x: 0, y: 0 };

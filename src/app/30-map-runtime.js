@@ -1513,7 +1513,12 @@ function clearHighlight() {
 function _kfEndSliderDrag() {
   isDraggingSlider = false;
 }
-range.addEventListener("input", () => { curYear = parseFloat(range.value); clearHighlight(); _kfRefreshViewChrome(true); });
+range.addEventListener("input", () => {
+  curYear = parseFloat(range.value);
+  clearHighlight();
+  if (typeof _kfRenderLivingPeopleList === "function") _kfRenderLivingPeopleList(true);
+  _kfRefreshViewChrome(true);
+});
 range.addEventListener("pointerdown", () => { isDraggingSlider = true; pushHistory(); });
 range.addEventListener("pointerup", _kfEndSliderDrag);
 range.addEventListener("pointercancel", _kfEndSliderDrag);

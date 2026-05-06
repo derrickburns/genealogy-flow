@@ -255,17 +255,31 @@ test("people panel includes a compact scrolling living-people list after selecte
   const html = readFileSync("index.html", "utf8");
   const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
   const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
+  const mapLibre = readFileSync("src/app/10-maplibre.js", "utf8");
+  const renderLayers = readFileSync("src/app/20-render-layers.js", "utf8");
   const styles = readFileSync("styles/app.css", "utf8");
 
   assert.match(html, /id="selectedPerson" hidden><\/div>\s*<div id="livingPeopleList"/);
   assert.match(panels, /function\s+_kfLivingPeopleRows\s*\(/);
   assert.match(panels, /function\s+_kfRenderLivingPeopleList\s*\(/);
-  assert.match(panels, /_kfPersonMayBeAliveAtYear\(ind,\s*year\)/);
+  assert.match(panels, /_kfVisibleMarkerData\(\)/);
+  assert.match(panels, /function\s+_kfVisibleMapRowInViewport\s*\(/);
+  assert.match(panels, /function\s+_kfMapViewportSignature\s*\(/);
+  assert.match(panels, /function\s+_kfSelectedMapPersonId\s*\(/);
+  assert.match(panels, /if \(a\.selected !== b\.selected\) return a\.selected \? -1 : 1/);
   assert.match(panels, /_kfReadableRelationship\(rel\)/);
-  assert.match(panels, /class="livingPersonRow/);
+  assert.match(panels, /People in map view/);
+  assert.match(panels, /class="livingPersonItem/);
+  assert.match(panels, /class="livingPersonDetail personDetailCard"/);
+  assert.match(panels, /function\s+_kfPersonDetailHtml\s*\(/);
+  assert.match(panels, /function\s+_kfBindPersonDetailControls\s*\(/);
   assert.match(sources, /_kfRenderLivingPeopleList\(true\)/);
+  assert.match(mapLibre, /_kfRenderLivingPeopleList\(true\)/);
+  assert.match(renderLayers, /_kfIsSideTabActive\("person"\)/);
   assert.match(styles, /\.livingPeopleRows\s*\{[^}]*overflow-y:auto/s);
+  assert.match(styles, /\.livingPersonItem\.selected/);
   assert.match(styles, /\.livingPersonRow\s*\{[^}]*grid-template-columns/s);
+  assert.match(styles, /\.personDetailCard \.sp-name/);
   assert.match(styles, /@media \(max-width:720px\)\s*\{[\s\S]*\.livingPersonRow\s*\{[^}]*grid-template-areas/s);
 });
 

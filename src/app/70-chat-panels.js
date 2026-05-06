@@ -36,6 +36,7 @@ let _kfChatScopeLastHandledAt = 0;
 let _kfChatScopeLastRenderKey = "";
 let _kfChatMoreQuestionsOpen = false;
 let _kfLivingPeopleListKey = "";
+let _kfExpandedMapPersonId = "";
 
 function _kfIsSideTabActive(tab) {
   return _kfActiveSideTab === tab;
@@ -175,7 +176,7 @@ function _kfSetSideTab(tab) {
     if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
     if (typeof _kfRefreshChatInsightHeader === "function") _kfRefreshChatInsightHeader();
   } else if (next === "person") {
-    _kfRenderLivingPeopleList();
+    _kfRenderLivingPeopleList(true);
   }
   _kfRevealResponsiveSheetForTab(next);
 }
@@ -803,7 +804,6 @@ function _kfLivingAgeLabel(ind) {
 function _kfLivingAgeValue(ind, year = new Date().getFullYear()) {
   const birthYear = Number.parseInt(ind?.birth_year, 10);
   if (!Number.isFinite(birthYear) || birthYear > year) return null;
-  if (ind?.death_year != null) return null;
   if (typeof _kfPersonMayBeAliveAtYear === "function" && !_kfPersonMayBeAliveAtYear(ind, year)) return null;
   return year - birthYear;
 }
@@ -851,82 +851,143 @@ function _kfReadableRelationship(rel) {
   return value;
 }
 
-function _kfLivingPeopleRows(year = new Date().getFullYear()) {
-  if (!lastIndividuals || !lastIndividuals.length) return [];
+function _kfSelectedMapPersonId() {
+  if (highlightedDwell >= 0 && dwellIndi && lastIndividuals) {
+    const idx = dwellIndi[highlightedDwell];
+    return lastIndividuals[idx]?.id || "";
+  }
+  return "";
+}
+
+function _kfMapViewportSignature() {
+  if (!_kfMap || typeof _kfMap.getBounds !== "function") return "no-map";
+  const bounds = _kfMap.getBounds();
+  const nums = [
+    bounds.getWest?.(), bounds.getSouth?.(), bounds.getEast?.(), bounds.getNorth?.(),
+    _kfMap.getZoom?.(), _kfMap.getBearing?.(), W, H,
+  ];
+  return nums.map(n => Number.isFinite(n) ? Number(n).toFixed(3) : "").join(",");
+}
+
+function _kfVisibleMapRowInViewport(row) {
+  if (!row) return false;
+  const marker = row.marker;
+  const lon = Number.isFinite(marker) && _kfDwellPositions ? _kfDwellPositions[marker * 2] : dwellLon?.[row.di];
+  const lat = Number.isFinite(marker) && _kfDwellPositions ? _kfDwellPositions[marker * 2 + 1] : dwellLat?.[row.di];
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false;
+  if (_kfMap && typeof _kfMap.project === "function") {
+    const p = _kfMap.project([lon, lat]);
+    const canvas = typeof _kfMap.getCanvas === "function" ? _kfMap.getCanvas() : null;
+    const w = canvas?.clientWidth || W || 0;
+    const h = canvas?.clientHeight || H || 0;
+    return !!p && p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h;
+  }
+  const bounds = _kfMap && typeof _kfMap.getBounds === "function" ? _kfMap.getBounds() : null;
+  if (!bounds) return true;
+  const west = bounds.getWest();
+  const east = bounds.getEast();
+  const inLng = west <= east ? lon >= west && lon <= east : lon >= west || lon <= east;
+  return inLng && lat >= bounds.getSouth() && lat <= bounds.getNorth();
+}
+
+function _kfLivingPeopleRows() {
+  const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
+  if (!visible?.rows?.length) return [];
+  const year = Math.floor(curYear);
+  const selectedId = _kfSelectedMapPersonId();
   const rows = [];
-  for (const ind of lastIndividuals) {
-    if (!ind || ind.death_year != null) continue;
-    if (typeof _kfPersonMayBeAliveAtYear === "function" && !_kfPersonMayBeAliveAtYear(ind, year)) continue;
+  for (const row of visible.rows) {
+    if (!_kfVisibleMapRowInViewport(row)) continue;
+    const ind = row.ind;
+    if (!ind) continue;
     const age = _kfLivingAgeValue(ind, year);
     const rel = relationCache?.get(ind.id) || "";
     rows.push({
       id: ind.id,
+      di: row.di,
+      ind,
       name: ind.name || "Unnamed person",
       gender: _kfLivingGenderLabel(ind),
       age,
       relationship: _kfReadableRelationship(rel),
       distance: relDistCache?.get(ind.id) ?? Infinity,
-      selected: highlightedDwell >= 0 && dwellIndi && lastIndividuals[dwellIndi[highlightedDwell]]?.id === ind.id,
+      selected: !!selectedId && ind.id === selectedId,
+      expanded: _kfExpandedMapPersonId === ind.id,
     });
   }
-  rows.sort((a, b) =>
-    Number(a.distance === Infinity) - Number(b.distance === Infinity) ||
-    Number(a.distance) - Number(b.distance) ||
-    String(a.name).localeCompare(String(b.name))
-  );
+  rows.sort((a, b) => {
+    if (a.selected !== b.selected) return a.selected ? -1 : 1;
+    const ad = Number.isFinite(a.distance) ? a.distance : 1e9;
+    const bd = Number.isFinite(b.distance) ? b.distance : 1e9;
+    if (ad !== bd) return ad - bd;
+    return String(a.name).localeCompare(String(b.name));
+  });
   return rows;
 }
 
 function _kfRenderLivingPeopleList(force = false) {
   if (!_livingPeopleEl) return;
-  const year = new Date().getFullYear();
-  const selectedId = highlightedDwell >= 0 && dwellIndi && lastIndividuals
-    ? lastIndividuals[dwellIndi[highlightedDwell]]?.id || ""
-    : "";
-  const sourceKey = typeof _kfSourceSelectionKey === "function" ? _kfSourceSelectionKey() : "";
-  const key = `${sourceKey}|${lastIndividuals?.length || 0}|${lastRootId || ""}|${relationCache?.size || 0}|${selectedId}|${year}`;
-  if (!force && key === _kfLivingPeopleListKey) return;
-  _kfLivingPeopleListKey = key;
-  const rows = _kfLivingPeopleRows(year);
   if (!timelineLoaded || !lastIndividuals) {
     _livingPeopleEl.hidden = true;
     _livingPeopleEl.innerHTML = "";
     return;
   }
+  const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
+  const selectedId = _kfSelectedMapPersonId();
+  const key = `${visible?.key || ""}|${visible?.count || 0}|${_kfMapViewportSignature()}|${selectedId}|${_kfExpandedMapPersonId}`;
+  if (!force && key === _kfLivingPeopleListKey) return;
+  _kfLivingPeopleListKey = key;
+  const rows = _kfLivingPeopleRows();
   _livingPeopleEl.hidden = false;
   const body = rows.length
     ? `<div class="livingPeopleRows">` + rows.map(row =>
-        `<div class="livingPersonRow${row.selected ? " selected" : ""}">` +
-          `<span class="livingName">${escHtml(row.name)}</span>` +
-          `<span class="livingGender">${escHtml(row.gender)}</span>` +
-          `<span class="livingAge">${row.age == null ? "age ?" : `age ${row.age}`}</span>` +
-          `<span class="livingRelation">${escHtml(row.relationship)}</span>` +
+        `<div class="livingPersonItem${row.selected ? " selected" : ""}${row.expanded ? " expanded" : ""}" data-person-id="${escHtml(row.id)}">` +
+          `<button type="button" class="livingPersonRow" data-person-id="${escHtml(row.id)}" aria-expanded="${row.expanded ? "true" : "false"}">` +
+            `<span class="livingName">${escHtml(row.name)}</span>` +
+            `<span class="livingGender">${escHtml(row.gender)}</span>` +
+            `<span class="livingAge">${row.age == null ? "age ?" : `age ${row.age}`}</span>` +
+            `<span class="livingRelation">${escHtml(row.relationship)}</span>` +
+            `<span class="livingExpand" aria-hidden="true">⌄</span>` +
+          `</button>` +
+          (row.expanded
+            ? `<div class="livingPersonDetail personDetailCard" data-person-id="${escHtml(row.id)}">${_kfPersonDetailHtml(row.ind, row.di, { dismissLabel: "Collapse" })}</div>`
+            : "") +
         `</div>`
       ).join("") + `</div>`
-    : `<div class="livingPeopleEmpty">No living or presumed-living people in the selected trees.</div>`;
+    : `<div class="livingPeopleEmpty">No people match the current map view.</div>`;
   _livingPeopleEl.innerHTML =
     `<div class="livingPeopleHead">` +
-      `<div><b>Living people</b><span>Names, gender, age, and relationship to the home person.</span></div>` +
+      `<div><b>People in map view</b><span>Current viewport, year, and map filters. Tap a row for full detail.</span></div>` +
       `<strong>${rows.length.toLocaleString()}</strong>` +
     `</div>` +
     body;
+  _livingPeopleEl.querySelectorAll(".livingPersonRow").forEach(btn => {
+    const toggle = () => {
+      const id = btn.dataset.personId || "";
+      _kfExpandedMapPersonId = _kfExpandedMapPersonId === id ? "" : id;
+      _kfRenderLivingPeopleList(true);
+    };
+    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(btn, toggle);
+    else btn.addEventListener("click", toggle);
+  });
+  _livingPeopleEl.querySelectorAll(".livingPersonDetail").forEach(detail => {
+    _kfBindPersonDetailControls(detail, {
+      onDismiss: () => {
+        _kfExpandedMapPersonId = "";
+        _kfRenderLivingPeopleList(true);
+      },
+    });
+  });
 }
 
-function _kfShowPersonCard(di, opts = {}) {
-  if (!_spEl || !lastIndividuals) return;
-  const idx = dwellIndi[di];
-  const ind = lastIndividuals[idx];
-  if (!ind) return;
-  _kfSetPeopleControlsCollapsed(true);
-
+function _kfPersonDetailHtml(ind, di, opts = {}) {
   const sex = ind.sex === "M" ? "Male" : ind.sex === "F" ? "Female" : "";
   const age = _kfLivingAgeLabel(ind);
   const rel = (relationCache && ind.id !== lastRootId) ? (relationCache.get(ind.id) || "") : "";
-  console.log("[kf] personCard rel:", ind.id, "->", JSON.stringify(rel), "cacheSize:", relationCache?.size, "rootId:", lastRootId);
   const sub = [sex, age, rel].filter(Boolean).join(" · ");
 
-  const clickedType = dwellType[di];
-  const clickedYear = dwellY[di];
+  const clickedType = dwellType?.[di];
+  const clickedYear = Number.isFinite(dwellY?.[di]) ? dwellY[di] : Math.floor(curYear);
   const evidenceHtml = _kfDwellEvidenceBadgesHtml(di);
   const issuesHtml = _kfPersonIssuesHtml(ind, di);
   const questionsHtml = _kfPersonQuestionHtml(ind);
@@ -975,7 +1036,8 @@ function _kfShowPersonCard(di, opts = {}) {
   }
 
   const askText = `Explain why ${ind.name} is shown here in ${Math.floor(curYear)}, including the event, location evidence, and relationship context.`;
-  _spEl.innerHTML =
+  const dismissLabel = opts.dismissLabel || "Dismiss";
+  return (
     `<div class="sp-name">${escHtml(ind.name)}</div>` +
     (sub ? `<div class="sp-sub">${escHtml(sub)}</div>` : "") +
     evidenceHtml +
@@ -987,35 +1049,62 @@ function _kfShowPersonCard(di, opts = {}) {
     childrenHtml +
     `<div class="sp-actions">` +
     `<button class="sp-ask" data-ask="${escHtml(askText)}">Explain this marker</button>` +
-    `<button class="sp-dismiss">Dismiss</button>` +
-    `</div>`;
+    `<button class="sp-dismiss">${escHtml(dismissLabel)}</button>` +
+    `</div>`
+  );
+}
+
+function _kfBindPersonDetailControls(root, opts = {}) {
+  if (!root) return;
+  root.querySelectorAll(".sp-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const which = btn.dataset.pane;
+      root.querySelectorAll(".sp-tab").forEach(b => b.classList.toggle("on", b.dataset.pane === which));
+      root.querySelectorAll(".sp-pane").forEach(p => p.classList.toggle("on", p.dataset.pane === which));
+    });
+  });
+  const askBtn = root.querySelector(".sp-ask");
+  if (askBtn) {
+    const ask = async () => {
+      const text = askBtn.dataset.ask;
+      await _kfAskQuestion(text);
+    };
+    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(askBtn, ask);
+    else askBtn.addEventListener("click", ask);
+  }
+  _kfBindQuestionChips(root);
+  const dismissBtn = root.querySelector(".sp-dismiss");
+  if (dismissBtn && typeof opts.onDismiss === "function") {
+    const dismiss = () => opts.onDismiss();
+    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(dismissBtn, dismiss);
+    else dismissBtn.addEventListener("click", dismiss);
+  }
+}
+
+function _kfShowPersonCard(di, opts = {}) {
+  if (!_spEl || !lastIndividuals) return;
+  const idx = dwellIndi[di];
+  const ind = lastIndividuals[idx];
+  if (!ind) return;
+  _kfSetPeopleControlsCollapsed(true);
+
+  _spEl.innerHTML = _kfPersonDetailHtml(ind, di);
   _spEl.hidden = false;
   if (_personEmptyEl) _personEmptyEl.hidden = true;
   _kfRenderLivingPeopleList(true);
   if (opts.reveal !== false) _kfSetSideTab("person");
 
-  _spEl.querySelectorAll(".sp-tab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const which = btn.dataset.pane;
-      _spEl.querySelectorAll(".sp-tab").forEach(b => b.classList.toggle("on", b.dataset.pane === which));
-      _spEl.querySelectorAll(".sp-pane").forEach(p => p.classList.toggle("on", p.dataset.pane === which));
-    });
-  });
-
-  _spEl.querySelector(".sp-ask").addEventListener("click", async () => {
-    const text = _spEl.querySelector(".sp-ask").dataset.ask;
-    await _kfAskQuestion(text);
-  });
-  _kfBindQuestionChips(_spEl);
-  _spEl.querySelector(".sp-dismiss").addEventListener("click", () => {
-    _kfHidePersonCard();
-    if (_kfUsesResponsiveShell()) _kfSetResponsiveSheetState("peek");
-    highlightedDwell = -1;
-    highlightInferredYear = -1;
-    highlightInferredSrcYear = -1;
-    _kfRenderLivingPeopleList(true);
-    fxCtx.clearRect(0, 0, W, H);
-    if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+  _kfBindPersonDetailControls(_spEl, {
+    onDismiss: () => {
+      _kfHidePersonCard();
+      if (_kfUsesResponsiveShell()) _kfSetResponsiveSheetState("peek");
+      highlightedDwell = -1;
+      highlightInferredYear = -1;
+      highlightInferredSrcYear = -1;
+      _kfRenderLivingPeopleList(true);
+      fxCtx.clearRect(0, 0, W, H);
+      if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
+    },
   });
 }
 
