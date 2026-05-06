@@ -128,6 +128,88 @@ async function tapSelector(client, selector, label) {
   await sleep(180);
 }
 
+async function assertTouchScrollable(client, selector, label) {
+  const encoded = JSON.stringify(selector);
+  const setup = await waitFor(
+    client,
+    `(() => {
+      const pane = document.querySelector(${encoded});
+      if (!pane) return null;
+      pane.scrollTop = 0;
+      const fillerId = "kf-scroll-probe";
+      document.getElementById(fillerId)?.remove();
+      let addedFiller = false;
+      if (pane.scrollHeight <= pane.clientHeight + 2) {
+        const filler = document.createElement("div");
+        filler.id = fillerId;
+        filler.textContent = "scroll probe";
+        filler.style.cssText = "height:900px;flex:0 0 auto;pointer-events:none;opacity:0;";
+        pane.appendChild(filler);
+        addedFiller = true;
+      }
+      const r = pane.getBoundingClientRect();
+      const style = getComputedStyle(pane);
+      return {
+        addedFiller,
+        before: pane.scrollTop,
+        clientHeight: pane.clientHeight,
+        scrollHeight: pane.scrollHeight,
+        overflowY: style.overflowY,
+        touchAction: style.touchAction,
+        visible: r.width > 0 && r.height > 80 && style.display !== "none" && style.visibility !== "hidden",
+        x: r.left + r.width / 2,
+        yStart: Math.min(r.bottom - 36, r.top + r.height - 36),
+        yEnd: Math.max(r.top + 36, r.bottom - Math.min(320, Math.max(120, r.height * 0.65))),
+      };
+    })()`,
+    `${label} scroll setup`,
+    10000,
+    value => value?.visible && value.scrollHeight > value.clientHeight + 2,
+  );
+  assert.match(setup.overflowY, /auto|scroll/, `${label} should expose vertical scrolling`);
+  assert.match(setup.touchAction, /pan-y|auto/, `${label} should allow vertical touch panning`);
+
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: setup.x, y: setup.yStart, id: 1, radiusX: 4, radiusY: 4, force: 1 }],
+  });
+  await sleep(60);
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: setup.x, y: setup.yEnd, id: 1, radiusX: 4, radiusY: 4, force: 1 }],
+  });
+  await sleep(120);
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(250);
+
+  const after = await client.eval(`(() => {
+    const pane = document.querySelector(${encoded});
+    const result = { scrollTop: pane?.scrollTop || 0 };
+    document.getElementById("kf-scroll-probe")?.remove();
+    return result;
+  })()`);
+  assert.ok(after.scrollTop > setup.before, `${label} should move when dragged`);
+}
+
+async function dismissStartupDialogs(client) {
+  await client.eval(`(() => {
+    const terms = document.getElementById("termsModal");
+    if (terms && !terms.hidden) {
+      const check = document.getElementById("termsAcceptCheck");
+      const button = document.getElementById("termsAcceptBtn");
+      if (check && button) {
+        check.checked = true;
+        check.dispatchEvent(new Event("change", { bubbles: true }));
+        button.click();
+      }
+    }
+    const splash = document.getElementById("splash");
+    if (splash && !splash.hidden) {
+      document.getElementById("splashDismiss")?.click();
+    }
+  })()`);
+}
+
 function paneAssertion(tab, textPattern) {
   return `(() => {
     const tree = window.kfDebug.treeSnapshot();
@@ -188,6 +270,9 @@ async function auditCompactInteractions(client, name) {
     await tapSelector(client, `#sideTabs [data-side-tab="${tab}"]`, `${name} ${tab} tab`);
     const state = await waitFor(client, paneAssertion(tab, pattern), `${name} ${tab} visual utility`, 15000, value => !!value?.ok);
     assert.equal(state.errors.length, 0, `${name} ${tab} should not record client errors`);
+    if (tab === "trees") {
+      await assertTouchScrollable(client, "#treesPane", `${name} trees panel`);
+    }
   }
 
   await tapSelector(client, `#sideTabs [data-side-tab="person"]`, `${name} people tab`);
@@ -257,6 +342,7 @@ async function runCase({ name, width, height, compact }) {
     const url = `${appUrl}${appUrl.includes("?") ? "&" : "?"}smoke=${encodeURIComponent(name)}-${Date.now()}`;
     await client.send("Page.navigate", { url });
     await waitFor(client, "document.readyState === 'complete'", `${name} document load`);
+    await dismissStartupDialogs(client);
     await waitFor(
       client,
       "window.kfDebug && window.kfDebug.treeSnapshot && window.kfDebug.treeSnapshot().trees.loaded_count >= 1",

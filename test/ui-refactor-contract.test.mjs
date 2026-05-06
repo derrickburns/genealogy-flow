@@ -205,3 +205,11 @@ test("responsive bottom tabs are tap targets, not sheet drag handles", () => {
   assert.match(styles, /#sideTabs\s*\{[^}]*touch-action:pan-x/s);
   assert.match(styles, /#sideTabs button\s*\{[^}]*touch-action:manipulation/s);
 });
+
+test("responsive sheet panes remain vertical touch scroll containers", () => {
+  const styles = readFileSync("styles/app.css", "utf8");
+
+  assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*overflow-y:auto/s);
+  assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*-webkit-overflow-scrolling:touch/s);
+  assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*touch-action:pan-y/s);
+});

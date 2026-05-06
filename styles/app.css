@@ -2860,4 +2860,19 @@ html, body {
     pointer-events:auto;
     touch-action:manipulation;
   }
+  #panel[data-sheet="open"] #chatPanel,
+  #panel[data-sheet="full"] #chatPanel {
+    min-height:0;
+    overflow:hidden;
+  }
+  #panel[data-sheet="open"] #chatPanel .sidePane.on,
+  #panel[data-sheet="full"] #chatPanel .sidePane.on {
+    flex:1 1 auto;
+    min-height:0;
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+  }
 }
