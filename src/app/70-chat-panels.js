@@ -81,9 +81,9 @@ function _kfUpdateResponsiveSheetTitle(tab) {
   _responsiveSheetTitleEl.textContent =
     tab === "map" ? "Map" :
     tab === "person" ? "People" :
-    tab === "cluster" ? "Cluster" :
+    tab === "cluster" ? "Patterns" :
     tab === "trees" ? "Trees" :
-    tab === "tour" ? "Context" :
+    tab === "tour" ? "Story" :
     "Explore";
 }
 

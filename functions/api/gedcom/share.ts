@@ -1,3 +1,4 @@
+import { createClerkClient } from "@clerk/backend";
 import type { Env, UserContext } from "../../_middleware";
 import { CATALOG_TREES, catalogTreeByShareKey, isCatalogOwner } from "../catalog/_lib";
 import { cleanTreeName, ensureGedcomMultiSourceSchema, normalizeEmail } from "./_lib";
@@ -47,6 +48,43 @@ function inviteAppUrl(env: Env): string {
   return origin.replace(/\/+$/, "");
 }
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+async function createClerkShareInvitation(env: Env, params: {
+  to: string;
+  ownerEmail: string;
+  treeName: string;
+  treeKind: string;
+  treeKey: string;
+}): Promise<{ sent: boolean; skipped?: string; error?: string; id?: string | null }> {
+  const secretKey = typeof env.CLERK_SECRET_KEY === "string" ? env.CLERK_SECRET_KEY.trim() : "";
+  if (!secretKey) return { sent: false, error: "CLERK_SECRET_KEY is not configured" };
+  try {
+    const clerk = createClerkClient({ secretKey });
+    const invitation = await clerk.invitations.createInvitation({
+      emailAddress: params.to,
+      redirectUrl: inviteAppUrl(env),
+      ignoreExisting: true,
+      publicMetadata: {
+        kindredFlowShare: true,
+        invitedBy: params.ownerEmail,
+        treeName: params.treeName,
+        treeKind: params.treeKind,
+        treeKey: params.treeKey,
+      },
+    });
+    return { sent: true, id: invitation.id ?? null };
+  } catch (e) {
+    const message = errorMessage(e);
+    if (/already|exists|duplicate/i.test(message)) {
+      return { sent: false, skipped: message };
+    }
+    return { sent: false, error: message };
+  }
+}
+
 async function sendShareInviteEmail(env: Env, params: {
   to: string;
   ownerEmail: string;
@@ -72,6 +110,8 @@ async function sendShareInviteEmail(env: Env, params: {
     "",
     "Kindred Flow maps family history through time, showing where people lived, how families moved, and how branches cluster by place, tree, and relationship.",
     "",
+    "If this is your first Kindred Flow login, use the separate account invitation email to create your account first.",
+    "",
     `Open Kindred Flow and sign in with this email address to see the shared tree: ${appUrl}`,
   ].join("\n");
   const html = `
@@ -79,6 +119,7 @@ async function sendShareInviteEmail(env: Env, params: {
       <h2 style="margin:0 0 12px">A Kindred Flow tree was shared with you</h2>
       <p><strong>${params.ownerEmail}</strong> shared <strong>${params.treeName}</strong> with you.</p>
       <p>Kindred Flow maps family history through time, showing where people lived, how families moved, and how branches cluster by place, tree, and relationship.</p>
+      <p>If this is your first Kindred Flow login, use the separate account invitation email to create your account first.</p>
       <p><a href="${appUrl}" style="display:inline-block;background:#183b7a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700">Open Kindred Flow</a></p>
       <p style="color:#64748b;font-size:13px">Sign in with ${params.to} to access the shared tree.</p>
     </div>`;
@@ -260,15 +301,23 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     `).bind(kind, key, user.email ?? user.id, email, Math.floor(Date.now() / 1000)).run();
     const changed = Number(result.meta?.changes ?? 0) > 0;
     const tree = await shareableTreeByKey(ctx.env, user, kind, key);
+    const treeName = treeDisplayName(tree);
+    const clerkResult = await createClerkShareInvitation(ctx.env, {
+      to: email,
+      ownerEmail: user.email ?? user.id,
+      treeName,
+      treeKind: kind,
+      treeKey: key,
+    });
     const emailResult = changed
       ? await sendShareInviteEmail(ctx.env, {
         to: email,
         ownerEmail: user.email ?? user.id,
-        treeName: treeDisplayName(tree),
+        treeName,
       })
       : { sent: false, skipped: "share already existed" };
     const state = await responseState(ctx.env, user);
-    return json({ ...state, invite_email: emailResult });
+    return json({ ...state, clerk_invitation: clerkResult, invite_email: emailResult });
   }
   return json(await responseState(ctx.env, user));
 };

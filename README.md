@@ -67,9 +67,9 @@ pnpm parse-gedcom my.ged individuals.json
 | ------------------------------------------ | -------------------------------------------- |
 | `pnpm parse-gedcom <ged> <out.json>`       | Per-individual dated location events.        |
 | `pnpm build-gazetteer [minPop=1000]`       | GeoNames -> compact `gazetteer.json`.        |
-| `pnpm geocode <ind.json> <places.json>`    | Resolve place strings -> lat/lon/level.      |
+| `pnpm geocode <ind.json> <places.json>`    | Resolve place strings -> lat/lon plus precision, ambiguity, and parse warnings. |
 | `pnpm build-timeline <ind> <pl> <out>`     | Pack individuals + places into timeline JSON.|
-| `pnpm migrations <ged> [--out X]`          | Classify moves against historical patterns.  |
+| `pnpm migrations <ged> [--places places.json] [--out X]` | Classify moves against historical patterns; with `--places`, suppress broad or ambiguous geocoding artifacts from pattern/cluster counts. |
 | `pnpm summarize-gedcom <ged>`              | 1-3 sentence Claude summaries (cached).      |
 | `pnpm biographer <ged> [--mode ...]`       | Source-cited biographical prose.             |
 | `pnpm audience <ged> [--living-only]`      | Rank individuals by ancestor coverage.       |
@@ -98,9 +98,15 @@ pnpm build-gazetteer
 pnpm parse-gedcom my.ged individuals.json
 pnpm geocode individuals.json places.json
 pnpm build-timeline individuals.json places.json timeline.json
-pnpm migrations my.ged
+pnpm migrations my.ged --places places.json
 pnpm biographer my.ged --mode standard
 ```
+
+`places.json` keeps the traditional `lat`, `lon`, `level`, `cc`, `st`, and
+`confidence` fields, and also includes `precision`, `ambiguity`, `warnings`,
+and `parsed_hierarchy`. That metadata is intentionally generic: it marks broad
+centroids, missing country/state context, ambiguous city or county names, and
+source details such as addresses or institutions inside a place field.
 
 ### Picking the audience
 

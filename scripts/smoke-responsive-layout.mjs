@@ -191,6 +191,82 @@ async function assertTouchScrollable(client, selector, label) {
   assert.ok(after.scrollTop > setup.before, `${label} should move when dragged`);
 }
 
+async function assertCompactMapVisible(client, label) {
+  const budget = await waitFor(
+    client,
+    `(() => {
+      const map = document.getElementById("mapWrap");
+      if (!map) return null;
+      const mapRect = map.getBoundingClientRect();
+      const centerX = mapRect.left + mapRect.width / 2;
+      const blockers = ["authBar", "responsiveContextStrip", "mapStoryRibbon", "ui", "panel"]
+        .map(id => document.getElementById(id))
+        .filter(el => {
+          if (!el) return false;
+          const s = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
+        })
+        .map(el => {
+          const r = el.getBoundingClientRect();
+          return { id: el.id, left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height };
+        });
+      let run = 0;
+      let maxRun = 0;
+      for (let y = Math.max(0, Math.ceil(mapRect.top)); y <= Math.min(window.innerHeight, Math.floor(mapRect.bottom)); y += 4) {
+        const blocked = blockers.some(r => centerX >= r.left && centerX <= r.right && y >= r.top && y <= r.bottom);
+        if (blocked) {
+          maxRun = Math.max(maxRun, run);
+          run = 0;
+        } else {
+          run += 4;
+        }
+      }
+      maxRun = Math.max(maxRun, run);
+      return {
+        ok: maxRun >= 320,
+        maxClearRun: maxRun,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        map: { top: mapRect.top, bottom: mapRect.bottom, height: mapRect.height },
+        blockers
+      };
+    })()`,
+    `${label} visible map budget`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.ok(budget.maxClearRun >= 320, `${label} should leave a map-dominant visible band`);
+}
+
+async function assertDetailDrawerLeavesMapContext(client, label) {
+  const budget = await waitFor(
+    client,
+    `(() => {
+      const map = document.getElementById("mapWrap");
+      const panel = document.getElementById("panel");
+      if (!map || !panel) return null;
+      const mapRect = map.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const authRect = document.getElementById("authBar")?.getBoundingClientRect();
+      const mapStart = Math.max(mapRect.top, authRect?.bottom || mapRect.top);
+      const visibleMapHeight = Math.max(0, Math.min(panelRect.top, mapRect.bottom) - mapStart);
+      const minimum = Math.min(220, Math.max(150, window.innerHeight * 0.24));
+      return {
+        ok: visibleMapHeight >= minimum,
+        visibleMapHeight,
+        minimum,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        panel: { top: panelRect.top, height: panelRect.height },
+        map: { top: mapRect.top, bottom: mapRect.bottom, height: mapRect.height }
+      };
+    })()`,
+    `${label} drawer map context`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.ok(budget.ok, `${label} detail drawer should preserve map context: ${JSON.stringify(budget)}`);
+}
+
 async function dismissStartupDialogs(client) {
   await client.eval(`(() => {
     const terms = document.getElementById("termsModal");
@@ -259,11 +335,9 @@ function paneAssertion(tab, textPattern) {
 
 async function auditCompactInteractions(client, name) {
   const tabs = [
-    ["map", /alive\/maybe alive|last known locations/i],
+    ["map", /Recorded years|Patterns|Story|Tree scope/i],
     ["person", /Person connection|visible now/i],
-    ["cluster", /Pattern discovery|How to group people/i],
     ["trees", /Trees|Visualized/i],
-    ["tour", /Why this view looks this way|this view/i],
     ["chat", /Live exploration|Evidence first/i],
   ];
   for (const [tab, pattern] of tabs) {
@@ -274,6 +348,17 @@ async function auditCompactInteractions(client, name) {
       await assertTouchScrollable(client, "#treesPane", `${name} trees panel`);
     }
   }
+
+  await tapSelector(client, `#sideTabs [data-side-tab="map"]`, `${name} map tab before patterns action`);
+  await tapSelector(client, "#mapStoryPatterns", `${name} patterns story action`);
+  let state = await waitFor(client, paneAssertion("cluster", /Patterns|How to group people|Find the family pattern/i), `${name} patterns visual utility`, 15000, value => !!value?.ok);
+  assert.equal(state.errors.length, 0, `${name} patterns should not record client errors`);
+  await assertDetailDrawerLeavesMapContext(client, `${name} patterns`);
+  await tapSelector(client, `#sideTabs [data-side-tab="map"]`, `${name} map tab before story action`);
+  await tapSelector(client, "#mapStoryStory", `${name} story action`);
+  state = await waitFor(client, paneAssertion("tour", /Story|Place feeling|Current evidence notes/i), `${name} story visual utility`, 15000, value => !!value?.ok);
+  assert.equal(state.errors.length, 0, `${name} story should not record client errors`);
+  await assertDetailDrawerLeavesMapContext(client, `${name} story`);
 
   await tapSelector(client, `#sideTabs [data-side-tab="person"]`, `${name} people tab`);
   await tapSelector(client, "#v4PeopleBlood", `${name} blood relatives button`);
@@ -292,7 +377,8 @@ async function auditCompactInteractions(client, name) {
     `${name} display options should toggle`,
   );
 
-  await tapSelector(client, `#sideTabs [data-side-tab="cluster"]`, `${name} cluster tab`);
+  await tapSelector(client, `#sideTabs [data-side-tab="map"]`, `${name} map tab before patterns controls`);
+  await tapSelector(client, "#mapStoryPatterns", `${name} patterns action for cluster controls`);
   await client.eval(`(() => {
     const select = document.getElementById("clusterModeChoice");
     select.value = "dispersion";
@@ -322,7 +408,7 @@ async function auditCompactInteractions(client, name) {
   }
 }
 
-async function runCase({ name, width, height, compact }) {
+async function runCase({ name, width, height, compact, mapOnly = false }) {
   const target = await createTarget();
   const client = new CdpClient(target.webSocketDebuggerUrl);
   try {
@@ -353,6 +439,11 @@ async function runCase({ name, width, height, compact }) {
     if (compact) {
       assert.equal(initialSnapshot.layout.tab, "map", `${name} should start map-first after tree load`);
       assert.equal(initialSnapshot.layout.sheet, "peek", `${name} should keep the sheet collapsed after tree load`);
+      await assertCompactMapVisible(client, name);
+      if (mapOnly) {
+        console.log(`${name} map visibility smoke passed`);
+        return;
+      }
     }
     if (compact) {
       await auditCompactInteractions(client, name);
@@ -409,3 +500,4 @@ await cdpFetch("/json/version").catch(e => {
 
 await runCase({ name: "desktop", width: 1180, height: 900, compact: false });
 await runCase({ name: "compact", width: 500, height: 844, compact: true });
+await runCase({ name: "compact-short", width: 521, height: 694, compact: true, mapOnly: true });

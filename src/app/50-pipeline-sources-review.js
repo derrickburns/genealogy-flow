@@ -739,6 +739,23 @@ async function _kfUpdateTreeShare(kind, key, email, action, extra = {}) {
   _kfShareState = { trees: Array.isArray(j?.trees) ? j.trees : [] };
   renderSharePanel();
   refreshSources();
+  if (action === "add" && email) {
+    const authInvite = j?.clerk_invitation || {};
+    const shareEmail = j?.invite_email || {};
+    const authText = authInvite.sent
+      ? `Clerk invite sent to ${email}`
+      : authInvite.error
+        ? `tree shared, but Clerk invite failed: ${String(authInvite.error).slice(0, 160)}`
+        : authInvite.skipped
+          ? `tree shared; Clerk invite skipped`
+          : `tree shared with ${email}`;
+    const mailText = shareEmail.error
+      ? `share email failed: ${String(shareEmail.error).slice(0, 120)}`
+      : shareEmail.sent
+        ? "share email sent"
+        : "";
+    stats.textContent = mailText ? `${authText}; ${mailText}` : authText;
+  }
 }
 
 function _kfSourceNameFromFileName(name) {

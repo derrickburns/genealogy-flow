@@ -61,6 +61,22 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   assert.doesNotMatch(persistFn, /_kfIsCompactLayout/);
 });
 
+test("tree sharing creates an application auth invitation", () => {
+  const shareApi = readFileSync("functions/api/gedcom/share.ts", "utf8");
+  const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
+
+  assert.match(shareApi, /createClerkClient/);
+  assert.match(shareApi, /clerk\.invitations\.createInvitation\(\{/);
+  assert.match(shareApi, /emailAddress:\s*params\.to/);
+  assert.match(shareApi, /redirectUrl:\s*inviteAppUrl\(env\)/);
+  assert.match(shareApi, /ignoreExisting:\s*true/);
+  assert.match(shareApi, /kindredFlowShare:\s*true/);
+  assert.match(shareApi, /clerk_invitation:\s*clerkResult/);
+  assert.doesNotMatch(shareApi, /const clerkResult = changed/);
+  assert.match(sources, /Clerk invite sent to/);
+  assert.match(sources, /Clerk invite failed/);
+});
+
 test("raw tree text caching is based on memory budget, not viewport", () => {
   const state = readFileSync("src/app/00-state.js", "utf8");
   const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
@@ -175,10 +191,14 @@ test("declutter clustering is active at the current zoom", () => {
   assert.match(mapRuntime, /clusterMode === "group"\s+\|\|\s+clusterMode === "dispersion"/);
 });
 
-test("live exploration contract does not render a tagline headline", () => {
+test("explore tab does not render a static text-only contract card", () => {
   const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
 
-  assert.match(chrome, /id="v4ExploreContract"/);
+  assert.doesNotMatch(chrome, /id="v4ExploreContract"/);
+  assert.doesNotMatch(chrome, /_kfV4SheetHtml\("explore"\)/);
+  assert.doesNotMatch(chrome, /exploreContractGrid/);
+  assert.doesNotMatch(styles, /exploreContractGrid/);
   assert.doesNotMatch(chrome, /Make the data felt without making it up/);
 });
 
@@ -212,4 +232,62 @@ test("responsive sheet panes remain vertical touch scroll containers", () => {
   assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*overflow-y:auto/s);
   assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*-webkit-overflow-scrolling:touch/s);
   assert.match(styles, /#panel\[data-sheet="open"\]\s+#chatPanel\s+\.sidePane\.on,\s*#panel\[data-sheet="full"\]\s+#chatPanel\s+\.sidePane\.on\s*\{[^}]*touch-action:pan-y/s);
+});
+
+test("phone shell uses primary destinations with contextual patterns and story access", () => {
+  const html = readFileSync("index.html", "utf8");
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
+  const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
+
+  assert.match(html, /data-side-tab="cluster">Patterns</);
+  assert.match(html, /data-side-tab="tour">Story</);
+  assert.match(panels, /tab === "cluster" \? "Patterns"/);
+  assert.match(panels, /tab === "tour" \? "Story"/);
+  assert.match(chrome, /function\s+_kfInstallV4PhoneContextActions\s*\(/);
+  assert.match(chrome, /id="mapStoryPatterns"/);
+  assert.match(chrome, /id="mapStoryStory"/);
+  assert.match(chrome, /_kfSetSideTab\(tab\)/);
+  assert.match(styles, /#sideTabs\s+\[data-side-tab="cluster"\],\s*#sideTabs\s+\[data-side-tab="tour"\]\s*\{[^}]*display:none\s*!important/s);
+  assert.match(styles, /\.mapStoryActions\s+button\s*\{[^}]*min-height:48px/s);
+  assert.match(smoke, /#mapStoryPatterns/);
+  assert.match(smoke, /#mapStoryStory/);
+});
+
+test("phone panels meet the Pencil readability scale", () => {
+  const styles = readFileSync("styles/app.css", "utf8");
+
+  assert.match(styles, /#mapStoryName\s*\{[^}]*font-size:18px/s);
+  assert.match(styles, /\.sheetStoryCard h3,\s*\.contextHeroCard h3\s*\{[^}]*font-size:22px/s);
+  assert.match(styles, /\.sheetStoryCard p,\s*\.contextHeroCard p,[^}]*\{[^}]*font-size:16px/s);
+  assert.match(styles, /\.sheetActionRail button\s*\{[^}]*min-height:48px/s);
+  assert.match(styles, /\.optionCard select\s*\{[^}]*min-height:48px/s);
+  assert.match(styles, /#chatInput\s*\{[^}]*min-height:112px/s);
+  assert.match(styles, /#chatLock button\s*\{[^}]*min-height:48px/s);
+  assert.match(styles, /#treesPane #sourcesPanel \.treeInventoryRow\s*\{[^}]*padding:14px/s);
+  assert.match(styles, /#chatBar button\s*\{[^}]*min-height:48px/s);
+});
+
+test("short phone map-first state gives vertical space back to the map", () => {
+  const styles = readFileSync("styles/app.css", "utf8");
+  const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
+
+  assert.match(styles, /Pencil v6 map-first implementation/);
+  assert.match(styles, /@media \(max-width: 720px\) and \(max-height: 760px\)/);
+  assert.match(styles, /\.responsiveContextStrip\s*\{[^}]*display:none\s*!important/s);
+  assert.match(styles, /#ui\s*\{[^}]*min-height:86px\s*!important/s);
+  assert.match(styles, /#ui \.timelineOptions\s*\{[^}]*display:none\s*!important/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*min-height:58px/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*bottom:calc\(162px/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:64px/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*max-height:124px/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.responsiveContextStrip\s*\{[^}]*display:none\s*!important/s);
+  assert.match(styles, /#panel\[data-sheet="open"\]\s*\{[^}]*height:min\(62dvh, 520px\)/s);
+  assert.match(smoke, /function\s+assertCompactMapVisible\s*\(/);
+  assert.match(smoke, /function\s+assertDetailDrawerLeavesMapContext\s*\(/);
+  assert.match(smoke, /\["map", \/Recorded years\|Patterns\|Story\|Tree scope\/i\]/);
+  assert.match(smoke, /maxRun >= 320/);
+  assert.match(smoke, /visibleMapHeight >= minimum/);
+  assert.match(smoke, /compact-short/);
 });

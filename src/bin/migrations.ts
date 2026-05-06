@@ -152,6 +152,19 @@ function classifyPlace(place: string): { state: string | null; country: string |
 
 interface IndiEvent { year: number; place: string; }
 interface IndiRecord { id: string; name: string; events: IndiEvent[]; }
+type MovementQuality = "usable" | "low_precision" | "ambiguous_or_warning" | "missing_geocode" | "unscored";
+
+interface GeocodeResult {
+  cc: string;
+  st: string | null;
+  level?: string;
+  precision?: string;
+  confidence?: "high" | "medium" | "low";
+  ambiguity?: "none" | "under_specified" | "ambiguous" | "non_place_detail";
+  warnings?: string[];
+}
+
+type PlacesMap = Record<string, GeocodeResult>;
 
 interface Migration {
   year: number;
@@ -165,9 +178,108 @@ interface Migration {
   to_state: string | null;
   to_country: string | null;
   pattern: string | null;
+  movement_quality: MovementQuality;
+  movement_warnings: string[];
+  from_precision: string | null;
+  to_precision: string | null;
+  from_confidence: string | null;
+  to_confidence: string | null;
+  from_ambiguity: string | null;
+  to_ambiguity: string | null;
 }
 
-function extractMigrations(individuals: IndiRecord[]): Migration[] {
+function classifyPlaceForMigration(place: string, places: PlacesMap | null): { state: string | null; country: string | null } {
+  const g = places?.[place];
+  if (g) return { state: g.st ?? null, country: g.cc };
+  return classifyPlace(place);
+}
+
+const MOVEMENT_BLOCKING_WARNINGS = new Set([
+  "missing_country_or_state",
+  "ambiguous_place_text",
+  "ambiguous_county_name",
+  "country_inferred_from_us_county_gazetteer",
+  "broad_country_centroid",
+  "broad_admin1_centroid",
+  "detail_without_geographic_hierarchy",
+  "unknown_or_placeholder_place",
+  "numeric_only_place",
+]);
+
+function movementQuality(
+  fromPlace: string,
+  toPlace: string,
+  places: PlacesMap | null,
+): {
+  quality: MovementQuality;
+  warnings: string[];
+  fromPrecision: string | null;
+  toPrecision: string | null;
+  fromConfidence: string | null;
+  toConfidence: string | null;
+  fromAmbiguity: string | null;
+  toAmbiguity: string | null;
+} {
+  if (!places) {
+    return {
+      quality: "unscored",
+      warnings: [],
+      fromPrecision: null,
+      toPrecision: null,
+      fromConfidence: null,
+      toConfidence: null,
+      fromAmbiguity: null,
+      toAmbiguity: null,
+    };
+  }
+
+  const from = places[fromPlace];
+  const to = places[toPlace];
+  if (!from || !to) {
+    return {
+      quality: "missing_geocode",
+      warnings: [
+        ...(from ? [] : [`missing_geocode:${fromPlace}`]),
+        ...(to ? [] : [`missing_geocode:${toPlace}`]),
+      ],
+      fromPrecision: from?.precision ?? from?.level ?? null,
+      toPrecision: to?.precision ?? to?.level ?? null,
+      fromConfidence: from?.confidence ?? null,
+      toConfidence: to?.confidence ?? null,
+      fromAmbiguity: from?.ambiguity ?? null,
+      toAmbiguity: to?.ambiguity ?? null,
+    };
+  }
+
+  const fromPrecision = from.precision ?? from.level ?? null;
+  const toPrecision = to.precision ?? to.level ?? null;
+  const warnings = [
+    ...(from.warnings ?? []).map(w => `from:${w}`),
+    ...(to.warnings ?? []).map(w => `to:${w}`),
+  ];
+  const rawWarnings = [...(from.warnings ?? []), ...(to.warnings ?? [])];
+  const hasBlockingWarning = rawWarnings.some(w => MOVEMENT_BLOCKING_WARNINGS.has(w));
+  const hasAmbiguity = (from.ambiguity && from.ambiguity !== "none") || (to.ambiguity && to.ambiguity !== "none");
+  const hasLowConfidence = from.confidence === "low" || to.confidence === "low";
+  const hasLowPrecision = fromPrecision === "admin1" || fromPrecision === "country" || toPrecision === "admin1" || toPrecision === "country";
+
+  let quality: MovementQuality = "usable";
+  if (hasBlockingWarning || hasAmbiguity || hasLowConfidence) quality = "ambiguous_or_warning";
+  else if (hasLowPrecision) quality = "low_precision";
+
+  return {
+    quality,
+    warnings,
+    fromPrecision,
+    toPrecision,
+    fromConfidence: from.confidence ?? null,
+    toConfidence: to.confidence ?? null,
+    fromAmbiguity: from.ambiguity ?? null,
+    toAmbiguity: to.ambiguity ?? null,
+  };
+}
+
+function extractMigrations(individuals: IndiRecord[], places: PlacesMap | null): Migration[] {
   const out: Migration[] = [];
   for (const ind of individuals) {
     const seen = new Map<string, [number, string]>();
@@ -178,8 +290,9 @@ function extractMigrations(individuals: IndiRecord[]): Migration[] {
     const evs = [...seen.values()].sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1]));
     let prev: { year: number; place: string; state: string | null; country: string | null } | null = null;
     for (const [year, place] of evs) {
-      const { state: fs, country: fc } = classifyPlace(place);
+      const { state: fs, country: fc } = classifyPlaceForMigration(place, places);
       if (prev && prev.place !== place) {
+        const quality = movementQuality(prev.place, place, places);
         out.push({
           year,
           from_year: prev.year,
@@ -192,6 +305,14 @@ function extractMigrations(individuals: IndiRecord[]): Migration[] {
           to_state: fs,
           to_country: fc,
           pattern: null,
+          movement_quality: quality.quality,
+          movement_warnings: quality.warnings,
+          from_precision: quality.fromPrecision,
+          to_precision: quality.toPrecision,
+          from_confidence: quality.fromConfidence,
+          to_confidence: quality.toConfidence,
+          from_ambiguity: quality.fromAmbiguity,
+          to_ambiguity: quality.toAmbiguity,
         });
       }
       prev = { year, place, state: fs, country: fc };
@@ -221,6 +342,7 @@ interface Cluster {
 function findFamilyClusters(migrations: Migration[], minCount: number): Cluster[] {
   const buckets = new Map<string, Migration[]>();
   for (const m of migrations) {
+    if (m.movement_quality !== "usable" && m.movement_quality !== "unscored") continue;
     const fc = m.from_country, tc = m.to_country, fs = m.from_state, ts = m.to_state;
     if (!fc || !tc) continue;
     const fromLabel = fc === "US" ? (fs ? STATE_TO_REGION[fs] : null) : fc;
@@ -254,13 +376,14 @@ function findFamilyClusters(migrations: Migration[], minCount: number): Cluster[
 }
 
 function parseArgs() {
-  const args: { ged: string | undefined; out: string | undefined; minCluster: number } = {
-    ged: undefined, out: undefined, minCluster: 3,
+  const args: { ged: string | undefined; out: string | undefined; places: string | undefined; minCluster: number } = {
+    ged: undefined, out: undefined, places: undefined, minCluster: 3,
   };
   const positional: string[] = [];
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--out") { args.out = argv[++i]; }
+    else if (a === "--places") { args.places = argv[++i]; }
     else if (a === "--min-cluster") { args.minCluster = Number.parseInt(argv[++i] ?? "3", 10); }
     else positional.push(a);
   }
@@ -271,11 +394,13 @@ function parseArgs() {
 function main(): number {
   const args = parseArgs();
   if (!args.ged) {
-    console.error("usage: migrations <PATH.ged> [--out PATH.migrations.json] [--min-cluster N]");
+    console.error("usage: migrations <PATH.ged> [--places places.json] [--out PATH.migrations.json] [--min-cluster N]");
     return 2;
   }
+  const places = args.places ? JSON.parse(readFileSync(args.places, "utf8")) as PlacesMap : null;
   const out = args.out ?? `${args.ged}.migrations.json`;
   console.log(`Parsing ${args.ged}`);
+  if (args.places) console.log(`  scoring movement quality with ${args.places}`);
   const g = parseGedcom(args.ged);
   const indis: IndiRecord[] = [];
   for (const ind of g.individuals.values()) {
@@ -288,13 +413,16 @@ function main(): number {
   }
   console.log(`  ${indis.length.toLocaleString()} individuals with dated events`);
 
-  const migs = extractMigrations(indis);
+  const migs = extractMigrations(indis, places);
   console.log(`  ${migs.length.toLocaleString()} cross-place migrations`);
 
   const patternCounts = new Map<string, number>();
   const byDecade = new Map<number, { total: number; by_pattern: Record<string, number> }>();
+  const qualityCounts = new Map<MovementQuality, number>();
   for (const m of migs) {
-    const pat = classify(m);
+    qualityCounts.set(m.movement_quality, (qualityCounts.get(m.movement_quality) ?? 0) + 1);
+    const shouldClassify = m.movement_quality === "usable" || m.movement_quality === "unscored";
+    const pat = shouldClassify ? classify(m) : null;
     m.pattern = pat;
     if (pat) patternCounts.set(pat, (patternCounts.get(pat) ?? 0) + 1);
     const decade = Math.floor(m.year / 10) * 10;
@@ -324,6 +452,7 @@ function main(): number {
     migrations: migs,
     family_clusters: clusters,
     by_decade: byDecadeObj,
+    movement_quality_counts: Object.fromEntries([...qualityCounts.entries()].sort((a, b) => a[0].localeCompare(b[0]))),
   };
   writeFileSync(out, JSON.stringify(outObj, null, 2));
   console.log(`\nWrote ${out}`);

@@ -32,6 +32,38 @@ interface GazetteerData {
   stateCountryCollisions: Set<string>; // tokens that are both country aliases + US state names
 }
 
+type GeocodeLevel = "city" | "county" | "admin1" | "country";
+type GeocodeConfidence = "high" | "medium" | "low";
+type GeocodeAmbiguity = "none" | "under_specified" | "ambiguous" | "non_place_detail";
+type CountrySource = "explicit" | "state_implied_us" | "us_county_gazetteer" | "none";
+
+interface ParsedHierarchy {
+  raw: string;
+  cleaned: string;
+  parts: string[];
+  country: string | null;
+  country_source: CountrySource;
+  state: string | null;
+  state_index: number | null;
+  has_county_token: boolean;
+  has_address_detail: boolean;
+  has_site_or_institution_detail: boolean;
+}
+
+interface GeocodeResult {
+  lat: number;
+  lon: number;
+  level: GeocodeLevel;
+  precision: GeocodeLevel;
+  cc: string;
+  st: string | null;
+  confidence: GeocodeConfidence;
+  ambiguity: GeocodeAmbiguity;
+  warnings: string[];
+  parsed_hierarchy: ParsedHierarchy;
+  candidate_count?: number;
+}
+
 // ---------- Generic helpers (noise stripping, abbreviations, fuzzy) ----------
 
 // Common parenthetical / prefix noise that obscures real geographic tokens in
@@ -433,18 +465,118 @@ function findCounty(parts: string[], st: string, counties: Map<string, LatLon>):
   return null;
 }
 
-interface GeocodeResult {
-  lat: number;
-  lon: number;
-  level: "city" | "county" | "admin1" | "country";
-  cc: string;
-  st: string | null;
-  confidence: "high" | "medium" | "low";
+const UNKNOWN_PLACE = /^(unknown|unk|same place|same|n\/a|na|none|null|\?|-)$/i;
+const BARE_NON_PLACE_DETAIL = /^(nursing home|hospice|hospital|clinic|cemetery|graveyard|church|chapel|ward|district|precinct)$/i;
+const ADDRESS_START = /^\s*\d{1,6}\s+\S+/;
+const ADDRESS_WORD = /\b(street|road|rd\.|avenue|ave\.|boulevard|blvd\.|drive|dr\.|lane|ln\.|highway|hwy\.|route|rte\.|pike|court|ct\.|pl\.)\b/i;
+const SITE_OR_INSTITUTION = /\b(nursing home|hospice|hospital|clinic|cemetery|graveyard|memorial park|church|chapel|synagogue|temple|mosque|ward|district|precinct|plantation|farm)\b/i;
+
+interface PlaceInputAnalysis {
+  blockGeocode: boolean;
+  hasAddressDetail: boolean;
+  hasSiteOrInstitutionDetail: boolean;
+  warnings: string[];
 }
 
 interface GeocodeContext {
   prior: Map<string, number>; // (cc|st) -> count of confident hits in tree
   usFuzzySlugs: Map<string, string>;
+}
+
+function analyzePlaceInput(raw: string, cleaned: string, parts: string[]): PlaceInputAnalysis {
+  const warnings: string[] = [];
+  const rawTrim = raw.trim();
+  const cleanedTrim = cleaned.trim();
+  const cleanedSlug = slug(cleanedTrim);
+  const hasAddressDetail = ADDRESS_START.test(rawTrim) || ADDRESS_WORD.test(rawTrim);
+  const hasSiteOrInstitutionDetail = SITE_OR_INSTITUTION.test(rawTrim);
+  let blockGeocode = false;
+
+  if (UNKNOWN_PLACE.test(rawTrim) || UNKNOWN_PLACE.test(cleanedTrim)) {
+    warnings.push("unknown_or_placeholder_place");
+    blockGeocode = true;
+  }
+  if (/^\d+$/.test(cleanedTrim)) {
+    warnings.push("numeric_only_place");
+    blockGeocode = true;
+  }
+  if (hasAddressDetail) warnings.push("address_detail_in_place_field");
+  if (hasSiteOrInstitutionDetail) warnings.push("site_or_institution_detail_in_place_field");
+
+  const hasHierarchy = parts.length >= 2;
+  if (!hasHierarchy && (hasAddressDetail || hasSiteOrInstitutionDetail || BARE_NON_PLACE_DETAIL.test(cleanedSlug))) {
+    warnings.push("detail_without_geographic_hierarchy");
+    blockGeocode = true;
+  }
+
+  return { blockGeocode, hasAddressDetail, hasSiteOrInstitutionDetail, warnings };
+}
+
+function makeParsedHierarchy(
+  raw: string,
+  cleaned: string,
+  parts: string[],
+  country: string | null,
+  countrySource: CountrySource,
+  state: string | null,
+  stateIndex: number | null,
+  hasCountyToken: boolean,
+  input: PlaceInputAnalysis,
+): ParsedHierarchy {
+  return {
+    raw,
+    cleaned,
+    parts,
+    country,
+    country_source: countrySource,
+    state,
+    state_index: stateIndex,
+    has_county_token: hasCountyToken,
+    has_address_detail: input.hasAddressDetail,
+    has_site_or_institution_detail: input.hasSiteOrInstitutionDetail,
+  };
+}
+
+function inferAmbiguity(warnings: string[], candidateCount: number | undefined): GeocodeAmbiguity {
+  if (warnings.includes("detail_without_geographic_hierarchy")) return "non_place_detail";
+  if (warnings.includes("ambiguous_place_text") || (candidateCount !== undefined && candidateCount > 1)) return "ambiguous";
+  if (
+    warnings.includes("missing_country_or_state") ||
+    warnings.includes("country_inferred_from_us_county_gazetteer") ||
+    warnings.includes("broad_country_centroid") ||
+    warnings.includes("broad_admin1_centroid")
+  ) {
+    return "under_specified";
+  }
+  return "none";
+}
+
+function resultOf(
+  lat: number,
+  lon: number,
+  level: GeocodeLevel,
+  cc: string,
+  st: string | null,
+  confidence: GeocodeConfidence,
+  parsed: ParsedHierarchy,
+  warnings: string[],
+  candidateCount?: number,
+): GeocodeResult {
+  const uniqueWarnings = [...new Set(warnings)];
+  const out: GeocodeResult = {
+    lat,
+    lon,
+    level,
+    precision: level,
+    cc,
+    st,
+    confidence,
+    ambiguity: inferAmbiguity(uniqueWarnings, candidateCount),
+    warnings: uniqueWarnings,
+    parsed_hierarchy: parsed,
+  };
+  if (candidateCount !== undefined) out.candidate_count = candidateCount;
+  return out;
 }
 
 function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): GeocodeResult | null {
@@ -454,26 +586,54 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
   const parts = cleaned.split(",").map(s => s.trim()).filter(Boolean);
   if (parts.length === 0) return null;
 
-  const cc = detectCountry(parts, gz.countryAliases, gz.stateCountryCollisions) ?? "US";
-  const { st, idx: stIdx } = detectState(parts, cc, gz.state_names, cc === "US" ? ctx.usFuzzySlugs : undefined);
+  const input = analyzePlaceInput(place, cleaned, parts);
+  if (input.blockGeocode) return null;
+
+  const explicitCc = detectCountry(parts, gz.countryAliases, gz.stateCountryCollisions);
+  const stateDetectCc = explicitCc ?? "US";
+  const { st, idx: stIdx } = detectState(
+    parts,
+    stateDetectCc,
+    gz.state_names,
+    stateDetectCc === "US" ? ctx.usFuzzySlugs : undefined,
+  );
   const hasCountyToken = parts.some(p => COUNTY_SUFFIX.test(p));
+  const cc = explicitCc ?? (st ? "US" : null);
+  const countrySource: CountrySource = explicitCc ? "explicit" : (st ? "state_implied_us" : "none");
+  const baseWarnings = [...input.warnings];
+  if (!explicitCc && st) baseWarnings.push("country_inferred_from_state");
+  if (!explicitCc && !st) baseWarnings.push("missing_country_or_state");
+  const parsed = makeParsedHierarchy(
+    place,
+    cleaned,
+    parts,
+    cc,
+    countrySource,
+    st,
+    stIdx,
+    hasCountyToken,
+    input,
+  );
 
   // Helper: extract city tokens (positions 0..stIdx, skipping county tokens).
   // Returns [token, position] so we can apply position weight in scoring.
   const cityTokens = (): { tok: string; pos: number }[] => {
     const out: { tok: string; pos: number }[] = [];
-    const upper = stIdx ?? parts.length;
+    const upper = stIdx ?? (explicitCc ? Math.max(parts.length - 1, 0) : parts.length);
     for (let i = 0; i < upper; i++) {
       const tok = parts[i]!;
       if (COUNTY_SUFFIX.test(tok)) continue;
+      const wardMatch = tok.match(/^(.+?)\s+Ward\s+\S+.*$/i);
+      if (!wardMatch && (ADDRESS_START.test(tok) || ADDRESS_WORD.test(tok) || SITE_OR_INSTITUTION.test(tok))) continue;
+      const cityTok = wardMatch ? wardMatch[1]!.trim() : tok;
       // Token-level word splitting: "Mill Creek Township" -> ["Mill", "Mill Creek", "Creek"].
-      const words = tok.split(/[\s().]+/).filter(Boolean);
-      out.push({ tok, pos: i });
+      const words = cityTok.split(/[\s().]+/).filter(Boolean);
+      out.push({ tok: cityTok, pos: i });
       if (words.length > 1) {
         for (let span = 1; span <= Math.min(words.length, 3); span++) {
           for (let s = 0; s + span <= words.length; s++) {
             const phrase = words.slice(s, s + span).join(" ");
-            if (phrase !== tok) out.push({ tok: phrase, pos: i });
+            if (phrase !== cityTok) out.push({ tok: phrase, pos: i });
           }
         }
       }
@@ -482,15 +642,15 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
   };
 
   // State-scoped city lookup (fast path when state is known).
-  const lookupCityInState = (stCode: string): GeocodeResult | null => {
-    const candLookup = gz.cities_by_state.get(`${cc}|${stCode}`);
+  const lookupCityInState = (ccCode: string, stCode: string, warnings: string[]): GeocodeResult | null => {
+    const candLookup = gz.cities_by_state.get(`${ccCode}|${stCode}`);
     if (!candLookup) return null;
     for (const { tok } of cityTokens()) {
       const s = slug(tok);
       const cands = candLookup.get(s);
       if (cands && cands.length > 0) {
         const [lat, lon] = bestCity(cands);
-        return { lat, lon, level: "city", cc, st: stCode, confidence: "high" };
+        return resultOf(lat, lon, "city", ccCode, stCode, "high", parsed, warnings);
       }
     }
     return null;
@@ -500,27 +660,44 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
   if (cc === "US" && st && hasCountyToken) {
     const cty = findCounty(parts, st, gz.counties_us);
     if (cty) {
-      const cityHit = lookupCityInState(st);
+      const cityHit = lookupCityInState(cc, st, baseWarnings);
       if (cityHit) return cityHit;
-      return { lat: cty[0], lon: cty[1], level: "county", cc, st, confidence: "high" };
+      return resultOf(cty[0], cty[1], "county", cc, st, "high", parsed, baseWarnings);
     }
   }
 
   // 2. State known: city -> county -> admin1 fallback.
-  if (st) {
-    const cityHit = lookupCityInState(st);
+  if (cc && st) {
+    const cityHit = lookupCityInState(cc, st, baseWarnings);
     if (cityHit) return cityHit;
     if (cc === "US") {
       const cty = findCounty(parts, st, gz.counties_us);
-      if (cty) return { lat: cty[0], lon: cty[1], level: "county", cc, st, confidence: "high" };
+      if (cty) return resultOf(cty[0], cty[1], "county", cc, st, "high", parsed, baseWarnings);
     }
     const sc = gz.state_centroids.get(`${cc}|${st}`);
-    if (sc) return { lat: sc[0], lon: sc[1], level: "admin1", cc, st, confidence: "medium" };
+    if (sc) return resultOf(sc[0], sc[1], "admin1", cc, st, "medium", parsed, [...baseWarnings, "broad_admin1_centroid"]);
   }
 
   // 3. US + county hint but no state: enumerate states owning that county and
   // pick by tree-prior + city-match. Tie-break is *no longer* alphabetical.
-  if (cc === "US" && hasCountyToken && !st) {
+  if ((cc === "US" || (!cc && hasCountyToken)) && hasCountyToken && !st) {
+    const countyCc = "US";
+    const countyWarnings = cc === "US"
+      ? [...baseWarnings]
+      : [...baseWarnings, "country_inferred_from_us_county_gazetteer"];
+    const countyParsed = cc === "US"
+      ? parsed
+      : makeParsedHierarchy(
+        place,
+        cleaned,
+        parts,
+        countyCc,
+        "us_county_gazetteer",
+        null,
+        null,
+        hasCountyToken,
+        input,
+      );
     const countySlugs: string[] = [];
     for (const tok of parts) {
       if (!COUNTY_SUFFIX.test(tok)) continue;
@@ -538,10 +715,11 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
       if (countySlugs.includes(ctySlug)) matchingStates.add(stCode);
     }
     if (matchingStates.size > 0) {
+      if (matchingStates.size > 1) countyWarnings.push("ambiguous_county_name");
       // First: any state where the city token actually matches a city.
       let bestCityHit: { result: GeocodeResult; score: number } | null = null;
       for (const stCode of matchingStates) {
-        const cl = gz.cities_by_state.get(`US|${stCode}`);
+        const cl = gz.cities_by_state.get(`${countyCc}|${stCode}`);
         if (!cl) continue;
         for (const { tok, pos } of cityTokens()) {
           const s = slug(tok);
@@ -549,10 +727,10 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
           if (!cands || cands.length === 0) continue;
           const posWeight = 1 - pos / Math.max(parts.length, 1);
           for (const c of cands) {
-            const sc = scoreCand(c, cc, posWeight, ctx.prior);
+            const sc = scoreCand(c, countyCc, posWeight, ctx.prior);
             if (!bestCityHit || sc > bestCityHit.score) {
               bestCityHit = {
-                result: { lat: c[0], lon: c[1], level: "city", cc, st: stCode, confidence: "medium" },
+                result: resultOf(c[0], c[1], "city", countyCc, stCode, "medium", countyParsed, countyWarnings, cands.length),
                 score: sc,
               };
             }
@@ -570,7 +748,7 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
       if (bestSt === null) bestSt = [...matchingStates][0]!;
       const cty = findCounty(parts, bestSt, gz.counties_us);
       if (cty) {
-        return { lat: cty[0], lon: cty[1], level: "county", cc, st: bestSt, confidence: "low" };
+        return resultOf(cty[0], cty[1], "county", countyCc, bestSt, "low", countyParsed, countyWarnings, matchingStates.size);
       }
     }
   }
@@ -578,33 +756,84 @@ function geocodeOne(place: string, gz: GazetteerData, ctx: GeocodeContext): Geoc
   // 4. Country-wide city lookup: score every candidate by pop + position + prior
   // and pick the max. Replaces the old "first match wins" walk that was easily
   // tricked by alphabetical/positional ordering.
-  const candLookup = gz.cities_by_country.get(cc);
-  if (candLookup) {
-    let best: { c: CityCand; score: number } | null = null;
-    for (const { tok, pos } of cityTokens()) {
+  const selectBestCity = (
+    ccCode: string,
+    candLookup: Map<string, CityCand[]>,
+    tokens: { tok: string; pos: number }[],
+  ): { c: CityCand; score: number; candidateCount: number } | null => {
+    let best: { c: CityCand; score: number; candidateCount: number } | null = null;
+    let candidateCount = 0;
+    for (const { tok, pos } of tokens) {
       const s = slug(tok);
       const cands = candLookup.get(s);
       if (!cands || cands.length === 0) continue;
+      candidateCount += cands.length;
       const posWeight = 1 - pos / Math.max(parts.length, 1);
       for (const c of cands) {
-        const sc = scoreCand(c, cc, posWeight, ctx.prior);
-        if (!best || sc > best.score) best = { c, score: sc };
+        const sc = scoreCand(c, ccCode, posWeight, ctx.prior);
+        if (!best || sc > best.score) best = { c, score: sc, candidateCount };
       }
     }
-    if (best) {
-      const c = best.c;
-      // Confidence: high if the resolved state matches a known prior weight,
-      // medium otherwise. We don't know if the user "meant" this state, but a
-      // populated prior at least says it's plausible in their tree.
-      const priorMass = c[3] ? (ctx.prior.get(`${cc}|${c[3]}`) ?? 0) : 0;
-      const conf: "high" | "medium" | "low" = priorMass > 5 ? "medium" : "low";
-      return { lat: c[0], lon: c[1], level: "city", cc, st: c[3] || null, confidence: conf };
+    return best ? { ...best, candidateCount } : null;
+  };
+
+  const tokens = cityTokens();
+  const firstToken = tokens.filter(t => t.pos === 0);
+
+  if (cc) {
+    const candLookup = gz.cities_by_country.get(cc);
+    if (candLookup) {
+      const best = selectBestCity(cc, candLookup, firstToken.length > 0 ? firstToken : tokens);
+      if (best) {
+        const c = best.c;
+        const warnings = [...baseWarnings];
+        if (!st) warnings.push("missing_admin1_or_state");
+        if (best.candidateCount > 1) warnings.push("ambiguous_place_text");
+        // Confidence: high if the resolved state matches a known prior weight,
+        // medium otherwise. We don't know if the user "meant" this state, but a
+        // populated prior at least says it's plausible in their tree.
+        const priorMass = c[3] ? (ctx.prior.get(`${cc}|${c[3]}`) ?? 0) : 0;
+        const conf: GeocodeConfidence = priorMass > 5 || best.candidateCount === 1 ? "medium" : "low";
+        return resultOf(c[0], c[1], "city", cc, c[3] || null, conf, parsed, warnings, best.candidateCount);
+      }
+    }
+    const cc_centroid = gz.country_centroids.get(cc);
+    if (cc_centroid) {
+      return resultOf(
+        cc_centroid.lat,
+        cc_centroid.lon,
+        "country",
+        cc,
+        null,
+        "low",
+        parsed,
+        [...baseWarnings, "broad_country_centroid"],
+      );
+    }
+    return null;
+  }
+
+  // 5. No country or state was supplied. Search globally, but keep the result
+  // flagged as under-specified/ambiguous so migration analysis can avoid turning
+  // a plausible guess into a confident long-distance move.
+  let globalBest: { c: CityCand; cc: string; score: number; candidateCount: number } | null = null;
+  let globalCandidateCount = 0;
+  const globalTokens = firstToken.length > 0 ? firstToken : tokens;
+  for (const [ccCode, candLookup] of gz.cities_by_country) {
+    const best = selectBestCity(ccCode, candLookup, globalTokens);
+    if (!best) continue;
+    globalCandidateCount += best.candidateCount;
+    if (!globalBest || best.score > globalBest.score) {
+      globalBest = { c: best.c, cc: ccCode, score: best.score, candidateCount: best.candidateCount };
     }
   }
-  const cc_centroid = gz.country_centroids.get(cc);
-  if (cc_centroid) {
-    return { lat: cc_centroid.lat, lon: cc_centroid.lon, level: "country", cc, st: null, confidence: "low" };
+  if (globalBest) {
+    const c = globalBest.c;
+    const warnings = [...baseWarnings];
+    if (globalCandidateCount > 1) warnings.push("ambiguous_place_text");
+    return resultOf(c[0], c[1], "city", globalBest.cc, c[3] || null, "low", parsed, warnings, globalCandidateCount);
   }
+
   return null;
 }
 

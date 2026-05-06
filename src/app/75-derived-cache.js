@@ -600,9 +600,9 @@ function _kfResponsiveConceptCardsHtml() {
   if (typeof _kfUsesResponsiveShell === "function" && !_kfUsesResponsiveShell()) return "";
   return `<div class="responsiveConceptCards" aria-label="How to read this view">` +
     `<div class="responsiveConceptCard"><b>Time changes the map.</b><span>Markers are people alive or possibly alive in the selected year.</span></div>` +
-    `<div class="responsiveConceptCard"><b>Trees define scope.</b><span>Checked trees control the map, clusters, context, and live exploration.</span></div>` +
+    `<div class="responsiveConceptCard"><b>Trees define scope.</b><span>Checked trees control the map, patterns, story, and live exploration.</span></div>` +
     `<div class="responsiveConceptCard"><b>Movement is evidence.</b><span>Long gaps animate near the destination year so we do not imply decades of travel.</span></div>` +
-    `<div class="responsiveConceptCard"><b>Clusters are shortcuts.</b><span>Tap a cluster to understand a branch before reading individual records.</span></div>` +
+    `<div class="responsiveConceptCard"><b>Patterns are shortcuts.</b><span>Tap a grouped marker to understand a branch before reading individual records.</span></div>` +
     `</div>`;
 }
 
@@ -610,7 +610,7 @@ function _kfYearTourHtml() {
   if (!timelineLoaded || !lastIndividuals) {
     return `<div class="contextSheet">` +
       `<section class="contextHeroCard">` +
-        `<div class="sheetEyebrow">What you are seeing</div>` +
+        `<div class="sheetEyebrow">Story</div>` +
         `<h3>Load a tree to make the movement visible</h3>` +
         `<p>Select one or more trees, then scrub the timeline to see people, places, uncertainty halos, and relationship patterns.</p>` +
       `</section>` +
@@ -649,7 +649,7 @@ function _kfYearTourHtml() {
     : "Visible markers have no obvious weak-place warning under the current setting.";
   return `<div class="contextSheet">` +
     `<section class="contextHeroCard">` +
-      `<div class="sheetEyebrow">What you are seeing</div>` +
+      `<div class="sheetEyebrow">Story</div>` +
       `<h3>${escHtml(y)} · ${escHtml(_kfViewModeLabel())}</h3>` +
       `<p>${escHtml(movementLine)}</p>` +
       `<div class="year-digest-metrics">` +

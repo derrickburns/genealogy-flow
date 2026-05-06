@@ -2312,33 +2312,6 @@ html, body {
 .clusterLensNote span { color:#14532D; }
 .sheetStoryCluster .sheetEyebrow { color:#16A34A; }
 .sheetStoryTrees .sheetEyebrow { color:#7C3AED; }
-.sheetStoryExplore .sheetEyebrow { color:#B45309; }
-.exploreContractGrid {
-  display:grid;
-  gap:8px;
-  margin-top:10px;
-}
-.exploreContractGrid div {
-  padding:9px 10px;
-  border-left:3px solid #2563EB;
-  background:#F8FAFC;
-}
-.exploreContractGrid div:last-child {
-  border-left-color:#D97706;
-  background:#FFF7ED;
-}
-.exploreContractGrid b {
-  display:block;
-  color:var(--v4-ink);
-  font-size:11px;
-}
-.exploreContractGrid span {
-  display:block;
-  margin-top:2px;
-  color:var(--v4-muted);
-  font-size:10.5px;
-  line-height:1.35;
-}
 .contextSheet {
   display:grid;
   gap:12px;
@@ -2874,5 +2847,872 @@ html, body {
     overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;
     touch-action:pan-y;
+  }
+}
+
+/* Pencil v5 phone readability pass: one shared panel system, larger type,
+   four primary phone destinations, and contextual access to Patterns/Story. */
+.mapStoryActions { display:none; }
+
+@media (max-width: 720px), (hover:none) and (pointer:coarse) {
+  #authBar {
+    min-height:58px;
+    padding:8px 12px;
+    gap:8px;
+  }
+  #authBar .topBrand { font-size:15px; }
+  #authBar button {
+    min-height:42px;
+    border-radius:12px;
+    font-size:14px;
+    font-weight:800;
+  }
+  .topScopeChip { font-size:13px; line-height:1.3; }
+
+  #panel[data-active-tab="map"][data-sheet="peek"] {
+    height:98px !important;
+    min-height:98px !important;
+    border-radius:22px 22px 0 0;
+  }
+  #panel[data-active-tab="map"][data-sheet="peek"] #chatPanel {
+    height:78px !important;
+    min-height:78px !important;
+    flex:0 0 78px !important;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui {
+    bottom:calc(98px + 10px + env(safe-area-inset-bottom, 0px));
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryRibbon {
+    bottom:calc(306px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mapStoryRibbon {
+    left:12px;
+    right:12px;
+    flex-wrap:wrap;
+    align-items:flex-start;
+    min-height:0;
+    padding:14px;
+    gap:10px 12px;
+    border-radius:18px;
+  }
+  .mapStoryAvatar {
+    width:48px;
+    height:48px;
+    font-size:16px;
+  }
+  .mapStoryBody {
+    flex:1 1 0;
+    min-width:0;
+    gap:6px;
+  }
+  .mapStoryHead {
+    flex-wrap:wrap;
+    align-items:flex-start;
+    gap:5px 8px;
+  }
+  #mapStoryName {
+    flex:1 1 100%;
+    font-size:18px;
+    line-height:1.15;
+    white-space:normal;
+  }
+  #mapStoryRelation {
+    font-size:12px;
+    line-height:1.2;
+  }
+  .mapStoryRoute {
+    display:block;
+    color:#334155;
+    font-size:15px;
+    line-height:1.35;
+  }
+  .mapStoryActions {
+    display:flex;
+    flex:1 0 100%;
+    gap:8px;
+  }
+  .mapStoryActions button {
+    flex:1 1 0;
+    min-height:48px;
+    border:1px solid #BFDBFE;
+    border-radius:14px;
+    background:#EFF6FF;
+    color:#1D4ED8;
+    font:inherit;
+    font-size:15px;
+    font-weight:900;
+  }
+
+  #sideTabs {
+    min-height:78px;
+    height:auto;
+    align-items:center;
+    gap:6px;
+    padding:8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    border:0;
+    background:#fff;
+    box-shadow:0 -12px 30px rgba(15,23,42,0.16);
+    touch-action:pan-x;
+  }
+  #sideTabs [data-side-tab="cluster"],
+  #sideTabs [data-side-tab="tour"] {
+    display:none !important;
+  }
+  #sideTabs button {
+    min-height:54px;
+    padding:0 8px;
+    border:0;
+    border-radius:999px;
+    color:#475569;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    touch-action:manipulation;
+  }
+  #sideTabs button.on {
+    background:#183B7A;
+    color:#fff;
+    box-shadow:none;
+  }
+  #panel[data-sheet="open"],
+  #panel[data-sheet="full"] {
+    height:min(84dvh, 740px);
+  }
+  #responsiveSheetHandle {
+    min-height:24px;
+    flex-basis:24px;
+  }
+  #panel[data-sheet="open"] #chatPanel .sidePane.on,
+  #panel[data-sheet="full"] #chatPanel .sidePane.on {
+    padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+    font-size:16px;
+  }
+
+  #ui {
+    min-height:104px !important;
+    padding:10px 12px 12px !important;
+    border-radius:18px !important;
+  }
+  #ui .timelineDeck {
+    grid-template-columns:auto minmax(0, 1fr);
+    gap:12px;
+  }
+  #timelineCurrentYear {
+    font-size:26px;
+    line-height:1;
+  }
+  #timelineCaption,
+  .timelineEndpoints {
+    font-size:12px;
+  }
+  #play {
+    width:48px;
+    height:48px;
+    min-width:48px;
+    min-height:48px;
+    font-size:15px;
+  }
+  #ui .mapSpeedControl {
+    min-height:42px;
+    padding:7px 10px;
+  }
+  #ui .speedControl span { font-size:11px; }
+  #ui .speedControl select { font-size:14px; }
+
+  .sheetStoryCard,
+  .contextHeroCard,
+  .contextNotesCard,
+  .homePersonBlock,
+  .treeSelectorCard,
+  .treeStatsCard,
+  .loadedTreeNamePanel,
+  .sharePanel {
+    margin:14px 16px;
+    padding:16px;
+    border-radius:16px;
+  }
+  .sheetEyebrow,
+  .homePersonHead,
+  .treeStatsHead,
+  .sharePanelHead,
+  .year-digest-title,
+  .optionCard label {
+    font-size:12px;
+    line-height:1.2;
+    letter-spacing:0.06em;
+  }
+  .sheetStoryCard h3,
+  .contextHeroCard h3 {
+    margin:5px 0 8px;
+    font-size:22px;
+    line-height:1.12;
+  }
+  .sheetStoryCard p,
+  .contextHeroCard p,
+  .contextNotesCard,
+  .shareHelp,
+  .shareEmpty,
+  #treeStats,
+  .checkControl,
+  .optionHelp {
+    font-size:16px;
+    line-height:1.45;
+  }
+  .sheetStatGrid {
+    gap:1px;
+    margin-top:14px;
+  }
+  .sheetStatGrid div { padding:12px 8px; }
+  .sheetStatGrid b { font-size:17px; }
+  .sheetStatGrid span { font-size:11px; line-height:1.2; }
+  .sheetActionRail {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+    overflow:visible;
+  }
+  .sheetActionRail button {
+    min-height:48px;
+    padding:8px 10px;
+    border-radius:14px;
+    font-size:15px;
+    line-height:1.2;
+    white-space:normal;
+  }
+  .truthMini {
+    gap:5px;
+    padding:14px;
+    border-radius:14px;
+  }
+  .truthMini b,
+  .truthMini span {
+    font-size:15px;
+    line-height:1.4;
+  }
+
+  #homePersonBlock #rootSearchBox {
+    min-height:48px;
+    border-radius:14px !important;
+  }
+  #homePersonBlock #rootSearch,
+  #rootSuggest {
+    font-size:16px !important;
+  }
+  #personEmpty,
+  #clusterEmpty {
+    margin:16px;
+    padding:24px 18px;
+    border-radius:14px;
+    font-size:16px;
+    line-height:1.45;
+  }
+  .peopleControls,
+  .clusterControls {
+    margin:14px 16px 0;
+  }
+  .paneDisclosureToggle {
+    min-height:58px;
+    padding:12px 14px;
+    gap:10px;
+    border-radius:14px;
+  }
+  .paneDisclosureToggle::before { font-size:14px; }
+  .paneDisclosureToggle > span {
+    font-size:13px;
+    line-height:1.2;
+  }
+  .paneDisclosureToggle > small {
+    font-size:14px;
+    line-height:1.3;
+    white-space:normal;
+  }
+  .optionSelectorGrid,
+  .clusterControlsShell,
+  .peopleControlsShell {
+    gap:12px;
+  }
+  .optionCard {
+    gap:9px;
+    padding:14px;
+    border-radius:14px;
+  }
+  .optionCard select {
+    min-height:48px;
+    padding:8px 10px;
+    border-radius:12px;
+    font-size:16px;
+  }
+  .clusterRadiusControl {
+    grid-template-columns:minmax(0, 1fr) auto;
+    gap:12px;
+  }
+  .clusterRadiusControl input { min-height:36px; }
+  .clusterRadiusControl b {
+    min-width:48px;
+    padding:8px 10px;
+    font-size:16px;
+  }
+  #selectedCluster {
+    padding:14px 16px;
+    font-size:16px;
+    line-height:1.45;
+  }
+  .cluster-title { font-size:18px; }
+  .cluster-sub,
+  .cluster-person-meta,
+  .cluster-breakdown span,
+  .cluster-list-order {
+    font-size:14px;
+  }
+  .cluster-breakdown b,
+  .cluster-list-title {
+    font-size:12px;
+  }
+  .cluster-person {
+    grid-template-columns:24px minmax(0, 1fr) auto;
+    gap:10px;
+    padding:12px;
+    border-radius:12px;
+  }
+  .cluster-person-name,
+  .cluster-person-year {
+    font-size:15px;
+  }
+  .cluster-actions { gap:8px; }
+  .cluster-ask {
+    min-height:48px;
+    border-radius:12px;
+    font-size:15px;
+  }
+
+  #treesPane #sourcesPanel {
+    margin:14px 16px 0;
+    padding:16px;
+    gap:12px;
+  }
+  #treesPane #sourcesList,
+  #treesPane #sourcesPanel .treeInventory {
+    gap:12px;
+  }
+  #treesPane #sourcesPanel .treeInventoryRow {
+    gap:10px;
+    padding:14px;
+    border-radius:14px;
+  }
+  #treesPane #sourcesPanel .treeRowMain {
+    grid-template-columns:auto minmax(0, 1fr);
+    gap:12px;
+    align-items:start;
+  }
+  #treesPane #sourcesPanel .treeRowSpacer,
+  #treesPane #sourcesPanel .treeRow .sel,
+  #treesPane #sourcesPanel .treeRowMain > input.sel,
+  .checkControl input {
+    width:24px;
+    height:24px;
+  }
+  #treesPane #sourcesPanel .treeInlineForm {
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) auto;
+    gap:8px;
+  }
+  #treesPane #sourcesPanel .treeInlineForm input,
+  .shareAdd input,
+  .treeSave input,
+  .treeRename input,
+  .treeLocalRename input {
+    min-height:46px;
+    border-radius:12px;
+    padding:8px 10px;
+    font-size:16px;
+  }
+  #treesPane #sourcesPanel .treeInlineForm button,
+  #treesPane #sourcesPanel .srcAction,
+  .shareAdd button,
+  .treeSave button,
+  .treeRename button,
+  .treeLocalRename button {
+    min-height:46px;
+    border-radius:12px;
+    padding:8px 12px !important;
+    font-size:15px !important;
+  }
+  #treesPane #sourcesPanel .srcAction {
+    grid-column:2;
+    justify-self:start;
+  }
+  #treesPane #sourcesPanel .name {
+    font-size:16px;
+    line-height:1.25;
+    white-space:normal;
+  }
+  #treesPane #sourcesPanel .sourceMeta,
+  #treesPane #sourcesPanel .treeEmptyBody,
+  .treeMeta {
+    font-size:14px;
+    line-height:1.4;
+    white-space:normal;
+  }
+  #treesPane #sourcesPanel .treeBadges span,
+  .shareEmail,
+  .shareNone {
+    padding:4px 8px;
+    font-size:12px;
+    line-height:1.2;
+  }
+  .shareEmails { gap:6px; }
+  .shareAdd,
+  .treeLocalRename {
+    display:flex !important;
+  }
+
+  .contextSheet {
+    gap:14px;
+    padding:14px 16px 20px;
+  }
+  .contextCardGrid { gap:10px; }
+  .contextInfoCard {
+    padding:14px;
+    border-radius:14px;
+  }
+  .contextInfoCard b {
+    font-size:15px;
+    line-height:1.25;
+  }
+  .contextInfoCard span,
+  .year-digest-list,
+  .ux-muted,
+  .ux-list {
+    font-size:15px;
+    line-height:1.45;
+  }
+  .year-digest-metrics {
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+  }
+  .year-digest-metric {
+    padding:10px 8px;
+    border-radius:12px;
+  }
+  .year-digest-num { font-size:22px; }
+  .year-digest-label,
+  .ux-section h4 {
+    font-size:11px;
+  }
+  .ux-section {
+    padding:12px;
+    border-radius:14px;
+  }
+  .ux-question {
+    min-height:44px;
+    padding:8px 12px;
+    border-radius:14px;
+    font-size:15px;
+  }
+
+  #chatInsightHeader {
+    padding:14px 16px;
+    gap:10px;
+  }
+  .chatInsightTitle {
+    font-size:18px;
+    line-height:1.2;
+  }
+  #chatInsightScope {
+    max-width:none;
+    margin-top:4px;
+    font-size:14px;
+    line-height:1.35;
+    white-space:normal;
+  }
+  #chatInsightMode {
+    align-self:flex-start;
+    padding:6px 8px;
+    border-radius:999px;
+    font-size:11px;
+  }
+  #chatScope,
+  #chatArtifacts,
+  #chatEvidence,
+  .chatActivityCard,
+  .chatActiveQuestion {
+    margin:0 16px 12px;
+    padding:12px;
+    border-radius:14px;
+    font-size:15px;
+    line-height:1.45;
+  }
+  #chatAnswer,
+  #chatHistory,
+  #chatEvidenceBody {
+    padding-left:16px;
+    padding-right:16px;
+    font-size:16px;
+    line-height:1.5;
+  }
+  #chatInput {
+    min-height:112px;
+    padding:12px;
+    border-radius:14px;
+    font-size:16px;
+    line-height:1.4;
+  }
+  #chatForm {
+    padding:12px 16px 16px;
+    gap:10px;
+  }
+  #chatBar {
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:8px;
+  }
+  #chatBar button {
+    min-height:48px;
+    padding:8px 6px;
+    border-radius:12px;
+    font-size:14px;
+    line-height:1.15;
+  }
+  #chatSend {
+    background:#183B7A !important;
+    color:#fff !important;
+    border-color:#183B7A !important;
+  }
+  .chatLockTitle { font-size:20px; }
+  .chatLockCopy {
+    max-width:none;
+    font-size:16px;
+    line-height:1.45;
+  }
+  #chatLock button {
+    min-height:48px !important;
+    padding:8px 18px !important;
+    border-radius:12px !important;
+    font-size:15px !important;
+    font-weight:850 !important;
+  }
+  .chat-scope-question {
+    min-height:48px;
+    border-radius:14px;
+    font-size:15px;
+  }
+}
+
+@media (max-width: 720px) and (max-height: 760px), (hover:none) and (pointer:coarse) and (max-height: 760px) {
+  #authBar {
+    min-height:50px;
+    padding:6px 12px;
+  }
+  .topScopeChip {
+    padding-top:5px;
+    font-size:12px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .responsiveContextStrip {
+    display:none !important;
+  }
+
+  #panel[data-active-tab="map"][data-sheet="peek"] {
+    height:82px !important;
+    min-height:82px !important;
+  }
+  #panel[data-active-tab="map"][data-sheet="peek"] #chatPanel {
+    height:64px !important;
+    min-height:64px !important;
+    flex-basis:64px !important;
+  }
+  #sideTabs {
+    min-height:64px;
+    padding:6px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  #sideTabs button {
+    min-height:48px;
+    font-size:10px;
+  }
+
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui {
+    bottom:calc(82px + 8px + env(safe-area-inset-bottom, 0px));
+  }
+  #ui {
+    min-height:86px !important;
+    padding:8px 10px 10px !important;
+    border-radius:16px !important;
+  }
+  #ui .timelineDeck {
+    gap:9px;
+  }
+  #timelineCurrentYear {
+    font-size:24px;
+  }
+  #timelineCaption,
+  .timelineEndpoints {
+    font-size:11px;
+  }
+  #play {
+    width:44px;
+    height:44px;
+    min-width:44px;
+    min-height:44px;
+  }
+  #ui .timelineOptions {
+    display:none !important;
+  }
+  #ui .rangeWrap {
+    min-height:26px;
+    padding:7px 0 10px !important;
+  }
+  #ui #range::-webkit-slider-thumb {
+    width:20px !important;
+    height:20px !important;
+    margin-top:-6px;
+  }
+  #ui #range::-moz-range-thumb {
+    width:20px !important;
+    height:20px !important;
+  }
+
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryRibbon {
+    bottom:calc(216px + env(safe-area-inset-bottom, 0px));
+  }
+  .mapStoryRibbon {
+    padding:8px 12px;
+    gap:7px 10px;
+    border-radius:16px;
+  }
+  .mapStoryAvatar {
+    width:40px;
+    height:40px;
+    font-size:14px;
+  }
+  #mapStoryName {
+    flex:1 1 auto;
+    font-size:17px;
+    white-space:nowrap;
+  }
+  #mapStoryRelation {
+    font-size:11px;
+  }
+  .mapStoryRoute {
+    display:-webkit-box;
+    -webkit-line-clamp:1;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+    font-size:12.5px;
+    line-height:1.25;
+  }
+  .mapStoryActions button {
+    min-height:40px;
+    font-size:14px;
+  }
+}
+
+/* Pencil v6 map-first implementation. In Map + peek, the animation surface
+   owns the viewport; story and timeline are compact overlays. */
+@media (max-width: 720px), (hover:none) and (pointer:coarse) {
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .responsiveContextStrip {
+    display:none !important;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #panel {
+    background:transparent;
+    box-shadow:none;
+  }
+  #panel[data-active-tab="map"][data-sheet="peek"] {
+    height:74px !important;
+    min-height:74px !important;
+    border-radius:20px 20px 0 0;
+  }
+  #panel[data-active-tab="map"][data-sheet="peek"] #chatPanel {
+    height:56px !important;
+    min-height:56px !important;
+    flex:0 0 56px !important;
+    background:transparent;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #sideTabs {
+    min-height:58px;
+    height:auto;
+    padding:5px 12px calc(7px + env(safe-area-inset-bottom, 0px));
+    border:0;
+    background:#FFFFFF;
+    box-shadow:0 -10px 26px rgba(15,23,42,0.15);
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #sideTabs button {
+    min-height:48px;
+    border-radius:999px;
+    font-size:10px;
+    letter-spacing:0.045em;
+  }
+
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui {
+    left:12px;
+    right:12px;
+    bottom:calc(84px + env(safe-area-inset-bottom, 0px));
+    height:64px;
+    min-height:64px !important;
+    margin:0 !important;
+    padding:8px 12px !important;
+    overflow:hidden;
+    border:1px solid rgba(203,213,225,0.92) !important;
+    border-radius:18px !important;
+    background:rgba(255,255,255,0.95) !important;
+    box-shadow:0 14px 34px rgba(15,23,42,0.16) !important;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui .timelineDeck {
+    display:grid;
+    grid-template-columns:42px minmax(0, 1fr);
+    align-items:center;
+    gap:10px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .timelinePlayCluster {
+    min-width:42px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .timelineDeckLabel,
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui .timelineOptions,
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui #migBar,
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui #yearThumbLabel {
+    display:none !important;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #play {
+    width:42px;
+    height:42px;
+    min-width:42px;
+    min-height:42px;
+    font-size:13px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .timelineMeta {
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:8px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #timelineCaption {
+    overflow:hidden;
+    color:#64748B;
+    font-size:10px;
+    font-weight:900;
+    letter-spacing:0.07em;
+    text-overflow:ellipsis;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #timelineCurrentYear {
+    flex:0 0 auto;
+    font-size:25px;
+    line-height:0.95;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui .rangeWrap {
+    min-height:18px;
+    padding:4px 0 6px !important;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .timelineEndpoints {
+    margin-top:-5px;
+    font-size:10px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui #range {
+    height:5px !important;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui #range::-webkit-slider-runnable-track {
+    height:5px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui #range::-webkit-slider-thumb {
+    width:20px !important;
+    height:20px !important;
+    margin-top:-7px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui #range::-moz-range-track {
+    height:5px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #ui #range::-moz-range-thumb {
+    width:20px !important;
+    height:20px !important;
+  }
+
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryRibbon {
+    bottom:calc(162px + env(safe-area-inset-bottom, 0px));
+    left:12px;
+    right:12px;
+    min-height:0;
+    max-height:124px;
+    padding:8px 12px;
+    gap:7px 10px;
+    overflow:hidden;
+    border-radius:18px;
+    background:rgba(255,255,255,0.94);
+    box-shadow:0 14px 34px rgba(15,23,42,0.16);
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryAvatar {
+    flex:0 0 42px;
+    width:42px;
+    height:42px;
+    font-size:14px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryBody {
+    flex:1 1 0;
+    gap:3px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryHead {
+    flex-wrap:nowrap;
+    gap:6px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #mapStoryName {
+    flex:1 1 auto;
+    min-width:0;
+    font-size:17px;
+    line-height:1.12;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #mapStoryRelation {
+    max-width:110px;
+    overflow:hidden;
+    padding:2px 6px;
+    font-size:10.5px;
+    line-height:1.15;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryRoute {
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:1;
+    overflow:hidden;
+    color:#334155;
+    font-size:12.5px;
+    line-height:1.25;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryActions {
+    gap:8px;
+  }
+  body:has(#panel[data-active-tab="map"][data-sheet="peek"]) .mapStoryActions button {
+    min-height:40px;
+    border-radius:13px;
+    font-size:14px;
+  }
+
+  body:has(#panel[data-sheet="open"]) .responsiveContextStrip,
+  body:has(#panel[data-sheet="open"]) .mapStoryRibbon {
+    display:none !important;
+  }
+  #panel[data-sheet="open"] {
+    height:min(62dvh, 520px);
+    max-height:520px;
+    border-radius:20px 20px 0 0;
+  }
+  #panel[data-sheet="open"] #responsiveSheetHandle {
+    flex:0 0 18px;
+    min-height:18px;
+  }
+  #panel[data-sheet="open"] #sideTabs {
+    min-height:54px;
+    height:54px;
+    padding:4px 12px;
+  }
+  #panel[data-sheet="open"] #sideTabs button {
+    min-height:44px;
+    font-size:10px;
   }
 }

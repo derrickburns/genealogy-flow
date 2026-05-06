@@ -11,7 +11,7 @@ const _KF_V4_TAB_COPY = {
     lens: "Lens · Lineage",
   },
   cluster: {
-    title: "Cluster",
+    title: "Patterns",
     sub: "Turn dense markers into readable family, place, and branch patterns.",
     lens: "Lens · Patterns",
   },
@@ -21,9 +21,9 @@ const _KF_V4_TAB_COPY = {
     lens: "Scope · Selected trees",
   },
   tour: {
-    title: "What you are seeing",
+    title: "Story",
     sub: "Current year, visible people, uncertainty, and movement context.",
-    lens: "Context",
+    lens: "Story",
   },
   chat: {
     title: "Explore this branch",
@@ -161,9 +161,9 @@ function _kfV4SheetHtml(kind) {
   }
   if (kind === "cluster") {
     return `<section id="v4ClusterStory" class="sheetStoryCard sheetStoryCluster">` +
-      `<div class="sheetEyebrow">Pattern discovery</div>` +
+      `<div class="sheetEyebrow">Patterns</div>` +
       `<h3 id="v4ClusterStoryTitle">Find the family pattern in the crowd</h3>` +
-      `<p id="v4ClusterStoryBody">Cluster mode changes the question: places reveal migration regions, lineage reveals family sides, and tree scope compares sources.</p>` +
+      `<p id="v4ClusterStoryBody">Pattern mode changes the question: places reveal migration regions, lineage reveals family sides, and tree scope compares sources.</p>` +
       `<div class="sheetStatGrid">` +
         `<div><b id="v4ClusterMode">Off</b><span>grouping</span></div>` +
         `<div><b id="v4ClusterVisible">0</b><span>people in play</span></div>` +
@@ -176,7 +176,7 @@ function _kfV4SheetHtml(kind) {
     return `<section id="v4TreesStory" class="sheetStoryCard sheetStoryTrees">` +
       `<div class="sheetEyebrow">Evidence universe</div>` +
       `<h3 id="v4TreesStoryTitle">Checked trees decide what the app can know</h3>` +
-      `<p id="v4TreesStoryBody">Every map marker, context card, cluster, and Explore answer is scoped to the trees selected here.</p>` +
+      `<p id="v4TreesStoryBody">Every map marker, Story card, Pattern view, and Explore answer is scoped to the trees selected here.</p>` +
       `<div class="sheetStatGrid">` +
         `<div><b id="v4TreesSelected">0</b><span>selected</span></div>` +
         `<div><b id="v4TreesLoaded">0</b><span>loaded</span></div>` +
@@ -185,21 +185,39 @@ function _kfV4SheetHtml(kind) {
       `<div class="truthMini"><b>I don't know is allowed.</b><span>If a tree is unchecked or missing evidence, Explore must say so instead of filling gaps.</span></div>` +
     `</section>`;
   }
-  return `<section id="v4ExploreContract" class="sheetStoryCard sheetStoryExplore">` +
-    `<div class="sheetEyebrow">Live exploration</div>` +
-    `<div class="exploreContractGrid">` +
-      `<div><b>Feel migration</b><span>Use the current year, routes, and visible movement to experience family change over time.</span></div>` +
-      `<div><b>Feel connection</b><span>Name people, relationships, branches, and places only when selected-tree evidence supports them.</span></div>` +
-      `<div><b>Never hallucinate</b><span>When evidence is missing, the correct answer is: I don't know from the selected trees.</span></div>` +
-    `</div>` +
-  `</section>`;
+  return "";
+}
+
+function _kfInstallV4PhoneContextActions() {
+  const ribbon = $("mapStoryRibbon");
+  if (!ribbon || $("mapStoryActions")) return;
+  const actions = document.createElement("div");
+  actions.id = "mapStoryActions";
+  actions.className = "mapStoryActions";
+  actions.innerHTML =
+    `<button type="button" id="mapStoryPatterns">Patterns</button>` +
+    `<button type="button" id="mapStoryStory">Story</button>`;
+  ribbon.appendChild(actions);
+
+  const bind = (id, tab) => {
+    const el = $(id);
+    if (!el || el.dataset.v4Bound) return;
+    el.dataset.v4Bound = "1";
+    const openTab = () => {
+      if (typeof _kfSetSideTab === "function") _kfSetSideTab(tab);
+    };
+    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(el, openTab);
+    else el.addEventListener("click", openTab);
+  };
+  bind("mapStoryPatterns", "cluster");
+  bind("mapStoryStory", "tour");
 }
 
 function _kfInstallV4SheetCards() {
+  _kfInstallV4PhoneContextActions();
   if (!$("v4PeopleStory")) $("personPane")?.insertAdjacentHTML("afterbegin", _kfV4SheetHtml("people"));
   if (!$("v4ClusterStory")) $("clusterPane")?.insertAdjacentHTML("afterbegin", _kfV4SheetHtml("cluster"));
   if (!$("v4TreesStory")) $("treesPane")?.insertAdjacentHTML("afterbegin", _kfV4SheetHtml("trees"));
-  if (!$("v4ExploreContract")) $("chatInsightHeader")?.insertAdjacentHTML("afterend", _kfV4SheetHtml("explore"));
 
   const bind = (id, fn) => {
     const el = $(id);
@@ -250,7 +268,7 @@ function _kfRefreshV4SheetCards() {
   _kfSetText("v4TreesLoaded", String(loaded));
   _kfSetText("v4TreesPeople", lastIndividuals?.length ? lastIndividuals.length.toLocaleString() : "0");
   _kfSetText("v4TreesStoryBody", sourceNames.length
-    ? `${sourceNames.join(" + ")} defines the visible markers, Context explanations, Cluster patterns, and Explore answers.`
+    ? `${sourceNames.join(" + ")} defines the visible markers, Story explanations, Pattern views, and Explore answers.`
     : "Select or load trees here before trusting any map pattern or Explore answer.");
 }
 
