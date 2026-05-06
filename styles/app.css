@@ -1761,6 +1761,35 @@ html, body {
   #chatPanel .sidePane.on { display:flex; }
   #personPane { overflow-y:auto; background:#f8fbff; }
   #personPane #selectedPerson { flex:0 0 auto; max-height:none; overflow:visible; border-bottom:0; }
+  .livingPeopleList { margin:10px 12px 12px; border:1px solid #d6dde7; border-radius:10px; background:#fff; overflow:hidden; flex:0 0 auto; }
+  .livingPeopleHead { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:10px; border-bottom:1px solid #e0e6ee; background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%); }
+  .livingPeopleHead b { display:block; color:#102033; font-size:10px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; }
+  .livingPeopleHead span { display:block; margin-top:2px; color:#64748b; font-size:11px; line-height:1.3; }
+  .livingPeopleHead strong { flex:0 0 auto; color:#1e40af; font-size:18px; line-height:1; font-variant-numeric:tabular-nums; }
+  .livingPeopleRows { max-height:min(46dvh, 520px); overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .livingPersonRow { display:grid; grid-template-columns:minmax(0, 1.4fr) 70px 62px minmax(0, 1fr); gap:8px; align-items:center; padding:8px 10px; border-bottom:1px solid #eef2f7; color:#334155; font-size:12px; line-height:1.25; }
+  .livingPersonRow:last-child { border-bottom:0; }
+  .livingPersonRow.selected { background:#eef3ff; box-shadow:inset 3px 0 0 #1e40af; }
+  .livingName { min-width:0; color:#102033; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .livingGender,
+  .livingAge { color:#64748b; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .livingRelation { min-width:0; color:#475569; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .livingPeopleEmpty { padding:12px; color:#64748b; font-size:12px; line-height:1.35; }
+  @media (max-width:720px) {
+    .livingPeopleHead span { font-size:13px; }
+    .livingPeopleRows { max-height:min(36dvh, 360px); }
+    .livingPersonRow {
+      grid-template-columns:minmax(0, 1fr) auto;
+      grid-template-areas:"name age" "gender relation";
+      gap:4px 10px;
+      padding:10px;
+      font-size:14px;
+    }
+    .livingName { grid-area:name; }
+    .livingGender { grid-area:gender; }
+    .livingAge { grid-area:age; }
+    .livingRelation { grid-area:relation; text-align:right; }
+  }
   .homePersonBlock { margin:10px 12px 0; padding:10px; border:1px solid #d6dde7; border-radius:10px; background:#fff; display:grid; gap:7px; }
   .homePersonHead { color:#102033; font-size:10px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; }
   #homePersonBlock #rootwrap { width:100%; }

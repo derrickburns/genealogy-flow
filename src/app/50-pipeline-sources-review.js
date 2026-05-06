@@ -983,6 +983,7 @@ async function loadCatalogTree(key, opts = {}) {
     owner_email: catalogMeta?.owner_email || null,
     relation: catalogMeta?.relation || null,
     common_name: sourceName,
+    revealPersonCard: opts.revealPersonCard !== false,
   };
   if (opts.suppressAutosave) _kfSkipNextSeed = true;
   try {
@@ -1089,6 +1090,7 @@ async function loadCloudTree(sourceKey, opts = {}) {
     top_pci_name: tree.top_pci_name || remoteMeta?.top_pci_name || null,
     top_pci_score: tree.top_pci_score ?? remoteMeta?.top_pci_score ?? null,
     common_name: sourceName,
+    revealPersonCard: opts.revealPersonCard !== false,
   };
   if (opts.suppressAutosave) _kfSkipNextSeed = true;
   try {
@@ -1431,6 +1433,7 @@ async function processFile(file) {
   stats.textContent = `reading ${file.name}...`;
   let text = await file.text();
   const sourceMeta = file._kfTreeMeta || {};
+  const revealPersonCard = sourceMeta.revealPersonCard !== false;
   const incomingSourceName = _kfSourceNameFromFileName(sourceMeta.common_name || file.name);
   const archerAllowed = _kfCatalogTrees.some(t => t && t.key === "archer");
   if (_clerkUserTier === "vip" &&
@@ -1575,7 +1578,7 @@ async function processFile(file) {
       highlightInferredYear = -1;
       highlightInferredSrcYear = -1;
       if (typeof _kfShowPersonCard === "function") {
-        _kfShowPersonCard(latest, { reveal: !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell()) });
+        _kfShowPersonCard(latest, { reveal: revealPersonCard && !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell()) });
       }
     }
   }
@@ -1592,6 +1595,7 @@ async function processFile(file) {
     preferActiveRoot: true,
     selectRoot: true,
     centerRoot: true,
+    revealPersonCard,
   });
   requestAnimationFrame(() => { if (!playing) playBtn.click(); });
   buildBrowserDb(); // build in-memory SQLite for kfApi.sql() — all users
@@ -1651,6 +1655,7 @@ function applyRoot(rootId, opts = {}) {
   _kfRefreshStatsSummary();
   updateSliderMarkers();
   _kfRefreshHomeBtn();
+  if (typeof _kfRenderLivingPeopleList === "function") _kfRenderLivingPeopleList(true);
 }
 
 // Home person = the user's chosen reference person. Defaults to the

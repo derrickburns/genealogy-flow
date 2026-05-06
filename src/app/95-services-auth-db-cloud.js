@@ -223,6 +223,19 @@ window.kfDebug = {
   ..._kfExistingDebug,
   treeSnapshot: _kfBuildTreeDebugSnapshot,
   clientErrors: () => _kfClientErrors.slice(),
+  vizState: () => ({
+    active: typeof _kfActiveVizId !== "undefined" ? _kfActiveVizId : null,
+    list: typeof _kfVizList !== "undefined" ? _kfVizList.map(v => ({ id: v.id, type: v.type, title: v.title })) : [],
+  }),
+  lensState: () => ({
+    active: typeof _kfActiveLens !== "undefined" ? _kfActiveLens : null,
+    rows: Array.isArray(typeof _kfLensData !== "undefined" ? _kfLensData : null) ? _kfLensData.length : null,
+    lenses: typeof _kfLenses !== "undefined" ? _kfLenses.map(l => ({ name: l.name, shape: l.shape })) : [],
+  }),
+  suggestedQuestionTexts: () => [...document.querySelectorAll("[data-chat-scope-question]")]
+    .map(btn => ({ label: btn.textContent?.replace(/\s+/g, " ").trim() || "", text: btn.getAttribute("data-chat-scope-question") || "" })),
+  runKfCallText: text => typeof parseAndRunKfCalls === "function" ? parseAndRunKfCalls(String(text || "")) : { error: "KFCALL parser unavailable" },
+  dispatchChip: chip => typeof _kfDispatchChip === "function" ? _kfDispatchChip(chip) : { error: "chip dispatcher unavailable" },
 };
 
 // Default to locked state; Clerk will unlock once it resolves auth

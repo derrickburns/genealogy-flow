@@ -205,7 +205,9 @@ function _kfRebuildSelectedVisualization(opts = {}) {
   highlightInferredSrcYear = -1;
   if (highlightedDwell >= 0 && opts.centerRoot) centerOnGeo(dwellLon[highlightedDwell], dwellLat[highlightedDwell]);
   if (highlightedDwell >= 0 && opts.selectRoot && typeof _kfShowPersonCard === "function") {
-    _kfShowPersonCard(highlightedDwell, { reveal: !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell()) });
+    const revealPersonCard = opts.revealPersonCard !== false &&
+      !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell());
+    _kfShowPersonCard(highlightedDwell, { reveal: revealPersonCard });
   }
 
   _kfBuildSurnameTopN(12);

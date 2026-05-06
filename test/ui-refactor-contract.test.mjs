@@ -29,7 +29,7 @@ test("person-card collapse hook remains defined by the People panel", () => {
 
 test("refactored panel mount points still exist in the shell", () => {
   const html = readFileSync("index.html", "utf8");
-  for (const id of ["peopleControlsMount", "clusterControlsMount", "sourcesList"]) {
+  for (const id of ["peopleControlsMount", "livingPeopleList", "clusterControlsMount", "sourcesList"]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
 });
@@ -115,6 +115,35 @@ test("responsive browser smoke coverage is wired into package scripts", () => {
   assert.match(smoke, /value => !!value\?\.ok/);
 });
 
+test("AI rendering regression smoke covers suggestions and visual outputs", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const smoke = readFileSync("scripts/smoke-ai-regression.mjs", "utf8");
+  const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+
+  assert.equal(pkg.scripts["smoke:ai"], "node scripts/smoke-ai-regression.mjs");
+  assert.match(smoke, /collectAllSuggestedQuestions/);
+  assert.match(smoke, /clickEverySuggestedQuestion/);
+  assert.match(smoke, /assertShowVizTypes/);
+  assert.match(smoke, /\["vega"/);
+  assert.match(smoke, /\["mermaid"/);
+  assert.match(smoke, /\["dot"/);
+  assert.match(smoke, /\["svg"/);
+  assert.match(smoke, /\["html"/);
+  assert.match(smoke, /\["markdown"/);
+  assert.match(smoke, /assertLensShapes/);
+  assert.match(smoke, /\["state"/);
+  assert.match(smoke, /\["country"/);
+  assert.match(smoke, /\["latlon"/);
+  assert.match(smoke, /\["line"/);
+  assert.match(smoke, /\["arc"/);
+  assert.match(smoke, /assertKfCallParser/);
+  assert.match(services, /runKfCallText:/);
+  assert.match(services, /dispatchChip:/);
+  assert.match(services, /suggestedQuestionTexts:/);
+  assert.match(panels, /window\._kfAiRegressionSuggestedQuestions\.push\(text\)/);
+});
+
 test("responsive shell naming stays presentation-only", () => {
   const html = readFileSync("index.html", "utf8");
   const styles = readFileSync("styles/app.css", "utf8");
@@ -147,15 +176,21 @@ test("responsive shell naming stays presentation-only", () => {
   assert.match(services, /responsive_shell:/);
 });
 
-test("mobile tree loading keeps automatic root detail from taking over the map", () => {
+test("tree inventory loading does not auto-switch from Trees to People", () => {
+  const trees = readFileSync("src/app/48-ux-tree-panel.js", "utf8");
   const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
   const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
   const api = readFileSync("src/app/80-kf-api.js", "utf8");
 
   assert.match(panels, /function\s+_kfShowPersonCard\s*\(\s*di,\s*opts\s*=\s*\{\}\s*\)/);
   assert.match(panels, /opts\.reveal\s*!==\s*false\)\s*_kfSetSideTab\("person"\)/);
-  assert.match(sources, /_kfShowPersonCard\(latest,\s*\{\s*reveal:\s*!\(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell\(\)\)\s*\}\)/);
-  assert.match(api, /_kfShowPersonCard\(highlightedDwell,\s*\{\s*reveal:\s*!\(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell\(\)\)\s*\}\)/);
+  assert.match(trees, /loadCloudTree\(key,\s*\{\s*suppressAutosave:\s*true,\s*revealPersonCard:\s*false\s*\}\)/);
+  assert.match(trees, /loadCatalogTree\(key,\s*\{\s*suppressAutosave:\s*true,\s*revealPersonCard:\s*false\s*\}\)/);
+  assert.match(sources, /const revealPersonCard = sourceMeta\.revealPersonCard !== false/);
+  assert.match(sources, /reveal:\s*revealPersonCard && !\(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell\(\)\)/);
+  assert.match(sources, /revealPersonCard,\s*\n\s*\}\)/);
+  assert.match(api, /const revealPersonCard = opts\.revealPersonCard !== false/);
+  assert.match(api, /_kfShowPersonCard\(highlightedDwell,\s*\{\s*reveal:\s*revealPersonCard\s*\}\)/);
 });
 
 test("local production Clerk sign-in is handled before invoking Clerk modal", () => {
@@ -214,6 +249,24 @@ test("people panel uses person connection buttons as the relationship control", 
   assert.doesNotMatch(people, /id:\s*"showFilterChoice"/);
   assert.doesNotMatch(people, /label:\s*"People shown"/);
   assert.doesNotMatch(controls, /showFilterChoice/);
+});
+
+test("people panel includes a compact scrolling living-people list after selected person", () => {
+  const html = readFileSync("index.html", "utf8");
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
+
+  assert.match(html, /id="selectedPerson" hidden><\/div>\s*<div id="livingPeopleList"/);
+  assert.match(panels, /function\s+_kfLivingPeopleRows\s*\(/);
+  assert.match(panels, /function\s+_kfRenderLivingPeopleList\s*\(/);
+  assert.match(panels, /_kfPersonMayBeAliveAtYear\(ind,\s*year\)/);
+  assert.match(panels, /_kfReadableRelationship\(rel\)/);
+  assert.match(panels, /class="livingPersonRow/);
+  assert.match(sources, /_kfRenderLivingPeopleList\(true\)/);
+  assert.match(styles, /\.livingPeopleRows\s*\{[^}]*overflow-y:auto/s);
+  assert.match(styles, /\.livingPersonRow\s*\{[^}]*grid-template-columns/s);
+  assert.match(styles, /@media \(max-width:720px\)\s*\{[\s\S]*\.livingPersonRow\s*\{[^}]*grid-template-areas/s);
 });
 
 test("responsive bottom tabs are tap targets, not sheet drag handles", () => {
@@ -316,4 +369,15 @@ test("follow their path narrows the map to the focused person", () => {
   assert.match(smoke, /function\s+assertFollowPathFocusesPerson\s*\(/);
   assert.match(smoke, /state\.showFilter === "person"/);
   assert.match(smoke, /state\.visiblePeople <= 1/);
+});
+
+test("Explore map actions tolerate model call syntax variants", () => {
+  const chat = readFileSync("src/app/90-chat-runtime.js", "utf8");
+
+  assert.match(chat, /function\s+_kfParseKfCallArgs\s*\(/);
+  assert.match(chat, /JSON\.parse\(`\[\$\{raw\}\]`\)/);
+  assert.match(chat, /Array\.isArray\(c\.args\)\s*&&\s*c\.method !== "chain"/);
+  assert.match(chat, /chain\(\{"steps":\[/);
+  assert.match(chat, /Pass an OBJECT with a steps array/);
+  assert.match(chat, /verify the route with sql\(\) or a bounded helper before narrating counts/);
 });

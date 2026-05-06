@@ -96,8 +96,8 @@ async function _kfLoadTreeFromInventory(kind, key) {
   const busyKey = _kfTreeBusyKey(kind, key);
   _kfSetTreeInventoryBusyKey(busyKey);
   try {
-    if (kind === "cloud") await loadCloudTree(key, { suppressAutosave: true });
-    else await loadCatalogTree(key, { suppressAutosave: true });
+    if (kind === "cloud") await loadCloudTree(key, { suppressAutosave: true, revealPersonCard: false });
+    else await loadCatalogTree(key, { suppressAutosave: true, revealPersonCard: false });
   } catch (e) {
     stats.textContent = `could not load tree: ${e?.message || e}`;
     console.warn("[kf] tree inventory load:", e?.message || e);

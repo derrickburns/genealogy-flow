@@ -21,6 +21,7 @@ let _kfActiveChatTurnKey = "";
 let _kfRenderedChatChipRefs = [];
 
 const _spEl = $("selectedPerson");
+const _livingPeopleEl = $("livingPeopleList");
 const _personEmptyEl = $("personEmpty");
 const _clusterEl = $("selectedCluster");
 const _clusterEmptyEl = $("clusterEmpty");
@@ -34,6 +35,7 @@ let _kfChatScopeDispatching = false;
 let _kfChatScopeLastHandledAt = 0;
 let _kfChatScopeLastRenderKey = "";
 let _kfChatMoreQuestionsOpen = false;
+let _kfLivingPeopleListKey = "";
 
 function _kfIsSideTabActive(tab) {
   return _kfActiveSideTab === tab;
@@ -172,6 +174,8 @@ function _kfSetSideTab(tab) {
   if (next === "chat") {
     if (typeof _kfRefreshChatScope === "function") _kfRefreshChatScope();
     if (typeof _kfRefreshChatInsightHeader === "function") _kfRefreshChatInsightHeader();
+  } else if (next === "person") {
+    _kfRenderLivingPeopleList();
   }
   _kfRevealResponsiveSheetForTab(next);
 }
@@ -796,6 +800,118 @@ function _kfLivingAgeLabel(ind) {
   return `age ${thisYear - birthYear}`;
 }
 
+function _kfLivingAgeValue(ind, year = new Date().getFullYear()) {
+  const birthYear = Number.parseInt(ind?.birth_year, 10);
+  if (!Number.isFinite(birthYear) || birthYear > year) return null;
+  if (ind?.death_year != null) return null;
+  if (typeof _kfPersonMayBeAliveAtYear === "function" && !_kfPersonMayBeAliveAtYear(ind, year)) return null;
+  return year - birthYear;
+}
+
+function _kfLivingGenderLabel(ind) {
+  return ind?.sex === "M" ? "Male" : ind?.sex === "F" ? "Female" : "Unknown";
+}
+
+function _kfLivingOrdinal(n) {
+  const value = Math.abs(Number.parseInt(n, 10) || 0);
+  const mod100 = value % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${value}th`;
+  return `${value}${value % 10 === 1 ? "st" : value % 10 === 2 ? "nd" : value % 10 === 3 ? "rd" : "th"}`;
+}
+
+function _kfReadableRelationship(rel) {
+  const value = String(rel || "").trim();
+  if (!value) return "No recorded relationship";
+  if (value === "self") return "Home person";
+  if (value === "Sp") return "Spouse";
+  const labels = {
+    P: "Parent",
+    GP: "Grandparent",
+    Ch: "Child",
+    GC: "Grandchild",
+    Sib: "Sibling",
+    HSib: "Half sibling",
+    AU: "Aunt/uncle",
+    Nb: "Niece/nephew",
+  };
+  if (labels[value]) return labels[value];
+  let match = /^(\d+)GGP$/.exec(value);
+  if (match) return `${match[1]}x great-grandparent`;
+  match = /^(\d+)GGC$/.exec(value);
+  if (match) return `${match[1]}x great-grandchild`;
+  match = /^(\d+)GAU$/.exec(value);
+  if (match) return `${match[1]}x great-aunt/uncle`;
+  match = /^(\d+)GNb$/.exec(value);
+  if (match) return `${match[1]}x great-niece/nephew`;
+  match = /^(\d+)C(?:(\d+)R)?$/.exec(value);
+  if (match) {
+    const removed = match[2] ? ` ${match[2]}x removed` : "";
+    return `${_kfLivingOrdinal(match[1])} cousin${removed}`;
+  }
+  return value;
+}
+
+function _kfLivingPeopleRows(year = new Date().getFullYear()) {
+  if (!lastIndividuals || !lastIndividuals.length) return [];
+  const rows = [];
+  for (const ind of lastIndividuals) {
+    if (!ind || ind.death_year != null) continue;
+    if (typeof _kfPersonMayBeAliveAtYear === "function" && !_kfPersonMayBeAliveAtYear(ind, year)) continue;
+    const age = _kfLivingAgeValue(ind, year);
+    const rel = relationCache?.get(ind.id) || "";
+    rows.push({
+      id: ind.id,
+      name: ind.name || "Unnamed person",
+      gender: _kfLivingGenderLabel(ind),
+      age,
+      relationship: _kfReadableRelationship(rel),
+      distance: relDistCache?.get(ind.id) ?? Infinity,
+      selected: highlightedDwell >= 0 && dwellIndi && lastIndividuals[dwellIndi[highlightedDwell]]?.id === ind.id,
+    });
+  }
+  rows.sort((a, b) =>
+    Number(a.distance === Infinity) - Number(b.distance === Infinity) ||
+    Number(a.distance) - Number(b.distance) ||
+    String(a.name).localeCompare(String(b.name))
+  );
+  return rows;
+}
+
+function _kfRenderLivingPeopleList(force = false) {
+  if (!_livingPeopleEl) return;
+  const year = new Date().getFullYear();
+  const selectedId = highlightedDwell >= 0 && dwellIndi && lastIndividuals
+    ? lastIndividuals[dwellIndi[highlightedDwell]]?.id || ""
+    : "";
+  const sourceKey = typeof _kfSourceSelectionKey === "function" ? _kfSourceSelectionKey() : "";
+  const key = `${sourceKey}|${lastIndividuals?.length || 0}|${lastRootId || ""}|${relationCache?.size || 0}|${selectedId}|${year}`;
+  if (!force && key === _kfLivingPeopleListKey) return;
+  _kfLivingPeopleListKey = key;
+  const rows = _kfLivingPeopleRows(year);
+  if (!timelineLoaded || !lastIndividuals) {
+    _livingPeopleEl.hidden = true;
+    _livingPeopleEl.innerHTML = "";
+    return;
+  }
+  _livingPeopleEl.hidden = false;
+  const body = rows.length
+    ? `<div class="livingPeopleRows">` + rows.map(row =>
+        `<div class="livingPersonRow${row.selected ? " selected" : ""}">` +
+          `<span class="livingName">${escHtml(row.name)}</span>` +
+          `<span class="livingGender">${escHtml(row.gender)}</span>` +
+          `<span class="livingAge">${row.age == null ? "age ?" : `age ${row.age}`}</span>` +
+          `<span class="livingRelation">${escHtml(row.relationship)}</span>` +
+        `</div>`
+      ).join("") + `</div>`
+    : `<div class="livingPeopleEmpty">No living or presumed-living people in the selected trees.</div>`;
+  _livingPeopleEl.innerHTML =
+    `<div class="livingPeopleHead">` +
+      `<div><b>Living people</b><span>Names, gender, age, and relationship to the home person.</span></div>` +
+      `<strong>${rows.length.toLocaleString()}</strong>` +
+    `</div>` +
+    body;
+}
+
 function _kfShowPersonCard(di, opts = {}) {
   if (!_spEl || !lastIndividuals) return;
   const idx = dwellIndi[di];
@@ -875,6 +991,7 @@ function _kfShowPersonCard(di, opts = {}) {
     `</div>`;
   _spEl.hidden = false;
   if (_personEmptyEl) _personEmptyEl.hidden = true;
+  _kfRenderLivingPeopleList(true);
   if (opts.reveal !== false) _kfSetSideTab("person");
 
   _spEl.querySelectorAll(".sp-tab").forEach(btn => {
@@ -896,6 +1013,7 @@ function _kfShowPersonCard(di, opts = {}) {
     highlightedDwell = -1;
     highlightInferredYear = -1;
     highlightInferredSrcYear = -1;
+    _kfRenderLivingPeopleList(true);
     fxCtx.clearRect(0, 0, W, H);
     if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
   });
@@ -905,6 +1023,7 @@ function _kfHidePersonCard() {
   if (_spEl) { _spEl.hidden = true; _spEl.innerHTML = ""; }
   if (_personEmptyEl) _personEmptyEl.hidden = false;
   _kfSetPeopleControlsCollapsed(false);
+  _kfRenderLivingPeopleList(true);
 }
 let _chatBusy = false;
 const _kfQueuedChatQuestions = [];
@@ -1933,7 +2052,13 @@ function _kfBindChatScopeQuestions() {
       _kfRefreshChatScope(true);
     };
     try {
-      if (typeof _kfAskQuestion === "function") {
+      const aiRegressionMode = new URLSearchParams(location.search).has("ai-regression");
+      if (aiRegressionMode && Array.isArray(window._kfAiRegressionSuggestedQuestions)) {
+        window._kfAiRegressionSuggestedQuestions.push(text);
+        chatHistory.push({ role: "user", content: text });
+        chatHistory.push({ role: "bot", kind: "notice", content: `✓ Suggested question dispatched: ${text}` });
+        renderChat();
+      } else if (typeof _kfAskQuestion === "function") {
         Promise.resolve(_kfAskQuestion(_kfAugmentAiSuggestionQuestion(text), { displayText: text, queueIfBusy: true }))
           .catch(e => appendError(e?.message || String(e)));
       } else {

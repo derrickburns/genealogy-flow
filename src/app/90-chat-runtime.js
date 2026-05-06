@@ -10,6 +10,7 @@ HARD CONSTRAINTS — never violate these:
 
 EMOTIONAL CONNECTION CONTRACT — make the data felt, not fictional:
 - Make migrations felt by pairing narrative with motion: use playRange, addRoute, traceLineage, saveLens, setLensCaption, centerOn, or showViz when they help the user experience a family shift across time and place.
+- For requests to play or show a migration between places and years, verify the route with sql() or a bounded helper before narrating counts, surnames, destinations, or named people. Then pair the evidence with map motion. If the query does not support the route, say "I don't know from the selected trees" and do not invent a migration wave.
 - Make people felt by naming specific recorded people, life spans, family roles, and recorded places. Prefer one concrete, evidenced person over a vague generalization.
 - Make relationships felt by tracing kinship paths, family units, branches, marriages, descendants, and common ancestors when the data supports them.
 - Use sensory or emotional language only for the user's experience of the data ("you can see the branch move west", "the map makes the separation visible"). Do not assign feelings, motives, hardships, decisions, or intentions to ancestors unless the record explicitly says so.
@@ -160,7 +161,7 @@ Available tools. jsonArgs is a single JSON value:
 - getRelationship(nameA, nameB)    Returns {label, lca:{name, generations_to_a, generations_to_b}}. Pre-computed in JS — instant, no SQL needed. Examples: "3rd cousin once removed", "great-grandparent", "niece/nephew".
 - capturePng()                     Returns {dataUrl, width, height} — a base64 PNG of the current map. Use when explaining a visual answer ("here's what 1925 looked like").
 - exportAiReport()                 Opens a printable exploration-session report with questions, answers, current map, and visualization tabs so the user can save it as a local PDF.
-- chain({steps: [...]} | [...])    Run multiple kfApi calls in one round-trip. Each step is {"method":"<name>","args":<sameShapeAsAbove>}. Stops at first error unless {"continueOnError":true}. Use this whenever a single user request needs more than one operation — saves tool round-trips and makes the intent atomic. Cannot recurse.
+- chain({"steps": [...]})          Run multiple kfApi calls in one round-trip. Each step is {"method":"<name>","args":<sameShapeAsAbove>}. Stops at first error unless {"continueOnError":true}. Use this whenever a single user request needs more than one operation — saves tool round-trips and makes the intent atomic. Cannot recurse. Pass an OBJECT with a steps array, not bare positional arguments.
 
 - getFamily(name)                  Returns {person, parents:{father,mother}, siblings, spouses, children}. Faster than SQL for one-person family unit; pulls from in-memory family graph.
 - getAncestryByRegion({region?, root?, maxGen?, limit?})  Finds direct ancestors of the current root with place evidence in a broad region. For Irish questions use region:"ireland"; it includes Ireland, Northern Ireland, and Ulster, and excludes US places named Ireland.
@@ -215,11 +216,11 @@ Examples:
   User: "where is Eugene Rosenberg?"  ->  <<KFCALL:centerOn("Eugene Rosenberg")>>
   (Projection switching removed — the map is always Natural Earth now.)
   User: "play 1880 to 1925 then center on Pittsburgh and trace Helen to Eugene"
-      ->  <<KFCALL:chain([
+      ->  <<KFCALL:chain({"steps":[
             {"method":"playRange","args":[1880,1925,5]},
             {"method":"centerOn","args":"Pittsburgh, PA"},
             {"method":"traceLineage","args":["Helen Curtis","Eugene Rosenberg"]}
-          ])>>
+          ]})>>
 
 When your answer identifies coherent groups of people, do not leave them only in prose. Also call createGroupSet so the user can see those groups on the map and timeline. Examples: immigration waves by period, surname branches, co-migrating families, "people in Alaska by decade", or historical-era cohorts.
 
@@ -235,7 +236,7 @@ const CHAT_TOOL_RESULT_MAX_CHARS = 8000;
 const CHAT_TOOL_ROUND_MAX_CHARS = 18000;
 const CHAT_TOOL_ROW_LIMIT = 24;
 const AI_CACHE_MODEL = "claude-sonnet-4-6";
-const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v9-emotional-evidence";
+const AI_CACHE_PROMPT_VERSION = "kindred-flow-chat-v10-grounded-actions";
 const AI_CACHE_ANALYSIS_VERSION = "analysis-worker-v4-region-ancestry";
 const AI_CACHE_INDEX_TTL_MS = 5 * 60 * 1000;
 const _kfAiCacheEntries = new Map();
@@ -793,6 +794,29 @@ function _kfTryLenientParse(body) {
   try { return JSON.parse(out); } catch (_) { return null; }
 }
 
+function _kfParseKfCallArgs(argsStr) {
+  const raw = String(argsStr || "").trim();
+  if (!raw) return { args: null, err: null };
+  try {
+    return { args: JSON.parse(raw), err: null };
+  } catch (e) {
+    const lenient = _kfTryLenientParse(raw);
+    if (lenient != null) return { args: lenient, err: null };
+    // Claude sometimes emits function-call style positional arguments:
+    //   <<KFCALL:playRange(1910,1935,2)>>
+    // Accept that by wrapping the arguments as a JSON array. This keeps the
+    // app responsive without requiring a second model turn just to repair
+    // syntax.
+    try {
+      return { args: JSON.parse(`[${raw}]`), err: null };
+    } catch (_) {
+      const lenientSeq = _kfTryLenientParse(`[${raw}]`);
+      if (lenientSeq != null) return { args: lenientSeq, err: null };
+      return { args: null, err: "invalid json args: " + (e.message || String(e)) };
+    }
+  }
+}
+
 function parseChips(text) {
   // Extract clickable-action chips from chat output. Format:
   //   <<KFCHIP:{"label":"...", "method":"...", "args":...}>>
@@ -941,14 +965,7 @@ async function parseAndRunKfCalls(text) {
   // Process tool-call markers in order. Methods may be sync or async.
   const calls = [];
   const stripped = text.replace(KFCALL_RE, (_match, method, argsStr) => {
-    let args = null, err = null;
-    if (argsStr.trim()) {
-      try { args = JSON.parse(argsStr); }
-      catch (e) {
-        args = _kfTryLenientParse(argsStr);
-        if (args == null) err = "invalid json args: " + e.message;
-      }
-    }
+    const { args, err } = _kfParseKfCallArgs(argsStr);
     calls.push({ method, args, err });
     return "";
   });
@@ -961,7 +978,7 @@ async function parseAndRunKfCalls(text) {
       // JSON arrays are spread as multiple positional args
       // (`traceLineage(["Helen","Eugene"])` → `fn("Helen","Eugene")`).
       // Primitives and objects pass through as a single arg.
-      const out = Array.isArray(c.args)
+      const out = Array.isArray(c.args) && c.method !== "chain"
         ? await fn.apply(window.kfApi, c.args)
         : await fn.call(window.kfApi, c.args);
       results.push({ call: _kfCompactToolCall(c.method, c.args), result: _kfCompactToolValue(out) });
