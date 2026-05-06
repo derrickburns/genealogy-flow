@@ -207,6 +207,80 @@ async function clickEverySuggestedQuestion(client, questions) {
   );
 }
 
+async function tapPoint(client, x, y) {
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }],
+  });
+  await sleep(40);
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
+async function assertMobileImmigrationQuestionTap() {
+  const target = await createTarget();
+  const client = new CdpClient(target.webSocketDebuggerUrl);
+  try {
+    await client.send("Page.enable");
+    await client.send("Runtime.enable");
+    await client.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 2,
+      mobile: true,
+      screenWidth: 390,
+      screenHeight: 844,
+    });
+    await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    await client.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `localStorage.setItem("kf-anthropic-key", "smoke-test-key");`,
+    });
+    const url = `${appUrl}${appUrl.includes("?") ? "&" : "?"}ai-regression=${Date.now()}&mobile-question=1`;
+    await client.send("Page.navigate", { url });
+    await waitFor(client, "document.readyState === 'complete'", "mobile question document load");
+    await dismissStartupDialogs(client);
+    await waitFor(
+      client,
+      `window.kfApi && window.kfDebug && window.kfDebug.treeSnapshot && window.kfDebug.treeSnapshot().trees.loaded_count >= 1`,
+      "mobile loaded tree and kfApi",
+      40000,
+    );
+    await showExploreTab(client);
+    await client.eval(`window._kfAiRegressionSuggestedQuestions = []`);
+    const targetButton = await waitFor(
+      client,
+      `(() => {
+        const btn = [...document.querySelectorAll("[data-chat-scope-question]")]
+          .find(el => /immigration waves/i.test(el.textContent || ""));
+        if (!btn) return null;
+        const r = btn.getBoundingClientRect();
+        return {
+          text: btn.getAttribute("data-chat-scope-question") || "",
+          x: r.left + r.width / 2,
+          y: r.top + r.height / 2,
+          visible: r.width > 20 && r.height > 20 && r.bottom > 0 && r.top < window.innerHeight,
+        };
+      })()`,
+      "mobile Immigration waves suggested question",
+      15000,
+      value => value?.visible && /waves of immigration/i.test(value.text),
+    );
+    await tapPoint(client, targetButton.x, targetButton.y);
+    await tapPoint(client, targetButton.x, targetButton.y);
+    await waitFor(
+      client,
+      `window._kfAiRegressionSuggestedQuestions?.length === 1`,
+      "mobile Immigration waves dispatches once",
+      10000,
+    );
+    const captured = await client.eval(`window._kfAiRegressionSuggestedQuestions || []`);
+    assert.equal(captured.length, 1, "double-tapping Immigration waves should dispatch one question");
+    assert.match(captured[0], /waves of immigration/i, "mobile tap should dispatch Immigration waves");
+  } finally {
+    try { await client.send("Page.close"); } catch (_) {}
+    client.close();
+  }
+}
+
 async function personNames(client) {
   const result = await callApi(client, "findPeople", { limit: 30, mustHavePlace: true });
   assertOk(result, "findPeople");
@@ -426,6 +500,7 @@ async function main() {
 
     const questions = await collectAllSuggestedQuestions(client);
     await clickEverySuggestedQuestion(client, questions);
+    await assertMobileImmigrationQuestionTap();
     await assertKfCallParser(client);
     const names = await personNames(client);
     await assertMapRenderingActions(client, names);

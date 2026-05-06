@@ -223,9 +223,17 @@ async function assertCompactMapVisible(client, label) {
         }
       }
       maxRun = Math.max(maxRun, run);
+      const story = document.getElementById("mapStoryRibbon")?.getBoundingClientRect();
+      const ui = document.getElementById("ui")?.getBoundingClientRect();
+      const storyStyle = document.getElementById("mapStoryRibbon")
+        ? getComputedStyle(document.getElementById("mapStoryRibbon"))
+        : null;
+      const storyVisible = !!story && storyStyle?.display !== "none" && story.width > 0 && story.height > 0;
+      const storyTimelineGap = storyVisible && ui ? ui.top - story.bottom : null;
       return {
-        ok: maxRun >= 320,
+        ok: maxRun >= 320 && (!storyVisible || storyTimelineGap >= 8),
         maxClearRun: maxRun,
+        storyTimelineGap,
         viewport: { width: window.innerWidth, height: window.innerHeight },
         map: { top: mapRect.top, bottom: mapRect.bottom, height: mapRect.height },
         blockers
@@ -236,6 +244,9 @@ async function assertCompactMapVisible(client, label) {
     value => !!value?.ok,
   );
   assert.ok(budget.maxClearRun >= 320, `${label} should leave a map-dominant visible band`);
+  if (budget.storyTimelineGap != null) {
+    assert.ok(budget.storyTimelineGap >= 8, `${label} should not overlap the story card and timeline: ${JSON.stringify(budget)}`);
+  }
 }
 
 async function assertDetailDrawerLeavesMapContext(client, label) {

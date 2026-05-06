@@ -41,6 +41,9 @@ function _kfBuildTreeDebugSnapshot() {
       tier: _clerkUserTier || null,
       email: _kfCurrentAuthEmail() || null,
       has_token: !!_clerkToken,
+      server_verified_vip: !!_kfServerVerifiedVip,
+      server_auth_status: _kfServerAuthContext?.auth?.status || null,
+      server_auth_reason: _kfServerAuthContext?.auth?.reason || _kfServerAuthContext?.error || null,
     },
     startup: ux.startup || null,
     layout: {
@@ -411,6 +414,17 @@ function _kfScheduleAuthTokenRetry() {
   }, delay);
 }
 
+async function _kfGetClerkToken(opts = {}) {
+  if (!_clerkInstance?.session || typeof _clerkInstance.session.getToken !== "function") return null;
+  try {
+    if (opts.forceRefresh) return await _clerkInstance.session.getToken({ skipCache: true });
+    return await _clerkInstance.session.getToken();
+  } catch (e) {
+    console.warn("[kf] Clerk token refresh:", e?.message || e);
+    return null;
+  }
+}
+
 async function fetchServerAuthContext() {
   if (!_clerkToken) return null;
   try {
@@ -424,6 +438,28 @@ async function fetchServerAuthContext() {
     console.warn("[kf] fetchServerAuthContext:", e?.message || e);
     return null;
   }
+}
+
+async function _kfVerifyServerVipForChat(opts = {}) {
+  if (!_clerkInstance?.user) {
+    _kfServerAuthContext = null;
+    _kfServerVerifiedVip = false;
+    return { ok: false, error: "not signed in", user: null, auth: null };
+  }
+  if (opts.forceRefresh || !_clerkToken) {
+    _clerkToken = await _kfGetClerkToken({ forceRefresh: opts.forceRefresh });
+  }
+  const context = await fetchServerAuthContext();
+  _kfServerAuthContext = context;
+  const serverUser = context?.user || null;
+  _kfServerVerifiedVip = serverUser?.type === "vip";
+  if (serverUser?.type) _clerkUserTier = serverUser.type;
+  return {
+    ok: _kfServerVerifiedVip,
+    user: serverUser,
+    auth: context?.auth || null,
+    error: context?.error || null,
+  };
 }
 
 async function initClerk() {
@@ -474,6 +510,8 @@ async function updateAuthUI(user) {
   if (!user) {
     _clerkToken = null;
     _clerkUserTier = "anon";
+    _kfServerAuthContext = null;
+    _kfServerVerifiedVip = false;
     _kfSetAuthUxState("signed-out", { tier: "anon", email: "" });
     _kfSetStartupPhase(KF_STARTUP_PHASE.ANONYMOUS_DEMO, "loading demo tree...");
     statusEl.textContent = "not signed in";
@@ -493,12 +531,12 @@ async function updateAuthUI(user) {
   }
 
   let email = user.primaryEmailAddress?.emailAddress ?? "";
-  try {
-    _clerkToken = await _clerkInstance.session.getToken();
-  } catch (_) { _clerkToken = null; }
+  _clerkToken = await _kfGetClerkToken();
 
   if (!_clerkToken) {
     _clerkUserTier = VIP_EMAILS.has(email.toLowerCase()) ? "vip" : "regular";
+    _kfServerAuthContext = null;
+    _kfServerVerifiedVip = false;
     _kfSetAuthUxState("signed-in-token-pending", { tier: _clerkUserTier, email });
     _kfSetStartupPhase(KF_STARTUP_PHASE.SIGNED_IN_INVENTORY, "loading shared tree list...");
     statusEl.textContent = _clerkUserTier === "vip" ? "VIP" : "member";
@@ -522,6 +560,8 @@ async function updateAuthUI(user) {
   clearTimeout(_kfAuthTokenRetryTimer);
   const serverAuthContext = await fetchServerAuthContext();
   const serverUser = serverAuthContext?.user || null;
+  _kfServerAuthContext = serverAuthContext;
+  _kfServerVerifiedVip = serverUser?.type === "vip";
   if (_clerkToken && serverAuthContext?.auth && serverAuthContext.auth.status !== "signed-in") {
     console.warn("[kf] server auth did not verify Clerk session:", serverAuthContext.auth);
   }

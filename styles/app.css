@@ -1480,6 +1480,7 @@ html, body {
   .chatQuestionChips { display:flex; gap:7px; overflow-x:auto; padding:1px 0 3px; scrollbar-width:thin; }
   .chatQuestionChip { flex:0 0 190px; display:grid; gap:3px; padding:7px 9px; border:1px solid #cbd8ea; border-radius:11px; background:#fff; color:#102033; text-align:left; font:inherit; cursor:pointer; touch-action:manipulation; }
   .chatQuestionChip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:800; }
+  .chatQuestionChip em { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#64748b; font-style:normal; font-size:9.5px; }
   .chatQuestionChip b { font-size:8.5px; letter-spacing:0.08em; text-transform:uppercase; color:#64748b; }
   .chatQuestionChip.unanswered { border-color:#d7a736; background:#fff8e6; }
   .chatQuestionChip.answered { border-color:#cbd5e1; background:#f8fafc; color:#475569; }
@@ -1490,6 +1491,7 @@ html, body {
   .chatActiveQuestion { border:1px solid #dbe5f2; background:#f8fafc; border-radius:12px; padding:9px 10px; }
   .chatActiveQuestion span { display:block; color:#64748b; font-size:9px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:3px; }
   .chatActiveQuestion p { margin:0; color:#0f172a; font-weight:800; }
+  .chatActiveQuestion small { display:block; margin-top:5px; color:#64748b; font-size:10px; line-height:1.35; }
   .chatActiveBody { display:grid; gap:8px; }
   .chatActivityCard { border:1px solid #d7e3f5; border-radius:14px; background:linear-gradient(135deg,#f8fbff,#eef5ff); padding:14px; color:#334155; display:grid; gap:8px; }
   .chatActivityCard b { color:#102033; }
@@ -2122,7 +2124,7 @@ html, body {
     #chatScope { font-size:11px; max-height:128px; overflow-y:auto; padding:6px 8px; }
     .chat-scope-actions { flex-wrap:nowrap; overflow-x:auto; gap:7px; padding-bottom:3px; scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
     .chat-scope-actions::-webkit-scrollbar { display:none; }
-    .chat-scope-question { flex:0 0 auto; max-width:72vw; min-height:36px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; touch-action:pan-x; -webkit-tap-highlight-color:transparent; }
+    .chat-scope-question { flex:0 0 auto; max-width:72vw; min-height:36px; border-radius:13px; padding:7px 10px; text-align:left; white-space:normal; scroll-snap-align:start; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
     #chatArtifacts { padding:6px 8px; }
     .chatArtifactRail { scrollbar-width:none; }
     .chatArtifactRail::-webkit-scrollbar { display:none; }
@@ -3921,6 +3923,7 @@ html, body {
     bottom:calc(68px + env(safe-area-inset-bottom, 0px));
     height:78px;
     min-height:78px !important;
+    box-sizing:border-box;
     margin:0 !important;
     padding:10px 12px !important;
     overflow:hidden;
@@ -4091,6 +4094,7 @@ html, body {
     bottom:calc(62px + env(safe-area-inset-bottom, 0px));
     height:66px;
     min-height:66px !important;
+    box-sizing:border-box;
     padding:8px 10px !important;
   }
   body:has(#panel[data-active-tab="map"][data-sheet="peek"]) #sideTabs {

@@ -270,13 +270,20 @@ function _kfChatQueueLabel(text) {
 }
 
 function _kfEnqueueChatQuestion(requestText, displayText) {
-  const normalized = String(requestText || "").replace(/\s+/g, " ").trim();
-  if (!normalized) return false;
-  if (_kfQueuedChatQuestions.some(q => q.normalized === normalized)) return false;
+  const signature = typeof _kfChatQuestionSignature === "function"
+    ? _kfChatQuestionSignature(requestText)
+    : String(requestText || "").replace(/\s+/g, " ").trim();
+  const contextLabel = typeof _kfChatQuestionContextLabel === "function"
+    ? _kfChatQuestionContextLabel(displayText || requestText)
+    : "";
+  if (!signature) return false;
+  if (signature === _kfActiveChatQuestionSignature) return false;
+  if (_kfQueuedChatQuestions.some(q => q.signature === signature)) return false;
   _kfQueuedChatQuestions.push({
     requestText,
     displayText: displayText || _kfChatQueueLabel(requestText),
-    normalized,
+    signature,
+    contextLabel,
   });
   chatHistory.push({
     role: "bot",
@@ -297,6 +304,8 @@ function _kfDrainQueuedChatQuestions() {
     }
     Promise.resolve(_kfAskQuestion(next.requestText, {
       displayText: next.displayText,
+      questionSignature: next.signature,
+      questionContextLabel: next.contextLabel,
       queueIfBusy: true,
       fromQueue: true,
     })).catch(e => appendError(e?.message || String(e)));
@@ -306,10 +315,16 @@ function _kfDrainQueuedChatQuestions() {
 async function _kfAskQuestion(text, opts = {}) {
   const requestText = String(text || "").trim();
   if (!requestText) return { error: "text required" };
+  const questionSignature = typeof _kfChatQuestionSignature === "function"
+    ? (opts.questionSignature || _kfChatQuestionSignature(requestText))
+    : requestText.replace(/\s+/g, " ").trim();
   const displayText = String(
     opts.displayText ||
     (typeof _kfDisplayAiSuggestionQuestion === "function" ? _kfDisplayAiSuggestionQuestion(requestText) : requestText)
   ).trim();
+  const questionContextLabel = opts.questionContextLabel != null
+    ? String(opts.questionContextLabel || "")
+    : (typeof _kfChatQuestionContextLabel === "function" ? _kfChatQuestionContextLabel(displayText || requestText) : "");
   if (typeof _kfIsSideTabActive === "function" && _kfIsSideTabActive("chat")) {
     if (typeof _kfRevealResponsiveSheetForTab === "function") _kfRevealResponsiveSheetForTab("chat");
   } else {
@@ -317,6 +332,9 @@ async function _kfAskQuestion(text, opts = {}) {
   }
   if (_chatBusy) {
     if (opts.queueIfBusy) {
+      if (questionSignature && questionSignature === _kfActiveChatQuestionSignature) {
+        return { queued: false, duplicate: true };
+      }
       const queued = _kfEnqueueChatQuestion(requestText, displayText || requestText);
       return { queued: true, duplicate: !queued };
     }
@@ -325,7 +343,13 @@ async function _kfAskQuestion(text, opts = {}) {
     return { error: "Live exploration is already answering a question" };
   }
   if (typeof _kfActiveChatTurnKey !== "undefined") _kfActiveChatTurnKey = "";
-  chatHistory.push({ role: "user", content: displayText || requestText });
+  _kfActiveChatQuestionSignature = questionSignature;
+  chatHistory.push({
+    role: "user",
+    content: displayText || requestText,
+    context: questionContextLabel,
+    context_signature: questionSignature,
+  });
   renderChat();
   _chatBusy = true;
   chatSendBtn.disabled = true;
@@ -341,6 +365,7 @@ async function _kfAskQuestion(text, opts = {}) {
   }
   finally {
     _chatBusy = false;
+    _kfActiveChatQuestionSignature = "";
     chatSendBtn.disabled = false;
     chatSendBtn.textContent = "Send";
     if (!opts.skipQueueDrain) _kfDrainQueuedChatQuestions();

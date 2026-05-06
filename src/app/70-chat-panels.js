@@ -33,10 +33,110 @@ let _kfActiveSideTab = "chat";
 let _kfChatScopePendingTap = null;
 let _kfChatScopeDispatching = false;
 let _kfChatScopeLastHandledAt = 0;
+let _kfChatScopeLastDispatchedSignature = "";
 let _kfChatScopeLastRenderKey = "";
 let _kfChatMoreQuestionsOpen = false;
 let _kfLivingPeopleListKey = "";
 let _kfExpandedMapPersonId = "";
+let _kfActiveChatQuestionSignature = "";
+
+function _kfChatQuestionKey(text) {
+  const displayText = typeof _kfDisplayAiSuggestionQuestion === "function"
+    ? _kfDisplayAiSuggestionQuestion(text)
+    : String(text || "");
+  return String(displayText || "").replace(/\s+/g, " ").trim();
+}
+
+function _kfChatContextTreeLabel(max = 2) {
+  const sources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
+  const names = sources
+    .map(src => String(src.name || src.common_name || src.key || "").replace(/\.ged$/i, "").trim())
+    .filter(Boolean);
+  if (!names.length) return _kfActiveTreeName ? String(_kfActiveTreeName).replace(/\.ged$/i, "") : "";
+  const visible = names.slice(0, max).join(", ");
+  return names.length > max ? `${visible} +${names.length - max}` : visible;
+}
+
+function _kfChatQuestionContextKey(text = "") {
+  const question = _kfChatQuestionKey(text);
+  const cacheSafe = typeof _kfIsTreeLevelCacheableQuestion === "function" && _kfIsTreeLevelCacheableQuestion(question);
+  const profile = typeof _kfChatContextProfile === "function"
+    ? _kfChatContextProfile(question, { cacheSafe })
+    : {};
+  const selectedPersonId = highlightedDwell >= 0 && lastIndividuals && dwellIndi
+    ? lastIndividuals[dwellIndi[highlightedDwell]]?.id || ""
+    : "";
+  const visible = typeof _kfVisibleMarkerData === "function" ? _kfVisibleMarkerData() : null;
+  const selectedSources = typeof _kfSourceSelectionKey === "function"
+    ? _kfSourceSelectionKey()
+    : [...(_kfSelectedSourceIds || [])].sort((a, b) => Number(a) - Number(b)).join(",");
+  const yearMatters = !cacheSafe && (
+    profile.includeVisibleCounts ||
+    profile.includeViewport ||
+    profile.includeTopPlaces ||
+    profile.includeMarkerSample ||
+    profile.includeCluster ||
+    (typeof _kfIsYearDependentQuestion === "function" && _kfIsYearDependentQuestion({ text: question }))
+  );
+  const surnameFilter = _kfSurnameFilter ? [..._kfSurnameFilter].sort().join(",") : "";
+  const context = {
+    sources: selectedSources,
+    activeTree: _kfActiveTreeName || "",
+    root: !cacheSafe ? (lastRootId || "") : "",
+    selected: profile.includeSelected ? selectedPersonId : "",
+    year: yearMatters ? Math.floor(curYear || 0) : null,
+    window: yearMatters ? Number(dwellWindow) || 0 : null,
+    filter: yearMatters ? (curFilter || "") : "",
+    sex: yearMatters ? (_kfSexFilter || "") : "",
+    surname: yearMatters ? surnameFilter : "",
+    cluster: profile.includeCluster || yearMatters ? (clusterMode || "") : "",
+    dataQuality: /\b(weak evidence|data quality|chronology|outlier)\b/i.test(question) ? !!_kfShowDataQualityConcerns : null,
+    visibleKey: yearMatters ? (visible?.key || "") : "",
+    visibleCount: yearMatters ? (visible?.count ?? null) : null,
+    viewport: profile.includeViewport && typeof _kfMapViewportSignature === "function" ? _kfMapViewportSignature() : "",
+  };
+  return JSON.stringify(context);
+}
+
+function _kfChatQuestionSignature(text) {
+  const normalized = _kfChatQuestionKey(text);
+  if (!normalized) return "";
+  return `${normalized}@@${_kfChatQuestionContextKey(text)}`;
+}
+
+function _kfChatQuestionContextLabel(text = "") {
+  const question = _kfChatQuestionKey(text);
+  const cacheSafe = typeof _kfIsTreeLevelCacheableQuestion === "function" && _kfIsTreeLevelCacheableQuestion(question);
+  const profile = typeof _kfChatContextProfile === "function"
+    ? _kfChatContextProfile(question, { cacheSafe })
+    : {};
+  const parts = [];
+  const treeLabel = _kfChatContextTreeLabel();
+  if (treeLabel) parts.push(treeLabel);
+  const yearMatters = !cacheSafe && (
+    profile.includeVisibleCounts ||
+    profile.includeViewport ||
+    profile.includeTopPlaces ||
+    profile.includeMarkerSample ||
+    profile.includeCluster ||
+    (typeof _kfIsYearDependentQuestion === "function" && _kfIsYearDependentQuestion({ text: question }))
+  );
+  if (yearMatters && Number.isFinite(Number(curYear))) {
+    parts.push(String(Math.floor(curYear)));
+    const mode = typeof _kfViewModeLabel === "function" ? _kfViewModeLabel() : "";
+    if (mode && mode !== "all people | not clustered") parts.push(mode);
+  }
+  if (profile.includeSelected && selectedPersonIdFromHighlight()) {
+    const ind = lastIndiById?.get(selectedPersonIdFromHighlight());
+    if (ind?.name) parts.push(`selected ${ind.name}`);
+  }
+  return parts.filter(Boolean).join(" · ");
+}
+
+function selectedPersonIdFromHighlight() {
+  if (highlightedDwell < 0 || !lastIndividuals || !dwellIndi) return "";
+  return lastIndividuals[dwellIndi[highlightedDwell]]?.id || "";
+}
 
 function _kfIsSideTabActive(tab) {
   return _kfActiveSideTab === tab;
@@ -942,7 +1042,7 @@ function _kfRenderLivingPeopleList(force = false) {
   const body = rows.length
     ? `<div class="livingPeopleRows">` + rows.map(row =>
         `<div class="livingPersonItem${row.selected ? " selected" : ""}${row.expanded ? " expanded" : ""}" data-person-id="${escHtml(row.id)}">` +
-          `<button type="button" class="livingPersonRow" data-person-id="${escHtml(row.id)}" aria-expanded="${row.expanded ? "true" : "false"}">` +
+          `<button type="button" class="livingPersonRow" data-person-id="${escHtml(row.id)}" data-di="${row.di}" aria-expanded="${row.expanded ? "true" : "false"}">` +
             `<span class="livingName">${escHtml(row.name)}</span>` +
             `<span class="livingGender">${escHtml(row.gender)}</span>` +
             `<span class="livingAge">${row.age == null ? "age ?" : `age ${row.age}`}</span>` +
@@ -962,13 +1062,12 @@ function _kfRenderLivingPeopleList(force = false) {
     `</div>` +
     body;
   _livingPeopleEl.querySelectorAll(".livingPersonRow").forEach(btn => {
-    const toggle = () => {
+    const select = () => {
       const id = btn.dataset.personId || "";
-      _kfExpandedMapPersonId = _kfExpandedMapPersonId === id ? "" : id;
-      _kfRenderLivingPeopleList(true);
+      _kfSelectLivingPersonFromList(id, btn.dataset.di);
     };
-    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(btn, toggle);
-    else btn.addEventListener("click", toggle);
+    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(btn, select);
+    else btn.addEventListener("click", select);
   });
   _livingPeopleEl.querySelectorAll(".livingPersonDetail").forEach(detail => {
     _kfBindPersonDetailControls(detail, {
@@ -978,6 +1077,33 @@ function _kfRenderLivingPeopleList(force = false) {
       },
     });
   });
+}
+
+function _kfSelectLivingPersonFromList(id, diValue) {
+  const personId = String(id || "");
+  if (!personId || !lastIndividuals || !dwellIndi) return false;
+  let di = Number(diValue);
+  const clickedInd = Number.isFinite(di) && di >= 0 ? lastIndividuals[dwellIndi[di]] : null;
+  if (!clickedInd || clickedInd.id !== personId) {
+    const visibleRow = _kfLivingPeopleRows().find(row => row.id === personId);
+    di = visibleRow?.di ?? -1;
+    if (di < 0 && lastIndiById && typeof _kfLatestDwellOf === "function") {
+      const ind = lastIndiById.get(personId);
+      di = _kfLatestDwellOf(ind);
+    }
+  }
+  if (!Number.isFinite(di) || di < 0) return false;
+
+  if (typeof pushHistory === "function") pushHistory();
+  highlightedDwell = di;
+  highlightInferredYear = -1;
+  highlightInferredSrcYear = -1;
+  _kfExpandedMapPersonId = personId;
+  if (playing) { playing = false; _kfSetPlayButtonLabel(); }
+  _kfShowPersonCard(di);
+  if (typeof updateDeckDwellLayer === "function" && _kfDeckOverlay) updateDeckDwellLayer();
+  if (fxCtx && Number.isFinite(W) && Number.isFinite(H)) fxCtx.clearRect(0, 0, W, H);
+  return true;
 }
 
 function _kfPersonDetailHtml(ind, di, opts = {}) {
@@ -1087,13 +1213,13 @@ function _kfShowPersonCard(di, opts = {}) {
   const ind = lastIndividuals[idx];
   if (!ind) return;
   _kfSetPeopleControlsCollapsed(true);
+  if (opts.expandList !== false) _kfExpandedMapPersonId = ind.id || "";
 
   _spEl.innerHTML = _kfPersonDetailHtml(ind, di);
   _spEl.hidden = false;
   if (_personEmptyEl) _personEmptyEl.hidden = true;
   _kfRenderLivingPeopleList(true);
-  const shouldReveal = opts.reveal !== false &&
-    !(typeof _kfUsesResponsiveShell === "function" && _kfUsesResponsiveShell() && opts.reveal !== true);
+  const shouldReveal = opts.reveal === "person";
   if (shouldReveal) _kfSetSideTab("person");
   if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
 
@@ -1104,6 +1230,7 @@ function _kfShowPersonCard(di, opts = {}) {
       highlightedDwell = -1;
       highlightInferredYear = -1;
       highlightInferredSrcYear = -1;
+      _kfExpandedMapPersonId = "";
       _kfRenderLivingPeopleList(true);
       fxCtx.clearRect(0, 0, W, H);
       if (typeof _kfRefreshViewChrome === "function") _kfRefreshViewChrome(true);
@@ -1115,6 +1242,7 @@ function _kfHidePersonCard() {
   if (_spEl) { _spEl.hidden = true; _spEl.innerHTML = ""; }
   if (_personEmptyEl) _personEmptyEl.hidden = false;
   _kfSetPeopleControlsCollapsed(false);
+  _kfExpandedMapPersonId = "";
   _kfRenderLivingPeopleList(true);
 }
 let _chatBusy = false;
@@ -1656,6 +1784,8 @@ function _kfBuildChatTurns() {
         key: `turn-${i}`,
         userIndex: i,
         question: String(m.content || "").trim(),
+        context: String(m.context || "").trim(),
+        contextSignature: String(m.context_signature || "").trim(),
         user: m,
         messages: [],
         chips: [],
@@ -1711,8 +1841,10 @@ function _kfRenderQuestionRail(turns) {
         turn.key === _kfActiveChatTurnKey ? "active" : "",
       ].filter(Boolean).join(" ");
       const state = turn.answered ? "Answered" : turn.pending ? "Researching" : "Unanswered";
-      return `<button type="button" class="${cls}" data-chat-turn="${escChat(turn.key)}" title="${escChat(turn.question)}">` +
-        `<span>${idx + 1}. ${escChat(_kfQuestionChipLabel(turn.question))}</span><b>${state}</b></button>`;
+      const context = turn.context ? `<em>${escChat(turn.context)}</em>` : "";
+      const title = turn.context ? `${turn.question}\nAnswered in: ${turn.context}` : turn.question;
+      return `<button type="button" class="${cls}" data-chat-turn="${escChat(turn.key)}" title="${escChat(title)}">` +
+        `<span>${idx + 1}. ${escChat(_kfQuestionChipLabel(turn.question))}</span>${context}<b>${state}</b></button>`;
     }).join("") + `</div>`;
   chatQuestionRailEl.querySelectorAll("[data-chat-turn]").forEach(btn => {
     _kfBindTapOrClick(btn, () => {
@@ -1779,7 +1911,7 @@ function _kfRenderActiveAnswer(turns) {
     : "";
   chatAnswerEl.innerHTML =
     `<section class="chatActiveAnswer">` +
-      (turn.user ? `<div class="chatActiveQuestion"><span>Question</span><p>${escChat(turn.question || "Question")}</p></div>` : "") +
+      (turn.user ? `<div class="chatActiveQuestion"><span>Question</span><p>${escChat(turn.question || "Question")}</p>${turn.context ? `<small>Answered in ${escChat(turn.context)}</small>` : ""}</div>` : "") +
       `<div class="chatActiveBody">${answerHtml}${chipsHtml}</div>` +
     `</section>`;
   _kfBindChatAnswerControls(chatAnswerEl);
@@ -2118,77 +2250,60 @@ function _kfChatScopeQuestions(root, selected, visible) {
   return out.slice(0, 12);
 }
 
+function _kfDispatchChatScopeQuestion(text, button = null) {
+  text = String(text || "").trim();
+  if (!text || _kfChatScopeDispatching) return;
+  const signature = typeof _kfChatQuestionSignature === "function" ? _kfChatQuestionSignature(text) : text;
+  if (signature && signature === _kfChatScopeLastDispatchedSignature && Date.now() - _kfChatScopeLastHandledAt < 1200) return;
+  _kfChatScopeLastDispatchedSignature = signature;
+  _kfChatScopeDispatching = true;
+  _kfChatScopeLastHandledAt = Date.now();
+  if (button?.isConnected) {
+    button.classList.add("running");
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
+  const finish = () => {
+    _kfChatScopeDispatching = false;
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.classList.remove("running");
+      button.removeAttribute("aria-busy");
+    }
+    _kfRefreshChatScope(true);
+  };
+  try {
+    const aiRegressionMode = new URLSearchParams(location.search).has("ai-regression");
+    if (aiRegressionMode && Array.isArray(window._kfAiRegressionSuggestedQuestions)) {
+      const context = typeof _kfChatQuestionContextLabel === "function" ? _kfChatQuestionContextLabel(text) : "";
+      window._kfAiRegressionSuggestedQuestions.push(text);
+      chatHistory.push({ role: "user", content: text, context, context_signature: signature });
+      chatHistory.push({ role: "bot", kind: "notice", content: `✓ Suggested question dispatched: ${text}` });
+      renderChat();
+      finish();
+    } else if (typeof _kfAskQuestion === "function") {
+      Promise.resolve(_kfAskQuestion(_kfAugmentAiSuggestionQuestion(text), { displayText: text, queueIfBusy: true }))
+        .catch(e => appendError(e?.message || String(e)));
+      setTimeout(finish, 120);
+    } else {
+      chatInputEl.value = text;
+      chatInputEl.focus();
+      finish();
+    }
+  } catch (e) {
+    appendError(e?.message || String(e));
+    finish();
+  }
+}
+
 function _kfBindChatScopeQuestions() {
   if (!chatScopeEl) return;
-  if (chatScopeEl.dataset.kfQuestionDelegate === "1") return;
-  chatScopeEl.dataset.kfQuestionDelegate = "1";
-  const buttonFrom = target => target?.closest?.("[data-chat-scope-question]");
-  const clearPending = () => { _kfChatScopePendingTap = null; };
-  const dispatch = (text, button = null) => {
-    text = String(text || "").trim();
-    if (!text || _kfChatScopeDispatching) return;
-    _kfChatScopeDispatching = true;
-    _kfChatScopeLastHandledAt = Date.now();
-    if (button?.isConnected) {
-      button.classList.add("running");
-      button.disabled = true;
-      button.setAttribute("aria-busy", "true");
-    }
-    const finish = () => {
-      _kfChatScopeDispatching = false;
-      if (button?.isConnected) {
-        button.disabled = false;
-        button.classList.remove("running");
-        button.removeAttribute("aria-busy");
-      }
-      _kfRefreshChatScope(true);
-    };
-    try {
-      const aiRegressionMode = new URLSearchParams(location.search).has("ai-regression");
-      if (aiRegressionMode && Array.isArray(window._kfAiRegressionSuggestedQuestions)) {
-        window._kfAiRegressionSuggestedQuestions.push(text);
-        chatHistory.push({ role: "user", content: text });
-        chatHistory.push({ role: "bot", kind: "notice", content: `✓ Suggested question dispatched: ${text}` });
-        renderChat();
-      } else if (typeof _kfAskQuestion === "function") {
-        Promise.resolve(_kfAskQuestion(_kfAugmentAiSuggestionQuestion(text), { displayText: text, queueIfBusy: true }))
-          .catch(e => appendError(e?.message || String(e)));
-      } else {
-        chatInputEl.value = text;
-        chatInputEl.focus();
-      }
-    } catch (e) {
-      appendError(e?.message || String(e));
-    } finally {
-      setTimeout(finish, 120);
-    }
-  };
-  chatScopeEl.addEventListener("pointerdown", e => {
-    const btn = buttonFrom(e.target);
-    if (!btn || btn.disabled) return;
-    _kfChatScopePendingTap = {
-      pointerId: e.pointerId,
-      x: e.clientX,
-      y: e.clientY,
-      text: btn.getAttribute("data-chat-scope-question") || "",
-      button: btn,
-    };
-  });
-  window.addEventListener("pointerup", e => {
-    const tap = _kfChatScopePendingTap;
-    if (!tap || tap.pointerId !== e.pointerId) return;
-    clearPending();
-    if (Math.abs(e.clientX - tap.x) > 10 || Math.abs(e.clientY - tap.y) > 10) return;
-    e.preventDefault();
-    dispatch(tap.text, tap.button);
-  });
-  window.addEventListener("pointercancel", clearPending);
-  chatScopeEl.addEventListener("click", e => {
-    const btn = buttonFrom(e.target);
-    if (!btn) return;
-    e.preventDefault();
-    if (Date.now() - _kfChatScopeLastHandledAt < 500) return;
-    dispatch(btn.getAttribute("data-chat-scope-question") || "", btn);
+  chatScopeEl.querySelectorAll("[data-chat-scope-question]").forEach(btn => {
+    if (btn.dataset.kfQuestionBound === "1") return;
+    btn.dataset.kfQuestionBound = "1";
+    const ask = () => _kfDispatchChatScopeQuestion(btn.getAttribute("data-chat-scope-question") || "", btn);
+    if (typeof _kfBindTapOrClick === "function") _kfBindTapOrClick(btn, ask);
+    else btn.addEventListener("click", ask);
   });
 }
 

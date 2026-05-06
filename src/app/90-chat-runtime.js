@@ -546,6 +546,38 @@ function _kfTextFromSsePayload(payload) {
   return "";
 }
 
+function _kfVipChatAuthError(resp, bodyText = "", authResult = null) {
+  const email = typeof _kfCurrentAuthEmail === "function" ? _kfCurrentAuthEmail() : "";
+  const auth = authResult?.auth || _kfServerAuthContext?.auth || null;
+  const reason = authResult?.error || auth?.reason || auth?.message || bodyText;
+  const suffix = reason ? ` Server detail: ${String(reason).slice(0, 180)}` : "";
+  const who = email ? ` for ${email}` : "";
+  return new Error(`Your sign-in${who} did not verify as VIP on the server. Refresh the page or sign out and back in, then try again.${suffix}`);
+}
+
+async function _kfFetchVipClaudeChat(requestBody, signal) {
+  const post = () => fetch("/api/claude/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
+    body: requestBody,
+    signal,
+  });
+  let resp = await post();
+  if ((resp.status !== 401 && resp.status !== 403) || typeof _kfVerifyServerVipForChat !== "function") {
+    return resp;
+  }
+
+  const firstBody = await resp.text().catch(() => "");
+  const authResult = await _kfVerifyServerVipForChat({ forceRefresh: true });
+  if (!authResult?.ok || !_clerkToken) throw _kfVipChatAuthError(resp, firstBody, authResult);
+  resp = await post();
+  if (resp.status === 401 || resp.status === 403) {
+    const retryBody = await resp.text().catch(() => "");
+    throw _kfVipChatAuthError(resp, retryBody, authResult);
+  }
+  return resp;
+}
+
 async function callClaudeStream(userMsg, onDelta, pendingMsg = null, opts = {}) {
   const messages = _kfBuildClaudeMessages(userMsg, pendingMsg, opts);
   const requestBody = JSON.stringify({
@@ -566,12 +598,7 @@ async function callClaudeStream(userMsg, onDelta, pendingMsg = null, opts = {}) 
       resp = await fetch(proxy + "/v1/messages", { method: "POST", headers, body: requestBody, signal: controller.signal });
     } else if (_clerkUserTier === "vip" && _clerkToken) {
       // VIP: app API key lives on server only
-      resp = await fetch("/api/claude/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _clerkToken },
-        body: requestBody,
-        signal: controller.signal,
-      });
+      resp = await _kfFetchVipClaudeChat(requestBody, controller.signal);
     } else {
       // Regular users: key stored in localStorage, sent directly to Anthropic from browser
       const apiKey = localStorage.getItem(CHAT_KEY_LS);

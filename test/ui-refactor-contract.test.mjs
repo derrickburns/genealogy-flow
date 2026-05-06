@@ -183,8 +183,7 @@ test("tree inventory loading does not auto-switch from Trees to People", () => {
   const api = readFileSync("src/app/80-kf-api.js", "utf8");
 
   assert.match(panels, /function\s+_kfShowPersonCard\s*\(\s*di,\s*opts\s*=\s*\{\}\s*\)/);
-  assert.match(panels, /const shouldReveal = opts\.reveal !== false/);
-  assert.match(panels, /_kfUsesResponsiveShell\(\) && opts\.reveal !== true/);
+  assert.match(panels, /const shouldReveal = opts\.reveal === "person"/);
   assert.match(panels, /if \(shouldReveal\) _kfSetSideTab\("person"\)/);
   assert.match(trees, /loadCloudTree\(key,\s*\{\s*suppressAutosave:\s*true,\s*revealPersonCard:\s*false\s*\}\)/);
   assert.match(trees, /loadCatalogTree\(key,\s*\{\s*suppressAutosave:\s*true,\s*revealPersonCard:\s*false\s*\}\)/);
@@ -272,9 +271,14 @@ test("people panel includes a compact scrolling living-people list after selecte
   assert.match(panels, /_kfReadableRelationship\(rel\)/);
   assert.match(panels, /People in map view/);
   assert.match(panels, /class="livingPersonItem/);
+  assert.match(panels, /data-di="\$\{row\.di\}"/);
   assert.match(panels, /class="livingPersonDetail personDetailCard"/);
   assert.match(panels, /function\s+_kfPersonDetailHtml\s*\(/);
   assert.match(panels, /function\s+_kfBindPersonDetailControls\s*\(/);
+  assert.match(panels, /function\s+_kfSelectLivingPersonFromList\s*\(/);
+  assert.match(panels, /highlightedDwell = di/);
+  assert.match(panels, /_kfShowPersonCard\(di\)/);
+  assert.match(panels, /if \(opts\.expandList !== false\) _kfExpandedMapPersonId = ind\.id/);
   assert.match(sources, /_kfRenderLivingPeopleList\(true\)/);
   assert.match(mapLibre, /_kfRenderLivingPeopleList\(true\)/);
   assert.match(renderLayers, /_kfIsSideTabActive\("person"\)/);
@@ -283,6 +287,55 @@ test("people panel includes a compact scrolling living-people list after selecte
   assert.match(styles, /\.livingPersonRow\s*\{[^}]*grid-template-columns/s);
   assert.match(styles, /\.personDetailCard \.sp-name/);
   assert.match(styles, /@media \(max-width:720px\)\s*\{[\s\S]*\.livingPersonRow\s*\{[^}]*grid-template-areas/s);
+});
+
+test("suggested Explore questions use mobile-safe taps and dedupe active repeats", () => {
+  const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const derived = readFileSync("src/app/75-derived-cache.js", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
+  const smoke = readFileSync("scripts/smoke-ai-regression.mjs", "utf8");
+
+  assert.match(panels, /function\s+_kfDispatchChatScopeQuestion\s*\(/);
+  assert.match(panels, /function\s+_kfBindChatScopeQuestions\s*\(/);
+  assert.match(panels, /_kfBindTapOrClick\(btn,\s*ask\)/);
+  assert.doesNotMatch(panels, /window\.addEventListener\("pointerup"[\s\S]*data-chat-scope-question/);
+  assert.match(panels, /let _kfChatScopeLastDispatchedSignature = ""/);
+  assert.match(panels, /Date\.now\(\) - _kfChatScopeLastHandledAt < 1200/);
+  assert.match(panels, /let _kfActiveChatQuestionSignature = ""/);
+  assert.match(panels, /function\s+_kfChatQuestionKey\s*\(/);
+  assert.match(panels, /function\s+_kfChatQuestionContextKey\s*\(/);
+  assert.match(panels, /function\s+_kfChatQuestionContextLabel\s*\(/);
+  assert.match(panels, /Answered in: \$\{turn\.context\}/);
+  assert.match(panels, /<small>Answered in \$\{escChat\(turn\.context\)\}<\/small>/);
+  assert.match(derived, /signature === _kfActiveChatQuestionSignature/);
+  assert.match(derived, /return \{ queued: false, duplicate: true \}/);
+  assert.match(derived, /questionContextLabel/);
+  assert.match(derived, /context_signature: questionSignature/);
+  assert.match(derived, /_kfActiveChatQuestionSignature = questionSignature/);
+  assert.match(derived, /_kfActiveChatQuestionSignature = ""/);
+  assert.match(styles, /\.chatQuestionChip em\s*\{/);
+  assert.match(styles, /\.chatActiveQuestion small\s*\{/);
+  assert.match(styles, /\.chat-scope-question\s*\{[^}]*touch-action:manipulation/s);
+  assert.match(smoke, /function\s+assertMobileImmigrationQuestionTap\s*\(/);
+  assert.match(smoke, /double-tapping Immigration waves should dispatch one question/);
+});
+
+test("VIP chat calls retry with fresh server-verified auth before surfacing access errors", () => {
+  const state = readFileSync("src/app/00-state.js", "utf8");
+  const auth = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+  const runtime = readFileSync("src/app/90-chat-runtime.js", "utf8");
+
+  assert.match(state, /let _kfServerAuthContext = null/);
+  assert.match(state, /let _kfServerVerifiedVip = false/);
+  assert.match(auth, /function\s+_kfGetClerkToken\s*\(/);
+  assert.match(auth, /getToken\(\{ skipCache: true \}\)/);
+  assert.match(auth, /function\s+_kfVerifyServerVipForChat\s*\(/);
+  assert.match(auth, /_kfServerVerifiedVip = serverUser\?\.type === "vip"/);
+  assert.match(auth, /server_verified_vip: !!_kfServerVerifiedVip/);
+  assert.match(runtime, /function\s+_kfFetchVipClaudeChat\s*\(/);
+  assert.match(runtime, /_kfVerifyServerVipForChat\(\{ forceRefresh: true \}\)/);
+  assert.match(runtime, /Your sign-in\$\{who\} did not verify as VIP on the server/);
+  assert.match(runtime, /resp = await _kfFetchVipClaudeChat\(requestBody, controller\.signal\)/);
 });
 
 test("responsive bottom tabs are tap targets, not sheet drag handles", () => {
@@ -350,14 +403,15 @@ test("short phone map-first state gives vertical space back to the map", () => {
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\):not\(\.kf-has-selected-person\) \.mapStoryRibbon\s*\{[^}]*display:none\s*!important/s);
   assert.match(styles, /body\.kf-has-selected-person:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*bottom:calc\(158px/s);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:78px/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:78px;[^}]*box-sizing:border-box/s);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*height:46px/s);
   assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\]\s*\{[^}]*height:min\(34dvh, 300px\)/s);
   assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\] #selectedPerson,[^}]*\{[^}]*display:none\s*!important/s);
-  assert.match(panels, /const shouldReveal = opts\.reveal !== false/);
-  assert.match(panels, /_kfUsesResponsiveShell\(\) && opts\.reveal !== true/);
+  assert.match(panels, /const shouldReveal = opts\.reveal === "person"/);
   assert.match(chrome, /classList\.toggle\("kf-has-selected-person", !!ind\)/);
   assert.match(smoke, /function\s+assertCompactMapVisible\s*\(/);
   assert.match(smoke, /function\s+assertDetailDrawerLeavesMapContext\s*\(/);
+  assert.match(smoke, /storyTimelineGap >= 8/);
   assert.match(smoke, /\["map", \/Recorded years\|Patterns\|Story\|Tree scope\/i\]/);
   assert.match(smoke, /maxRun >= 320/);
   assert.match(smoke, /visibleMapHeight >= minimum/);

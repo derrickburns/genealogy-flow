@@ -25,6 +25,8 @@ let _chatProxyOk = null; // hoisted early; detectChatProxy() is called before it
 let _clerkToken = null;
 let _clerkUserTier = "anon";
 let _clerkInstance = null;
+let _kfServerAuthContext = null;
+let _kfServerVerifiedVip = false;
 let _kfDerivedCacheReady = false;
 const _kfClientErrors = [];
 function _kfRecordClientError(entry) {
