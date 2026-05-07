@@ -12,6 +12,9 @@ function _kfPublicTreeMeta(tree) {
     key: tree.key || tree.catalog_key || null,
     name: tree.name || tree.common_name || null,
     tree_uuid: tree.tree_uuid || null,
+    content_hash: tree.content_hash || null,
+    content_etag: tree.content_etag || tree.etag || tree.http_etag || null,
+    content_changed_at: tree.content_changed_at || null,
     available: tree.available !== false,
     relation: tree.relation || null,
     owner_email: tree.owner_email || null,
@@ -245,7 +248,7 @@ window.kfDebug = {
 applyChatAccess("anon");
 // Fire the auto-intro after first paint so the page lays out before the
 // network call. Stays silent if neither proxy nor API key is reachable.
-// For returning users, autoIntroOnce runs after the cloud GEDCOM loads (in autoLoadCloudGedcom).
+// For returning users, autoIntroOnce runs after selected startup trees restore.
 // For new/anonymous users with chat access, fire it now.
 requestAnimationFrame(() => {
   if (!localStorage.getItem("kf_returning")) autoIntroOnce();
@@ -598,8 +601,18 @@ async function updateAuthUI(user) {
 async function autoLoadStartupTrees() {
   _kfSetStartupPhase(KF_STARTUP_PHASE.AUTO_LOAD, "restoring your trees...");
   await _kfLoadServerSelectedTrees();
-  await autoLoadCloudGedcom();
-  await autoLoadVipCatalogTrees();
+  const selectedRefs = typeof _kfReadSelectedTreeRefs === "function" ? _kfReadSelectedTreeRefs() : [];
+  await autoLoadCloudGedcom({ selectedRefs });
+  await autoLoadVipCatalogTrees({ selectedRefs });
+  if (selectedRefs.length && typeof _kfApplyPersistedSelectedTrees === "function" && _kfApplyPersistedSelectedTrees()) {
+    if (typeof _kfRefreshBrowserViews === "function") _kfRefreshBrowserViews();
+    if (timelineLoaded && typeof _kfRebuildSelectedVisualization === "function") {
+      _kfRebuildSelectedVisualization({ preserveYear: true, preferActiveRoot: true });
+    }
+    if (typeof renderSources === "function" && typeof _kfGetLoadedSourcesList === "function") {
+      renderSources(_kfGetLoadedSourcesList());
+    }
+  }
   const action = _kfChooseStartupAction({
     hasSelectedVisualizationTree: _kfHasSelectedVisualizationTree(),
     hasAvailableNonDemoRemoteTree: _kfHasAvailableNonDemoRemoteTree(),
@@ -641,71 +654,27 @@ async function _kfLoadServerSelectedTrees() {
   }
 }
 
-async function autoLoadCloudGedcom() {
+async function autoLoadCloudGedcom(opts = {}) {
   if (!_clerkToken) return;
+  const selectedRefs = Array.isArray(opts.selectedRefs)
+    ? opts.selectedRefs
+    : (typeof _kfReadSelectedTreeRefs === "function" ? _kfReadSelectedTreeRefs() : []);
+  if (!selectedRefs.length) return;
+  const selectedTrees = typeof _kfSelectedRemoteTreesForRefs === "function"
+    ? _kfSelectedRemoteTreesForRefs(_kfCloudTrees || [], selectedRefs)
+    : [];
+  const pending = selectedTrees.filter(t => !_kfIsTreeLoadedLike(t));
+  if (!pending.length) return;
   const restoring = { role: "bot", content: "Restoring your trees..." };
   if (typeof chatHistory !== "undefined" && chatHistory.length === 0) {
     chatHistory.push(restoring);
     if (typeof renderChat === "function") renderChat();
   }
   try {
-    const resp = await fetch("/api/gedcom", {
-      headers: { "Authorization": "Bearer " + _clerkToken }
-    });
-    if (!resp.ok) {
-      if (typeof chatHistory !== "undefined") {
-        const idx = chatHistory.indexOf(restoring);
-        if (idx !== -1) chatHistory.splice(idx, 1);
-        if (typeof renderChat === "function") renderChat();
-      }
-      // Authenticated users with no cloud GEDCOM: show upload prompt, not the drop zone
-      stats.textContent = "ready - open a .ged file or drag one in";
-      return;
-    }
-    const payload = await resp.json();
-    const trees = Array.isArray(payload?.trees) ? payload.trees : [];
-    const restorableTrees = trees.filter(t => !_kfIsPublicDemoSourceName(t?.name));
-    if (!restorableTrees.length) {
-      if (typeof chatHistory !== "undefined") {
-        const idx = chatHistory.indexOf(restoring);
-        if (idx !== -1) chatHistory.splice(idx, 1);
-        if (typeof renderChat === "function") renderChat();
-      }
-      stats.textContent = "ready - open a .ged file or drag one in";
-      return;
-    }
-    const defaultTree = restorableTrees.find(t => t.is_default) || null;
-    const ordered = restorableTrees.slice().sort((a, b) => Number(!!a.is_default) - Number(!!b.is_default));
-    _kfSkipNextSeedCount = ordered.length;
-    for (const tree of ordered) {
-      const jsonText = JSON.stringify(tree.data || {});
-      const file = new File([jsonText], (tree.name || "saved") + ".ged", { type: "text/plain" });
-      file._kfTreeMeta = {
-        tree_uuid: tree.tree_uuid || null,
-        content_hash: tree.content_hash || null,
-        content_changed_at: tree.content_changed_at || null,
-        owner_uuid: tree.owner_uuid || null,
-        owner_email: tree.owner_email || null,
-        relation: tree.relation || null,
-        top_pci_id: tree.top_pci_id || null,
-        top_pci_name: tree.top_pci_name || null,
-        top_pci_score: tree.top_pci_score ?? null,
-        common_name: _kfSourceNameFromFileName(tree.name || "saved"),
-      };
-      if (window._kfLoadFiles) await window._kfLoadFiles([file], { persistSelection: false });
-    }
-    const hasPersistedSelection = typeof _kfHasPersistedSelectedTreeRefs === "function" && _kfHasPersistedSelectedTreeRefs();
-    if (!hasPersistedSelection && defaultTree?.name && window.kfApi?.setActiveTree) {
-      window.kfApi.setActiveTree({ name: defaultTree.name, persist: false });
-    } else if (hasPersistedSelection) {
-      if (typeof _kfApplyPersistedSelectedTrees === "function") _kfApplyPersistedSelectedTrees();
-      if (typeof _kfRefreshBrowserViews === "function") _kfRefreshBrowserViews();
-      if (timelineLoaded && typeof _kfRebuildSelectedVisualization === "function") {
-        _kfRebuildSelectedVisualization({ preserveYear: true, preferActiveRoot: true });
-      }
-      if (typeof renderSources === "function" && typeof _kfGetLoadedSourcesList === "function") {
-        renderSources(_kfGetLoadedSourcesList());
-      }
+    stats.textContent = `restoring ${pending.length} selected tree${pending.length === 1 ? "" : "s"}...`;
+    for (const tree of pending) {
+      stats.textContent = `restoring selected tree ${tree.name || tree.key || tree.tree_uuid}...`;
+      await loadCloudTree(tree.tree_uuid || tree.key || tree.source_id, { suppressAutosave: true, revealPersonCard: false });
     }
     // Replace restoring message with the auto-intro once the tree is loaded
     if (typeof chatHistory !== "undefined") {
@@ -714,13 +683,14 @@ async function autoLoadCloudGedcom() {
       if (typeof renderChat === "function") renderChat();
     }
     autoIntroOnce();
-  } catch (_) {
+  } catch (e) {
+    console.warn("[kf] autoLoadCloudGedcom:", e?.message || e);
     if (typeof chatHistory !== "undefined") {
       const idx = chatHistory.indexOf(restoring);
       if (idx !== -1) chatHistory.splice(idx, 1);
       if (typeof renderChat === "function") renderChat();
     }
-    stats.textContent = "ready - open a .ged file or drag one in";
+    stats.textContent = "could not restore selected trees";
   }
 }
 

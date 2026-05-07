@@ -596,6 +596,8 @@ function _kfTreeSelectionRefForSource(src) {
     catalog_key: src.catalog_key || null,
     tree_uuid: src.tree_uuid || null,
     content_hash: _kfNormalizedTreeSelectionHash(src.content_hash),
+    content_etag: String(src.content_etag || src.etag || src.http_etag || "").trim() || null,
+    content_changed_at: src.content_changed_at || null,
     owner_email: String(src.owner_email || "").trim().toLowerCase() || null,
     name,
     canonical_name: canonicalName || "",
@@ -612,13 +614,15 @@ function _kfNormalizeSelectedTreeRefs(refs) {
       catalog_key: String(ref?.catalog_key || "").trim() || null,
       tree_uuid: String(ref?.tree_uuid || "").trim() || null,
       content_hash: _kfNormalizedTreeSelectionHash(ref?.content_hash),
+      content_etag: String(ref?.content_etag || ref?.etag || ref?.http_etag || "").trim() || null,
+      content_changed_at: ref?.content_changed_at || null,
       owner_email: String(ref?.owner_email || "").trim().toLowerCase() || null,
       name: String(ref?.name || "").trim(),
       canonical_name: ref?.canonical_name || _kfCanonicalTreeName(ref?.name || ""),
     }))
     .filter(ref => ref.tree_uuid || ref.catalog_key || ref.content_hash || ref.canonical_name)
     .filter(ref => {
-      const key = [ref.tree_uuid, ref.catalog_key, ref.content_hash, ref.owner_email, ref.canonical_name].join("|");
+      const key = [ref.tree_uuid, ref.catalog_key, ref.content_hash, ref.content_etag, ref.owner_email, ref.canonical_name].join("|");
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -662,12 +666,21 @@ function _kfHasPersistedSelectedTreeRefs() {
   return _kfReadSelectedTreeRefs().length > 0;
 }
 
+function _kfSelectedRemoteTreesForRefs(trees, refs = _kfReadSelectedTreeRefs()) {
+  const selectedRefs = _kfNormalizeSelectedTreeRefs(refs);
+  if (!selectedRefs.length) return [];
+  return _kfDedupeRemoteTrees((trees || [])
+    .filter(tree => tree && tree.available !== false)
+    .filter(tree => selectedRefs.some(ref => _kfTreeSelectionRefMatchesSource(ref, tree))));
+}
+
 function _kfTreeSelectionRefMatchesSource(ref, src) {
   if (!ref || !src) return false;
   const srcHash = _kfNormalizedTreeSelectionHash(src.content_hash);
   if (ref.tree_uuid && src.tree_uuid && String(ref.tree_uuid) === String(src.tree_uuid)) return true;
   if (ref.catalog_key && src.catalog_key && String(ref.catalog_key) === String(src.catalog_key)) return true;
   if (ref.content_hash && srcHash && ref.content_hash === srcHash) return true;
+  if (ref.content_etag && src.content_etag && String(ref.content_etag) === String(src.content_etag)) return true;
 
   const refName = ref.canonical_name || _kfCanonicalTreeName(ref.name || "");
   const srcName = _kfCanonicalTreeName(_kfFamiliarTreeName(src) || src.common_name || src.name || "");
@@ -1012,6 +1025,9 @@ function _kfSameTreeForUi(a, b) {
   const au = String(a?.tree_uuid || "").trim();
   const bu = String(b?.tree_uuid || "").trim();
   if (au && bu && au === bu) return true;
+  const ak = String(a?.catalog_key || "").trim();
+  const bk = String(b?.catalog_key || "").trim();
+  if (ak && bk && ak === bk) return true;
   const an = _kfCanonicalTreeName(_kfFamiliarTreeName(a));
   const bn = _kfCanonicalTreeName(_kfFamiliarTreeName(b));
   if (!an || an !== bn) return false;
@@ -1019,6 +1035,49 @@ function _kfSameTreeForUi(a, b) {
   const ao = String(a?.owner_email || "").trim().toLowerCase();
   const bo = String(b?.owner_email || "").trim().toLowerCase();
   return !!ao && ao === bo;
+}
+
+function _kfTreeVersionToken(item) {
+  const hash = _kfNormalizedTreeSelectionHash(item?.content_hash);
+  if (hash) return `hash:${hash}`;
+  const etag = String(item?.content_etag || item?.etag || item?.http_etag || "").trim();
+  if (etag) return `etag:${etag}`;
+  const changedAt = item?.content_changed_at;
+  if (changedAt != null && String(changedAt).trim()) return `changed:${String(changedAt).trim()}`;
+  return "";
+}
+
+function _kfFindLoadedSourceLike(item) {
+  const sources = [..._kfLoadedSources.values()];
+  const hash = _kfNormalizedTreeSelectionHash(item?.content_hash);
+  if (hash) {
+    const byHash = sources.find(src => _kfNormalizedTreeSelectionHash(src.content_hash) === hash);
+    if (byHash) return byHash;
+  }
+  const uuid = String(item?.tree_uuid || "").trim();
+  if (uuid) {
+    const byUuid = sources.find(src => String(src.tree_uuid || "").trim() === uuid);
+    if (byUuid) return byUuid;
+  }
+  const catalogKey = String(item?.catalog_key || item?.key || "").trim();
+  if (catalogKey) {
+    const byCatalogKey = sources.find(src => String(src.catalog_key || "").trim() === catalogKey);
+    if (byCatalogKey) return byCatalogKey;
+  }
+  const sourceName = _kfSourceNameFromFileName(item?.name || item?.key || "");
+  if (sourceName && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) {
+    return _kfLoadedSources.get(sourceName) || { name: sourceName };
+  }
+  return sources.find(src => _kfSameTreeForUi(src, item)) || null;
+}
+
+function _kfLoadedSourceContentMatches(src, item) {
+  if (!src || !item) return false;
+  const remoteVersion = _kfTreeVersionToken(item);
+  const loadedVersion = _kfTreeVersionToken(src);
+  if (remoteVersion && loadedVersion) return remoteVersion === loadedVersion;
+  if (remoteVersion && !loadedVersion) return false;
+  return true;
 }
 
 function _kfIsCatalogDuplicateTree(item) {
@@ -1029,13 +1088,8 @@ function _kfIsCatalogDuplicateTree(item) {
 }
 
 function _kfIsTreeLoadedLike(item) {
-  const hash = item?.content_hash;
-  if (hash && [..._kfLoadedSources.values()].some(src => src.content_hash === hash)) return true;
-  const uuid = item?.tree_uuid;
-  if (uuid && _kfLoadedSourceByTreeUuid(uuid)) return true;
-  const sourceName = _kfSourceNameFromFileName(item?.name || item?.key || "");
-  if (!uuid && (_kfTreeCache.has(sourceName) || _kfLoadedSources.has(sourceName))) return true;
-  return [..._kfLoadedSources.values()].some(src => _kfSameTreeForUi(src, item));
+  const loaded = _kfFindLoadedSourceLike(item);
+  return !!loaded && _kfLoadedSourceContentMatches(loaded, item);
 }
 
 function _kfRemoteTreePriority(t) {
@@ -1136,6 +1190,8 @@ async function loadCatalogTree(key, opts = {}) {
     source_kind: "catalog",
     catalog_key: key,
     tree_uuid: catalogMeta?.tree_uuid || null,
+    content_etag: catalogMeta?.content_etag || r.headers.get("X-Content-ETag") || r.headers.get("ETag") || null,
+    content_changed_at: catalogMeta?.content_changed_at || r.headers.get("X-Content-Changed-At") || null,
     owner_email: catalogMeta?.owner_email || null,
     relation: catalogMeta?.relation || null,
     common_name: sourceName,
@@ -1180,6 +1236,8 @@ async function autoLoadPublicDemoTree() {
       source_kind: "catalog",
       catalog_key: "demo",
       tree_uuid: demoMeta?.tree_uuid || null,
+      content_etag: demoMeta?.content_etag || null,
+      content_changed_at: demoMeta?.content_changed_at || null,
       owner_email: demoMeta?.owner_email || null,
       relation: demoMeta?.relation || "public",
       common_name: "DEMO",
@@ -1258,27 +1316,32 @@ async function loadCloudTree(sourceKey, opts = {}) {
   return true;
 }
 
-async function autoLoadVipCatalogTrees() {
+async function autoLoadVipCatalogTrees(opts = {}) {
   if (!_clerkToken) return;
   const userKey = _kfStartupLoadUserKey || _clerkToken;
   if (_kfVipCatalogAutoLoadUserKey === userKey) return;
   _kfVipCatalogAutoLoadUserKey = userKey;
   try {
+    const selectedRefs = Array.isArray(opts.selectedRefs) ? opts.selectedRefs : _kfReadSelectedTreeRefs();
+    if (!selectedRefs.length) {
+      refreshSources();
+      _kfRefreshStatsSummary();
+      return;
+    }
     const trees = (await fetchCatalogTrees())
       .filter(t => t && t.available !== false && t.key !== "demo");
-    const pending = trees.filter(t => {
-      return !_kfIsTreeLoadedLike(t);
-    });
+    const selectedTrees = _kfSelectedRemoteTreesForRefs(trees, selectedRefs);
+    const pending = selectedTrees.filter(t => !_kfIsTreeLoadedLike(t));
     if (!pending.length) {
       refreshSources();
       _kfRefreshStatsSummary();
       return;
     }
-    stats.textContent = `loading ${pending.length} shared tree${pending.length === 1 ? "" : "s"}...`;
+    stats.textContent = `loading ${pending.length} selected catalog tree${pending.length === 1 ? "" : "s"}...`;
     let loaded = 0;
     let failed = 0;
     for (const tree of pending) {
-      stats.textContent = `loading shared tree ${tree.name || tree.key}...`;
+      stats.textContent = `loading selected tree ${tree.name || tree.key}...`;
       try {
         if (await loadCatalogTree(tree.key, { suppressAutosave: true })) loaded++;
         else failed++;
@@ -1678,6 +1741,7 @@ async function processFile(file) {
     catalog_key: sourceMeta.catalog_key || null,
     tree_uuid: sourceMeta.tree_uuid || null,
     content_hash: contentHash,
+    content_etag: sourceMeta.content_etag || null,
     content_changed_at: sourceMeta.content_changed_at || null,
     owner_uuid: sourceMeta.owner_uuid || null,
     owner_email: sourceMeta.owner_email || null,

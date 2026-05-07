@@ -39,5 +39,13 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     "X-Catalog-Key": key,
     "X-Catalog-Name": tree.name,
   });
+  const etag = obj.httpEtag || obj.etag || "";
+  if (etag) {
+    headers.set("ETag", etag);
+    headers.set("X-Content-ETag", etag);
+  }
+  if (obj.uploaded) {
+    headers.set("X-Content-Changed-At", String(Math.floor(new Date(obj.uploaded).getTime() / 1000)));
+  }
   return new Response(obj.body, { headers });
 };

@@ -10,6 +10,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     const head = tree.publicDemo
       ? await ctx.env.STORAGE.head(tree.storageKey) ?? await ctx.env.STORAGE.head("demo/golden-rosenberg.json")
       : await ctx.env.STORAGE.head(tree.storageKey);
+    const uploaded = head?.uploaded ? new Date(head.uploaded).getTime() : NaN;
     return {
       kind: "catalog",
       key: tree.key,
@@ -18,6 +19,8 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       owner_email: tree.ownerEmail,
       relation: tree.relation,
       public: tree.access === "public",
+      content_etag: head?.httpEtag || head?.etag || null,
+      content_changed_at: Number.isFinite(uploaded) ? Math.floor(uploaded / 1000) : null,
       available: !!head,
     };
   }));

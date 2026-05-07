@@ -50,6 +50,8 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
   const treePanel = readFileSync("src/app/48-ux-tree-panel.js", "utf8");
   const treeSelectionApi = readFileSync("functions/api/user/tree-selection.ts", "utf8");
+  const catalogTreesApi = readFileSync("functions/api/catalog/trees.ts", "utf8");
+  const catalogTreeApi = readFileSync("functions/api/catalog/tree.ts", "utf8");
 
   assert.match(controls, /function\s+_kfOpenTreesPanelAfterSplashIfNeeded\s*\(/);
   assert.match(controls, /_kfMaybeOpenTreesPanelForEmptySelection\(\)/);
@@ -65,6 +67,11 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   assert.match(sources, /function\s+_kfTreeSelectionRefForSource\s*\(/);
   assert.match(sources, /function\s+_kfTreeSelectionRefMatchesSource\s*\(/);
   assert.match(sources, /function\s+_kfApplyPersistedSelectedTrees\s*\(/);
+  assert.match(sources, /function\s+_kfSelectedRemoteTreesForRefs\s*\(/);
+  assert.match(sources, /function\s+_kfTreeVersionToken\s*\(/);
+  assert.match(sources, /function\s+_kfLoadedSourceContentMatches\s*\(/);
+  assert.match(sources, /remoteVersion && loadedVersion[\s\S]*remoteVersion === loadedVersion/);
+  assert.match(sources, /content_etag: String\(src\.content_etag/);
   assert.match(sources, /function\s+_kfPersistSelectedTrees\s*\(/);
   assert.match(sources, /function\s+_kfSetPersistedSelectedTreeRefs\s*\(/);
   assert.match(sources, /fetch\("\/api\/user\/tree-selection"/);
@@ -74,8 +81,15 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   assert.match(treePanel, /function _kfSetLoadedTreeSelected[\s\S]*_kfMarkTreeSelectionTouched\(\)[\s\S]*_kfEnsureSelectedSources\(\)/);
   assert.match(services, /async function _kfLoadServerSelectedTrees\s*\(/);
   assert.match(services, /fetch\("\/api\/user\/tree-selection",\s*\{\s*headers:\s*_kfAuthHeaders\(\)/s);
-  assert.match(services, /async function autoLoadStartupTrees\(\)\s*\{[\s\S]*await _kfLoadServerSelectedTrees\(\);[\s\S]*await autoLoadCloudGedcom\(\);/);
-  assert.match(services, /_kfHasPersistedSelectedTreeRefs/);
+  assert.match(services, /async function autoLoadStartupTrees\(\)\s*\{[\s\S]*await _kfLoadServerSelectedTrees\(\);[\s\S]*const selectedRefs = typeof _kfReadSelectedTreeRefs === "function" \? _kfReadSelectedTreeRefs\(\) : \[\];[\s\S]*await autoLoadCloudGedcom\(\{ selectedRefs \}\);[\s\S]*await autoLoadVipCatalogTrees\(\{ selectedRefs \}\);/);
+  assert.match(services, /async function autoLoadCloudGedcom\(opts = \{\}\)/);
+  assert.match(services, /_kfSelectedRemoteTreesForRefs\(_kfCloudTrees \|\| \[\], selectedRefs\)/);
+  assert.match(sources, /async function autoLoadVipCatalogTrees\(opts = \{\}\)/);
+  assert.match(sources, /const selectedTrees = _kfSelectedRemoteTreesForRefs\(trees, selectedRefs\)/);
+  assert.doesNotMatch(services, /const resp = await fetch\("\/api\/gedcom",\s*\{/);
+  assert.match(sources, /function\s+_kfHasPersistedSelectedTreeRefs\s*\(/);
+  assert.match(catalogTreesApi, /content_etag: head\?\.httpEtag \|\| head\?\.etag \|\| null/);
+  assert.match(catalogTreeApi, /headers\.set\("X-Content-ETag", etag\)/);
   assert.match(treeSelectionApi, /CREATE TABLE IF NOT EXISTS user_tree_selection/);
   assert.match(treeSelectionApi, /export const onRequestGet/);
   assert.match(treeSelectionApi, /export const onRequestPut/);
