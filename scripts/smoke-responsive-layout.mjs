@@ -320,6 +320,58 @@ async function assertDetailDrawerLeavesMapContext(client, label) {
   assert.ok(budget.ok, `${label} detail drawer should preserve map context: ${JSON.stringify(budget)}`);
 }
 
+async function assertScaledDesktopCompactDrawer(client, label) {
+  await client.eval(`document.querySelector('#sideTabs [data-side-tab="trees"]')?.click()`);
+  const state = await waitFor(
+    client,
+    `(() => {
+      const panel = document.getElementById("panel");
+      const map = document.getElementById("mapWrap");
+      const auth = document.getElementById("authBar");
+      if (!panel || !map) return null;
+      const visible = el => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+      };
+      const panelRect = panel.getBoundingClientRect();
+      const mapRect = map.getBoundingClientRect();
+      const authRect = auth?.getBoundingClientRect();
+      const mapStart = Math.max(mapRect.top, authRect?.bottom || mapRect.top);
+      const visibleMapHeight = Math.max(0, Math.min(panelRect.top, mapRect.bottom) - mapStart);
+      const minimum = Math.min(260, Math.max(210, window.innerHeight * 0.32));
+      const storyVisible = visible(document.getElementById("mapStoryRibbon"));
+      const contextVisible = visible(document.getElementById("responsiveContextStrip"));
+      const horizontalOverflow = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) >
+        (window.innerWidth || document.documentElement.clientWidth) + 2;
+      return {
+        ok: panel.dataset.activeTab === "trees" &&
+          panel.dataset.sheet !== "peek" &&
+          visibleMapHeight >= minimum &&
+          !storyVisible &&
+          !contextVisible &&
+          !horizontalOverflow,
+        activeTab: panel.dataset.activeTab,
+        sheet: panel.dataset.sheet,
+        visibleMapHeight,
+        minimum,
+        storyVisible,
+        contextVisible,
+        horizontalOverflow,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        panel: { top: panelRect.top, height: panelRect.height },
+        map: { top: mapRect.top, bottom: mapRect.bottom, height: mapRect.height }
+      };
+    })()`,
+    `${label} scaled desktop compact drawer geometry`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.ok(state.ok, `${label} scaled desktop compact drawer should not cover the map/story overlays: ${JSON.stringify(state)}`);
+  await client.eval(`document.querySelector('#sideTabs [data-side-tab="map"]')?.click()`);
+}
+
 async function assertMobileVizTimelineRail(client, label) {
   await client.eval(`window.kfApi?.showViz?.({
     type: "svg",
@@ -572,7 +624,7 @@ async function auditCompactInteractions(client, name) {
   }
 }
 
-async function runCase({ name, width, height, compact, mapOnly = false, realMobile = false }) {
+async function runCase({ name, width, height, compact, mapOnly = false, realMobile = false, desktopScaled = false, drawerCheck = false }) {
   const target = await createTarget();
   const client = new CdpClient(target.webSocketDebuggerUrl);
   try {
@@ -585,11 +637,11 @@ async function runCase({ name, width, height, compact, mapOnly = false, realMobi
         width,
         height,
         deviceScaleFactor: 1,
-        mobile: compact,
+        mobile: compact && !desktopScaled,
         screenWidth: width,
         screenHeight: height,
       });
-      if (compact) {
+      if (compact && !desktopScaled) {
         await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
       }
     }
@@ -610,6 +662,7 @@ async function runCase({ name, width, height, compact, mapOnly = false, realMobi
       assert.equal(initialSnapshot.layout.sheet, "peek", `${name} should keep the sheet collapsed after tree load`);
       await assertCompactMapVisible(client, name);
       await assertMobileVizTimelineRail(client, name);
+      if (drawerCheck) await assertScaledDesktopCompactDrawer(client, name);
       if (mapOnly) {
         console.log(`${name} map visibility smoke passed`);
         return;
@@ -671,6 +724,7 @@ await cdpFetch("/json/version").catch(e => {
 });
 
 await runCase({ name: "desktop", width: 1180, height: 900, compact: false });
+await runCase({ name: "desktop-scaled-compact", width: 800, height: 690, compact: true, desktopScaled: true, drawerCheck: true, mapOnly: true });
 await runCase({ name: "compact", width: 500, height: 844, compact: true });
 await runCase({ name: "iphone-real", width: 390, height: 844, compact: true, realMobile: true, mapOnly: true });
 await runCase({ name: "iphone-short-real", width: 390, height: 694, compact: true, realMobile: true, mapOnly: true });

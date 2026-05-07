@@ -3780,10 +3780,10 @@ html, body {
   }
 }
 
-/* Pencil v5 mobile map-first shell. This is intentionally the final mobile
-   cascade: the default phone state is map + lightweight overlays, and sheets
-   are task-sized overlays instead of persistent layout. */
-@media (max-width: 720px), (hover:none) and (pointer:coarse) {
+/* Pencil v5 compact map-first shell. This is intentionally the final compact
+   cascade: narrow desktop windows and phones share map + lightweight overlays,
+   and sheets are task-sized overlays instead of persistent layout. */
+@media (max-width: 900px), (pointer:coarse) and (max-width: 980px) {
   html,
   body {
     background:#0B1220;
@@ -4092,7 +4092,7 @@ html, body {
   }
 }
 
-@media (max-width: 720px) and (max-height: 760px), (hover:none) and (pointer:coarse) and (max-height: 760px) {
+@media (max-width: 900px) and (max-height: 760px), (pointer:coarse) and (max-width: 980px) and (max-height: 760px) {
   body:has(#panel[data-active-tab="map"][data-sheet="peek"]) {
     --kf-mobile-tabs-bottom:calc(8px + env(safe-area-inset-bottom, 0px));
     --kf-mobile-tabs-height:42px;
@@ -4150,7 +4150,7 @@ html, body {
   }
 }
 
-@media (max-width: 720px), (hover:none) and (pointer:coarse) {
+@media (max-width: 900px), (pointer:coarse) and (max-width: 980px) {
   body:has(#vizPane.on) #authBar {
     display:none !important;
   }
@@ -4243,7 +4243,7 @@ html, body {
   }
 }
 
-@media (max-width: 720px) and (max-height: 760px), (hover:none) and (pointer:coarse) and (max-height: 760px) {
+@media (max-width: 900px) and (max-height: 760px), (pointer:coarse) and (max-width: 980px) and (max-height: 760px) {
   #vizArea:has(#vizPane.on) #ui {
     bottom:calc(52px + env(safe-area-inset-bottom, 0px));
     height:40px;

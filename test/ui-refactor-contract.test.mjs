@@ -151,6 +151,8 @@ test("responsive browser smoke coverage is wired into package scripts", () => {
   assert.match(smoke, /maxTouchPoints:\s*5/);
   assert.match(smoke, /matchMedia\("\(pointer: coarse\)"\)/);
   assert.match(smoke, /iphone-real/);
+  assert.match(smoke, /desktop-scaled-compact/);
+  assert.match(smoke, /desktopScaled/);
   assert.match(smoke, /window\.kfDebug\.treeSnapshot/);
   assert.match(smoke, /window\.kfDebug\.clientErrors/);
   assert.match(smoke, /value => !!value\?\.ok/);
@@ -490,8 +492,8 @@ test("short phone map-first state gives vertical space back to the map", () => {
   const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
   const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
 
-  assert.match(styles, /Pencil v5 mobile map-first shell/);
-  assert.match(styles, /@media \(max-width: 720px\) and \(max-height: 760px\)/);
+  assert.match(styles, /Pencil v5 compact map-first shell/);
+  assert.match(styles, /@media \(max-width: 900px\) and \(max-height: 760px\)/);
   assert.match(styles, /#authBar\s*\{[^}]*position:fixed/s);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\):not\(\.kf-has-selected-person\) \.mapStoryRibbon\s*\{[^}]*display:none\s*!important/s);
   assert.match(styles, /--kf-mobile-ui-height:78px/);
@@ -508,6 +510,7 @@ test("short phone map-first state gives vertical space back to the map", () => {
   assert.match(chrome, /classList\.toggle\("kf-has-selected-person", !!ind\)/);
   assert.match(smoke, /function\s+assertCompactMapVisible\s*\(/);
   assert.match(smoke, /function\s+assertDetailDrawerLeavesMapContext\s*\(/);
+  assert.match(smoke, /function\s+assertScaledDesktopCompactDrawer\s*\(/);
   assert.match(smoke, /minimumStoryTimelineGap = 16/);
   assert.match(smoke, /storyTimelineGap >= \$\{minimumStoryTimelineGap\}/);
   assert.match(smoke, /\["map", \/Recorded years\|Patterns\|Story\|Tree scope\/i\]/);
@@ -515,6 +518,7 @@ test("short phone map-first state gives vertical space back to the map", () => {
   assert.match(smoke, /visibleMapHeight >= minimum/);
   assert.match(smoke, /iphone-short-real/);
   assert.match(smoke, /compact-short/);
+  assert.match(smoke, /desktop-scaled-compact/);
 });
 
 test("mobile visualization tabs collapse the timeline into a short scrub rail", () => {
