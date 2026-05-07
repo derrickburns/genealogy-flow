@@ -48,6 +48,8 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   const controls = readFileSync("src/app/60-ui-controls.js", "utf8");
   const sources = readFileSync("src/app/50-pipeline-sources-review.js", "utf8");
   const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+  const treePanel = readFileSync("src/app/48-ux-tree-panel.js", "utf8");
+  const treeSelectionApi = readFileSync("functions/api/user/tree-selection.ts", "utf8");
 
   assert.match(controls, /function\s+_kfOpenTreesPanelAfterSplashIfNeeded\s*\(/);
   assert.match(controls, /_kfMaybeOpenTreesPanelForEmptySelection\(\)/);
@@ -64,7 +66,22 @@ test("tree inventory and persistence are viewport-neutral product behavior", () 
   assert.match(sources, /function\s+_kfTreeSelectionRefMatchesSource\s*\(/);
   assert.match(sources, /function\s+_kfApplyPersistedSelectedTrees\s*\(/);
   assert.match(sources, /function\s+_kfPersistSelectedTrees\s*\(/);
+  assert.match(sources, /function\s+_kfSetPersistedSelectedTreeRefs\s*\(/);
+  assert.match(sources, /fetch\("\/api\/user\/tree-selection"/);
+  assert.match(sources, /method:\s*"PUT"/);
+  assert.match(sources, /headers:\s*_kfJsonHeaders\(\)/);
   assert.match(sources, /if \(!_kfTreeSelectionTouchedThisSession && _kfApplyPersistedSelectedTrees\(\)\) return/);
+  assert.match(treePanel, /function _kfSetLoadedTreeSelected[\s\S]*_kfMarkTreeSelectionTouched\(\)[\s\S]*_kfEnsureSelectedSources\(\)/);
+  assert.match(services, /async function _kfLoadServerSelectedTrees\s*\(/);
+  assert.match(services, /fetch\("\/api\/user\/tree-selection",\s*\{\s*headers:\s*_kfAuthHeaders\(\)/s);
+  assert.match(services, /async function autoLoadStartupTrees\(\)\s*\{[\s\S]*await _kfLoadServerSelectedTrees\(\);[\s\S]*await autoLoadCloudGedcom\(\);/);
+  assert.match(services, /_kfHasPersistedSelectedTreeRefs/);
+  assert.match(treeSelectionApi, /CREATE TABLE IF NOT EXISTS user_tree_selection/);
+  assert.match(treeSelectionApi, /export const onRequestGet/);
+  assert.match(treeSelectionApi, /export const onRequestPut/);
+  assert.match(treeSelectionApi, /visibleCatalogTrees/);
+  assert.match(treeSelectionApi, /accessibleGedSourceIds/);
+  assert.match(treeSelectionApi, /ON CONFLICT\(user_id\) DO UPDATE/);
 });
 
 test("tree sharing creates an application auth invitation", () => {
@@ -116,6 +133,10 @@ test("responsive browser smoke coverage is wired into package scripts", () => {
 
   assert.equal(pkg.scripts["smoke:responsive"], "node scripts/smoke-responsive-layout.mjs");
   assert.match(smoke, /Emulation\.setDeviceMetricsOverride/);
+  assert.match(smoke, /Emulation\.setUserAgentOverride/);
+  assert.match(smoke, /maxTouchPoints:\s*5/);
+  assert.match(smoke, /matchMedia\("\(pointer: coarse\)"\)/);
+  assert.match(smoke, /iphone-real/);
   assert.match(smoke, /window\.kfDebug\.treeSnapshot/);
   assert.match(smoke, /window\.kfDebug\.clientErrors/);
   assert.match(smoke, /value => !!value\?\.ok/);
@@ -342,6 +363,10 @@ test("suggested Explore questions use mobile-safe taps and dedupe active repeats
   assert.match(runtime, /const suggested = await _kfTryAnswerSuggestedQuestion\(userText\)/);
   assert.match(smoke, /function\s+assertMobileImmigrationQuestionTap\s*\(/);
   assert.match(smoke, /function\s+assertAllSuggestedQuestionsTextAndViz\s*\(/);
+  assert.match(smoke, /function\s+emulateRealMobile\s*\(/);
+  assert.match(smoke, /function\s+assertMobileExploreAnswerAndVisualizationLayout\s*\(/);
+  assert.match(smoke, /Emulation\.setUserAgentOverride/);
+  assert.match(smoke, /maxTouchPoints:\s*5/);
   assert.match(smoke, /desktop.*text and visualization/s);
   assert.match(smoke, /mobile.*text and visualization/s);
   assert.match(smoke, /Inspect/i);
@@ -454,6 +479,8 @@ test("mobile visualization tabs collapse the timeline into a short scrub rail", 
   const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
 
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:44px/s);
+  assert.match(styles, /body:has\(#vizPane\.on\) #authBar\s*\{[^}]*display:none\s*!important/s);
+  assert.match(styles, /body:has\(#vizPane\.on\) #chatPane:has\(#chatAnswer \.chatActiveAnswer\) #chatScope,[\s\S]*#chatArtifacts\s*\{[^}]*display:none\s*!important/s);
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui \.timelineDeck\s*\{[^}]*grid-template-columns:30px minmax\(0, 1fr\)/s);
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui \.timelineOptions,[\s\S]*display:none\s*!important/s);
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui #yearHist,[\s\S]*display:none\s*!important/s);
@@ -461,6 +488,7 @@ test("mobile visualization tabs collapse the timeline into a short scrub rail", 
   assert.match(styles, /max-height: 760px[\s\S]*#vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:40px/s);
   assert.match(smoke, /function\s+assertMobileVizTimelineRail\s*\(/);
   assert.match(smoke, /uiRect\.height <= 50/);
+  assert.match(smoke, /authVisible:\s*visible\(auth\)/);
   assert.match(smoke, /clearVizHeight >= minimumClear/);
 });
 

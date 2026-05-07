@@ -570,7 +570,14 @@ function _kfGetLoadedSourcesList() {
 
 const KF_SELECTED_TREES_LS = "kf-selected-trees-v1";
 let _kfTreeSelectionTouchedThisSession = false;
+let _kfLastServerTreeSelectionKey = "";
 
+// Tree selection flow:
+// 1. A user action marks the selection as touched before validation.
+// 2. _kfEnsureSelectedSources keeps at least one loaded tree selected.
+// 3. Browser SQL views and the map are rebuilt from _kfSelectedSourceIds.
+// 4. Stable tree refs are saved locally and, for signed-in users, to the server.
+// 5. On login, server refs are cached locally before cloud/catalog trees load.
 function _kfMarkTreeSelectionTouched() {
   _kfTreeSelectionTouchedThisSession = true;
 }
@@ -596,26 +603,63 @@ function _kfTreeSelectionRefForSource(src) {
   return (ref.tree_uuid || ref.catalog_key || ref.content_hash || ref.canonical_name) ? ref : null;
 }
 
+function _kfNormalizeSelectedTreeRefs(refs) {
+  if (!Array.isArray(refs)) return [];
+  const seen = new Set();
+  return refs
+    .map(ref => ({
+      source_kind: String(ref?.source_kind || "").trim().toLowerCase() || null,
+      catalog_key: String(ref?.catalog_key || "").trim() || null,
+      tree_uuid: String(ref?.tree_uuid || "").trim() || null,
+      content_hash: _kfNormalizedTreeSelectionHash(ref?.content_hash),
+      owner_email: String(ref?.owner_email || "").trim().toLowerCase() || null,
+      name: String(ref?.name || "").trim(),
+      canonical_name: ref?.canonical_name || _kfCanonicalTreeName(ref?.name || ""),
+    }))
+    .filter(ref => ref.tree_uuid || ref.catalog_key || ref.content_hash || ref.canonical_name)
+    .filter(ref => {
+      const key = [ref.tree_uuid, ref.catalog_key, ref.content_hash, ref.owner_email, ref.canonical_name].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function _kfStoredTreeSelectionPayload(refs, opts = {}) {
+  return {
+    version: 1,
+    source: opts.source || "client",
+    updated_at: opts.updated_at || new Date().toISOString(),
+    refs: _kfNormalizeSelectedTreeRefs(refs),
+  };
+}
+
+function _kfSetPersistedSelectedTreeRefs(refs, opts = {}) {
+  const payload = _kfStoredTreeSelectionPayload(refs, opts);
+  try {
+    localStorage.setItem(KF_SELECTED_TREES_LS, JSON.stringify(payload));
+  } catch (e) {
+    console.warn("[kf] store selected trees:", e?.message || e);
+  }
+  if (opts.source === "server") _kfLastServerTreeSelectionKey = JSON.stringify(payload.refs);
+  if (opts.markTouched) _kfMarkTreeSelectionTouched();
+  else _kfTreeSelectionTouchedThisSession = false;
+  return payload;
+}
+
 function _kfReadSelectedTreeRefs() {
   try {
     const raw = localStorage.getItem(KF_SELECTED_TREES_LS);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    const refs = Array.isArray(parsed?.refs) ? parsed.refs : [];
-    return refs
-      .map(ref => ({
-        source_kind: ref?.source_kind || null,
-        catalog_key: ref?.catalog_key || null,
-        tree_uuid: ref?.tree_uuid || null,
-        content_hash: _kfNormalizedTreeSelectionHash(ref?.content_hash),
-        owner_email: String(ref?.owner_email || "").trim().toLowerCase() || null,
-        name: String(ref?.name || "").trim(),
-        canonical_name: ref?.canonical_name || _kfCanonicalTreeName(ref?.name || ""),
-      }))
-      .filter(ref => ref.tree_uuid || ref.catalog_key || ref.content_hash || ref.canonical_name);
+    return _kfNormalizeSelectedTreeRefs(parsed?.refs);
   } catch (_) {
     return [];
   }
+}
+
+function _kfHasPersistedSelectedTreeRefs() {
+  return _kfReadSelectedTreeRefs().length > 0;
 }
 
 function _kfTreeSelectionRefMatchesSource(ref, src) {
@@ -647,21 +691,34 @@ function _kfApplyPersistedSelectedTrees() {
   return true;
 }
 
-function _kfPersistSelectedTrees() {
+function _kfPersistSelectedTreesToServer(payload) {
+  if (!_clerkToken || _clerkUserTier === "anon") return;
+  const refs = Array.isArray(payload?.refs) ? payload.refs : [];
+  const key = JSON.stringify(refs);
+  if (key === _kfLastServerTreeSelectionKey) return;
+  _kfLastServerTreeSelectionKey = key;
+  void fetch("/api/user/tree-selection", {
+    method: "PUT",
+    headers: _kfJsonHeaders(),
+    body: JSON.stringify({ refs }),
+  })
+    .then(async resp => {
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok || body?.ok === false) throw new Error(body?.error || `tree selection ${resp.status}`);
+    })
+    .catch(e => {
+      _kfLastServerTreeSelectionKey = "";
+      console.warn("[kf] save tree selection:", e?.message || e);
+    });
+}
+
+function _kfPersistSelectedTrees(opts = {}) {
   const refs = [..._kfLoadedSources.values()]
     .filter(src => _kfSelectedSourceIds.has(src.source_id))
     .map(_kfTreeSelectionRefForSource)
     .filter(Boolean);
-  const payload = {
-    version: 1,
-    updated_at: new Date().toISOString(),
-    refs,
-  };
-  try {
-    localStorage.setItem(KF_SELECTED_TREES_LS, JSON.stringify(payload));
-  } catch (e) {
-    console.warn("[kf] persist selected trees:", e?.message || e);
-  }
+  const payload = _kfSetPersistedSelectedTreeRefs(refs, { source: "client", markTouched: true });
+  if (opts.server !== false) _kfPersistSelectedTreesToServer(payload);
   _kfMarkTreeSelectionTouched();
   return payload;
 }

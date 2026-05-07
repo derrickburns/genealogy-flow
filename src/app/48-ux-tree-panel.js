@@ -112,6 +112,7 @@ async function _kfLoadTreeFromInventory(kind, key) {
 function _kfSetLoadedTreeSelected(sourceId, selected) {
   const id = Number(sourceId || "");
   if (!id) return;
+  if (typeof _kfMarkTreeSelectionTouched === "function") _kfMarkTreeSelectionTouched();
   if (selected) _kfSelectedSourceIds.add(id);
   else _kfSelectedSourceIds.delete(id);
   _kfEnsureSelectedSources();

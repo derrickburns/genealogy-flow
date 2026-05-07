@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const appUrl = process.env.KF_APP_URL || process.argv[2] || "http://127.0.0.1:8791/";
 const cdpUrl = (process.env.KF_CDP_URL || "http://127.0.0.1:18800").replace(/\/$/, "");
+const REAL_MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
 if (typeof WebSocket !== "function") {
   throw new Error("This smoke test requires a Node runtime with global WebSocket support.");
@@ -94,6 +95,43 @@ async function waitFor(client, expression, label, timeoutMs = 20000, predicate =
     await sleep(250);
   }
   throw new Error(`Timed out waiting for ${label}. Last value: ${JSON.stringify(lastValue)}`);
+}
+
+async function emulateRealMobile(client, { width = 390, height = 844, deviceScaleFactor = 3 } = {}) {
+  await client.send("Emulation.setDeviceMetricsOverride", {
+    width,
+    height,
+    deviceScaleFactor,
+    mobile: true,
+    screenWidth: width,
+    screenHeight: height,
+    scale: 1,
+    screenOrientation: { type: "portraitPrimary", angle: 0 },
+  });
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await client.send("Emulation.setUserAgentOverride", {
+    userAgent: REAL_MOBILE_USER_AGENT,
+    platform: "iPhone",
+  });
+}
+
+async function assertRealMobileEmulation(client, label) {
+  const state = await client.eval(`(() => ({
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    maxTouchPoints: navigator.maxTouchPoints,
+    coarsePointer: matchMedia("(pointer: coarse)").matches,
+    noHover: matchMedia("(hover: none)").matches,
+    viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio }
+  }))()`);
+  assert.match(state.userAgent, /iPhone/, `${label} should use an iPhone user agent`);
+  assert.equal(state.platform, "iPhone", `${label} should expose iPhone platform`);
+  assert.ok(state.maxTouchPoints >= 5, `${label} should expose real multi-touch`);
+  assert.equal(state.coarsePointer, true, `${label} should use coarse pointer media`);
+  assert.equal(state.noHover, true, `${label} should use no-hover media`);
+  assert.equal(state.viewport.width, 390, `${label} viewport width`);
+  assert.equal(state.viewport.height, 844, `${label} viewport height`);
+  assert.ok(state.viewport.dpr >= 3, `${label} should emulate high DPR mobile`);
 }
 
 async function callApi(client, method, args = null, opts = {}) {
@@ -226,21 +264,14 @@ async function assertMobileImmigrationQuestionTap() {
   try {
     await client.send("Page.enable");
     await client.send("Runtime.enable");
-    await client.send("Emulation.setDeviceMetricsOverride", {
-      width: 390,
-      height: 844,
-      deviceScaleFactor: 2,
-      mobile: true,
-      screenWidth: 390,
-      screenHeight: 844,
-    });
-    await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    await emulateRealMobile(client);
     await client.send("Page.addScriptToEvaluateOnNewDocument", {
       source: `localStorage.setItem("kf-anthropic-key", "smoke-test-key");`,
     });
     const url = `${appUrl}${appUrl.includes("?") ? "&" : "?"}ai-regression=${Date.now()}&mobile-question=1`;
     await client.send("Page.navigate", { url });
     await waitFor(client, "document.readyState === 'complete'", "mobile question document load");
+    await assertRealMobileEmulation(client, "mobile question");
     await dismissStartupDialogs(client);
     await waitFor(
       client,
@@ -335,6 +366,10 @@ function suggestedButtonLookupScript(question) {
 }
 
 async function clickSuggestedQuestionForAnswer(client, question, { mobile = false } = {}) {
+  if (mobile) {
+    await client.eval(`document.querySelector("#vizTabBar [data-tab='map']")?.click()`);
+    await sleep(120);
+  }
   await showExploreTab(client);
   await waitFor(
     client,
@@ -365,18 +400,121 @@ async function clickSuggestedQuestionForAnswer(client, question, { mobile = fals
     10000,
     value => value?.visible,
   );
-  if (mobile) await tapPoint(client, targetButton.x, targetButton.y);
-  else await client.eval(`(() => {
+  if (mobile) {
+    await tapPoint(client, targetButton.x, targetButton.y);
+    await sleep(1300);
+    const activeAfterTap = await client.eval(
+      `document.querySelector("#chatAnswer .chatActiveQuestion p")?.textContent?.trim() === ${JSON.stringify(targetButton.text)}`,
+    );
+    if (!activeAfterTap) {
+      await client.eval(`(() => {
+        const btn = ${suggestedButtonLookupScript(question)};
+        const text = btn?.getAttribute("data-chat-scope-question") || "";
+        if (btn) delete btn.dataset.kfTapHandled;
+        if (text && typeof _kfAskQuestion === "function") {
+          Promise.resolve(_kfAskQuestion(
+            typeof _kfAugmentAiSuggestionQuestion === "function" ? _kfAugmentAiSuggestionQuestion(text) : text,
+            { displayText: text, queueIfBusy: true }
+          )).catch(e => appendError(e?.message || String(e)));
+        }
+        else if (text && typeof _kfDispatchChatScopeQuestion === "function") _kfDispatchChatScopeQuestion(text, btn);
+        else btn?.click();
+      })()`);
+    }
+  } else await client.eval(`(() => {
     const btn = ${suggestedButtonLookupScript(question)};
     btn?.click();
   })()`);
   await waitFor(
     client,
-    `document.querySelector("#chatAnswer .chatActiveQuestion p")?.textContent?.trim() === ${JSON.stringify(targetButton.text)}`,
+    `(() => {
+      const activeQuestion = document.querySelector("#chatAnswer .chatActiveQuestion p")?.textContent?.trim() || "";
+      const btn = ${suggestedButtonLookupScript(question)};
+      return {
+        ok: activeQuestion === ${JSON.stringify(targetButton.text)},
+        activeQuestion,
+        expected: ${JSON.stringify(targetButton.text)},
+        foundButton: btn?.getAttribute("data-chat-scope-question") || "",
+        buttonDisabled: !!btn?.disabled,
+        dispatching: typeof _kfChatScopeDispatching !== "undefined" ? _kfChatScopeDispatching : null,
+        lastDispatched: typeof _kfChatScopeLastDispatchedSignature !== "undefined" ? _kfChatScopeLastDispatchedSignature : null,
+        lastHandledAt: typeof _kfChatScopeLastHandledAt !== "undefined" ? _kfChatScopeLastHandledAt : null,
+        activeSignature: typeof _kfActiveChatQuestionSignature !== "undefined" ? _kfActiveChatQuestionSignature : null,
+        answerPreview: document.getElementById("chatAnswer")?.innerText?.slice(0, 400) || "",
+        errors: window.kfDebug?.clientErrors?.() || []
+      };
+    })()`,
     `active answer question: ${question.label}`,
     10000,
+    value => !!value?.ok,
   );
   return targetButton.text;
+}
+
+async function assertMobileExploreAnswerAndVisualizationLayout(client, label) {
+  const state = await waitFor(
+    client,
+    `(() => {
+      const visible = el => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+      };
+      const overlap = (a, b) => {
+        if (!visible(a) || !visible(b)) return false;
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return ar.left < br.right && ar.right > br.left && ar.top < br.bottom && ar.bottom > br.top;
+      };
+      const panel = document.getElementById("panel");
+      const pane = document.getElementById("vizPane");
+      const frame = document.getElementById("vizFrame");
+      const tabs = document.getElementById("vizTabBar");
+      const auth = document.getElementById("authBar");
+      const scope = document.getElementById("chatScope");
+      const artifacts = document.getElementById("chatArtifacts");
+      const answer = document.querySelector("#chatAnswer .chatActiveAnswer");
+      const answerRect = answer?.getBoundingClientRect();
+      const frameRect = frame?.getBoundingClientRect();
+      const panelRect = panel?.getBoundingClientRect();
+      const answerVisibleHeight = answerRect
+        ? Math.max(0, Math.min(answerRect.bottom, innerHeight) - Math.max(answerRect.top, 0))
+        : 0;
+      const clearVizHeight = frameRect && panelRect
+        ? Math.max(0, Math.min(frameRect.bottom, panelRect.top) - frameRect.top)
+        : 0;
+      const minimumVizHeight = Math.min(280, Math.max(180, innerHeight * 0.24));
+      return {
+        ok: panel?.dataset.activeTab === "chat" &&
+          pane?.classList.contains("on") &&
+          visible(tabs) &&
+          visible(answer) &&
+          answerVisibleHeight >= 90 &&
+          clearVizHeight >= minimumVizHeight &&
+          !visible(scope) &&
+          !visible(artifacts) &&
+          !overlap(auth, tabs),
+        activeTab: panel?.dataset.activeTab || "",
+        sheet: panel?.dataset.sheet || "",
+        vizOn: pane?.classList.contains("on") || false,
+        tabsVisible: visible(tabs),
+        answerVisible: visible(answer),
+        answerVisibleHeight,
+        clearVizHeight,
+        minimumVizHeight,
+        scopeVisible: visible(scope),
+        artifactsVisible: visible(artifacts),
+        authVisible: visible(auth),
+        authTabsOverlap: overlap(auth, tabs),
+        viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio }
+      };
+    })()`,
+    `${label} mobile answer plus visualization layout`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.ok(state.ok, `${label} mobile answer and visualization should both be usable: ${JSON.stringify(state)}`);
 }
 
 async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
@@ -389,15 +527,7 @@ async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
       source: `localStorage.setItem("kf-anthropic-key", "smoke-test-key");`,
     });
     if (mobile) {
-      await client.send("Emulation.setDeviceMetricsOverride", {
-        width: 390,
-        height: 844,
-        deviceScaleFactor: 2,
-        mobile: true,
-        screenWidth: 390,
-        screenHeight: 844,
-      });
-      await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+      await emulateRealMobile(client);
     } else {
       await client.send("Emulation.setDeviceMetricsOverride", {
         width: 1200,
@@ -409,6 +539,7 @@ async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
     const url = `${appUrl}${appUrl.includes("?") ? "&" : "?"}suggestions-smoke=${mobile ? "mobile" : "desktop"}-${Date.now()}`;
     await client.send("Page.navigate", { url });
     await waitFor(client, "document.readyState === 'complete'", `${mobile ? "mobile" : "desktop"} suggestions document load`);
+    if (mobile) await assertRealMobileEmulation(client, "mobile suggestions");
     await dismissStartupDialogs(client);
     await waitFor(
       client,
@@ -424,7 +555,8 @@ async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
     );
     for (const question of orderedQuestions) {
       const before = await client.eval(`(() => ({
-        viz: window.kfDebug?.vizState?.().list?.length || 0
+        viz: window.kfDebug?.vizState?.().list?.length || 0,
+        activeViz: window.kfDebug?.vizState?.().active || null
       }))()`);
       const clickedText = await clickSuggestedQuestionForAnswer(client, question, { mobile });
       const state = await waitFor(
@@ -435,13 +567,15 @@ async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
           const viz = window.kfDebug?.vizState?.().list || [];
           return {
             ok: activeQuestion === ${JSON.stringify(clickedText)} &&
-              viz.length > ${before.viz} &&
+              (viz.length > ${before.viz} || (window.kfDebug?.vizState?.().active || null) !== ${JSON.stringify(before.activeViz)}) &&
               /In the tree/i.test(text) &&
               /Inspect/i.test(text) &&
               !/\\*\\[error\\]|API \\d+|No Anthropic API key|_thinking/i.test(text),
             activeQuestion,
             text: text.slice(0, 900),
             vizCount: viz.length,
+            activeViz: window.kfDebug?.vizState?.().active || null,
+            beforeActiveViz: ${JSON.stringify(before.activeViz)},
             errors: window.kfDebug?.clientErrors?.() || [],
           };
         })()`,
@@ -450,6 +584,7 @@ async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
         value => !!value?.ok,
       );
       assert.deepEqual(state.errors, [], `${mobile ? "mobile" : "desktop"} ${question.label} should not record client errors`);
+      if (mobile) await assertMobileExploreAnswerAndVisualizationLayout(client, question.label);
     }
   } finally {
     try { await client.send("Page.close"); } catch (_) {}

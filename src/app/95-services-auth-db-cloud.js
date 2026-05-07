@@ -597,6 +597,7 @@ async function updateAuthUI(user) {
 
 async function autoLoadStartupTrees() {
   _kfSetStartupPhase(KF_STARTUP_PHASE.AUTO_LOAD, "restoring your trees...");
+  await _kfLoadServerSelectedTrees();
   await autoLoadCloudGedcom();
   await autoLoadVipCatalogTrees();
   const action = _kfChooseStartupAction({
@@ -617,6 +618,27 @@ async function autoLoadStartupTrees() {
   _kfSetStartupPhase(KF_STARTUP_PHASE.READY, stats?.textContent || "ready");
   _kfMaybeOpenTreesPanelForEmptySelection();
   autoIntroOnce();
+}
+
+async function _kfLoadServerSelectedTrees() {
+  if (!_clerkToken || _clerkUserTier === "anon") return null;
+  try {
+    const resp = await fetch("/api/user/tree-selection", {
+      headers: _kfAuthHeaders(),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload?.error || `tree selection ${resp.status}`);
+    if (payload?.has_selection && Array.isArray(payload.refs) && typeof _kfSetPersistedSelectedTreeRefs === "function") {
+      const updatedAt = Number.isFinite(Number(payload.updated_at))
+        ? new Date(Number(payload.updated_at) * 1000).toISOString()
+        : new Date().toISOString();
+      _kfSetPersistedSelectedTreeRefs(payload.refs, { source: "server", updated_at: updatedAt });
+    }
+    return payload;
+  } catch (e) {
+    console.warn("[kf] load tree selection:", e?.message || e);
+    return null;
+  }
 }
 
 async function autoLoadCloudGedcom() {
@@ -672,8 +694,18 @@ async function autoLoadCloudGedcom() {
       };
       if (window._kfLoadFiles) await window._kfLoadFiles([file], { persistSelection: false });
     }
-    if (defaultTree?.name && window.kfApi?.setActiveTree) {
+    const hasPersistedSelection = typeof _kfHasPersistedSelectedTreeRefs === "function" && _kfHasPersistedSelectedTreeRefs();
+    if (!hasPersistedSelection && defaultTree?.name && window.kfApi?.setActiveTree) {
       window.kfApi.setActiveTree({ name: defaultTree.name, persist: false });
+    } else if (hasPersistedSelection) {
+      if (typeof _kfApplyPersistedSelectedTrees === "function") _kfApplyPersistedSelectedTrees();
+      if (typeof _kfRefreshBrowserViews === "function") _kfRefreshBrowserViews();
+      if (timelineLoaded && typeof _kfRebuildSelectedVisualization === "function") {
+        _kfRebuildSelectedVisualization({ preserveYear: true, preferActiveRoot: true });
+      }
+      if (typeof renderSources === "function" && typeof _kfGetLoadedSourcesList === "function") {
+        renderSources(_kfGetLoadedSourcesList());
+      }
     }
     // Replace restoring message with the auto-intro once the tree is loaded
     if (typeof chatHistory !== "undefined") {

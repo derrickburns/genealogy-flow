@@ -4119,6 +4119,19 @@ html, body {
 }
 
 @media (max-width: 720px), (hover:none) and (pointer:coarse) {
+  body:has(#vizPane.on) #authBar {
+    display:none !important;
+  }
+  body:has(#vizPane.on) #chatPane:has(#chatAnswer .chatActiveAnswer) #chatScope,
+  body:has(#vizPane.on) #chatPane:has(#chatAnswer .chatActiveAnswer) #chatArtifacts {
+    display:none !important;
+  }
+  body:has(#vizPane.on) #chatPane:has(#chatAnswer .chatActiveAnswer) #chatAnswer {
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    padding-top:8px;
+  }
   #vizArea:has(#vizPane.on) #ui {
     left:14px;
     right:14px;

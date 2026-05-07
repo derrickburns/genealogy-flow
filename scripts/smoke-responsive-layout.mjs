@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const appUrl = process.env.KF_APP_URL || process.argv[2] || "http://127.0.0.1:8791/";
 const cdpUrl = (process.env.KF_CDP_URL || "http://127.0.0.1:18800").replace(/\/$/, "");
+const REAL_MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
 if (typeof WebSocket !== "function") {
   throw new Error("This smoke test requires a Node runtime with global WebSocket support.");
@@ -90,6 +91,43 @@ async function waitFor(client, expression, label, timeoutMs = 20000, predicate =
     await sleep(250);
   }
   throw new Error(`Timed out waiting for ${label}. Last value: ${JSON.stringify(lastValue)}`);
+}
+
+async function emulateRealMobile(client, { width, height, deviceScaleFactor = 3 }) {
+  await client.send("Emulation.setDeviceMetricsOverride", {
+    width,
+    height,
+    deviceScaleFactor,
+    mobile: true,
+    screenWidth: width,
+    screenHeight: height,
+    scale: 1,
+    screenOrientation: { type: "portraitPrimary", angle: 0 },
+  });
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await client.send("Emulation.setUserAgentOverride", {
+    userAgent: REAL_MOBILE_USER_AGENT,
+    platform: "iPhone",
+  });
+}
+
+async function assertRealMobileEmulation(client, label, { width, height }) {
+  const state = await client.eval(`(() => ({
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    maxTouchPoints: navigator.maxTouchPoints,
+    coarsePointer: matchMedia("(pointer: coarse)").matches,
+    noHover: matchMedia("(hover: none)").matches,
+    viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio }
+  }))()`);
+  assert.match(state.userAgent, /iPhone/, `${label} should use an iPhone user agent`);
+  assert.equal(state.platform, "iPhone", `${label} should expose iPhone platform`);
+  assert.ok(state.maxTouchPoints >= 5, `${label} should expose real multi-touch`);
+  assert.equal(state.coarsePointer, true, `${label} should use coarse pointer media`);
+  assert.equal(state.noHover, true, `${label} should use no-hover media`);
+  assert.equal(state.viewport.width, width, `${label} viewport width`);
+  assert.equal(state.viewport.height, height, `${label} viewport height`);
+  assert.ok(state.viewport.dpr >= 3, `${label} should emulate high DPR mobile`);
 }
 
 async function tapSelector(client, selector, label) {
@@ -291,6 +329,8 @@ async function assertMobileVizTimelineRail(client, label) {
       const frame = document.getElementById("vizFrame");
       const ui = document.getElementById("ui");
       const play = document.getElementById("play");
+      const auth = document.getElementById("authBar");
+      const tabs = document.getElementById("vizTabBar");
       const caption = document.getElementById("timelineCaption");
       const hist = document.getElementById("yearHist");
       const options = document.querySelector("#ui .timelineOptions");
@@ -313,6 +353,8 @@ async function assertMobileVizTimelineRail(client, label) {
           !visible(caption) &&
           !visible(hist) &&
           !visible(options) &&
+          visible(tabs) &&
+          !visible(auth) &&
           clearVizHeight >= minimumClear,
         ui: { top: uiRect.top, bottom: uiRect.bottom, height: uiRect.height },
         play: { width: playRect.width, height: playRect.height },
@@ -322,6 +364,8 @@ async function assertMobileVizTimelineRail(client, label) {
         captionVisible: visible(caption),
         histVisible: visible(hist),
         optionsVisible: visible(options),
+        authVisible: visible(auth),
+        tabsVisible: visible(tabs),
         viewport: { width: window.innerWidth, height: window.innerHeight }
       };
     })()`,
@@ -524,26 +568,31 @@ async function auditCompactInteractions(client, name) {
   }
 }
 
-async function runCase({ name, width, height, compact, mapOnly = false }) {
+async function runCase({ name, width, height, compact, mapOnly = false, realMobile = false }) {
   const target = await createTarget();
   const client = new CdpClient(target.webSocketDebuggerUrl);
   try {
     await client.send("Page.enable");
     await client.send("Runtime.enable");
-    await client.send("Emulation.setDeviceMetricsOverride", {
-      width,
-      height,
-      deviceScaleFactor: 1,
-      mobile: compact,
-      screenWidth: width,
-      screenHeight: height,
-    });
-    if (compact) {
-      await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    if (realMobile) {
+      await emulateRealMobile(client, { width, height });
+    } else {
+      await client.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height,
+        deviceScaleFactor: 1,
+        mobile: compact,
+        screenWidth: width,
+        screenHeight: height,
+      });
+      if (compact) {
+        await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+      }
     }
     const url = `${appUrl}${appUrl.includes("?") ? "&" : "?"}smoke=${encodeURIComponent(name)}-${Date.now()}`;
     await client.send("Page.navigate", { url });
     await waitFor(client, "document.readyState === 'complete'", `${name} document load`);
+    if (realMobile) await assertRealMobileEmulation(client, name, { width, height });
     await dismissStartupDialogs(client);
     await waitFor(
       client,
@@ -619,4 +668,5 @@ await cdpFetch("/json/version").catch(e => {
 
 await runCase({ name: "desktop", width: 1180, height: 900, compact: false });
 await runCase({ name: "compact", width: 500, height: 844, compact: true });
+await runCase({ name: "iphone-real", width: 390, height: 844, compact: true, realMobile: true, mapOnly: true });
 await runCase({ name: "compact-short", width: 521, height: 694, compact: true, mapOnly: true });

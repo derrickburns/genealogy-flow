@@ -1961,6 +1961,7 @@ window.kfApi = {
       }
     }
     if (!target) return { error: `tree "${name}" not in browser memory; reload it from disk` };
+    if (persistSelection && typeof _kfMarkTreeSelectionTouched === "function") _kfMarkTreeSelectionTouched();
     if (target === _kfActiveTreeName) {
       const src = _kfLoadedSources.get(target);
       if (src?.source_id && !_kfSelectedSourceIds.has(src.source_id)) {
