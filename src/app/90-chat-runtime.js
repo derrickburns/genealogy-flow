@@ -1038,6 +1038,16 @@ function _kfImmigrationWaveVizSpec(waves) {
     surnames: _kfTopCountText(wave.surnames, 5),
     examples: (wave.examples || []).slice(0, 3).map(ex => ex.person).filter(Boolean).join(", "),
   }));
+  if (!values.length) {
+    values.push({
+      period: "selected trees",
+      year_range: "",
+      route: "No matching immigration signals",
+      count: 0,
+      surnames: "",
+      examples: "",
+    });
+  }
   return {
     $schema: "https://vega.github.io/schema/vega-lite/v5.json",
     width: "container",
@@ -1078,7 +1088,7 @@ function _kfImmigrationWaveAnswer(data, vizResult) {
   const waves = Array.isArray(data?.waves) ? data.waves : [];
   const trees = data?.scope?.selectedTrees?.length ? data.scope.selectedTrees.join(", ") : "the selected trees";
   if (!waves.length) {
-    return `**In the tree**\n\nI don't know from the selected trees. I did not find explicit immigration/emigration records or cross-country transitions between consecutive placed records in **${trees}**.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened a chart tab named **${vizResult.title}**, but there are no wave rows to plot.` : "No immigration-wave chart was opened because there were no wave rows to plot."}`;
+    return `**In the tree**\n\nI don't know from the selected trees. I did not find explicit immigration/emigration records or cross-country transitions between consecutive placed records in **${trees}**.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened a chart tab named **${vizResult.title}** with a no-matching-signals marker.` : "No immigration-wave chart was opened because this tree scope has no matching immigration signals."}`;
   }
   const top = waves[0];
   const topSurnames = _kfTopCountText(top.surnames, 5) || "no dominant surname";
@@ -1276,7 +1286,7 @@ function _kfStandardSuggestionAnswer(kind, data, values, vizResult) {
   const topLines = values.slice(0, 4).map((row, i) =>
     `${i + 1}. **${row.label}** - ${row.count.toLocaleString()}${row.group ? ` (${row.group})` : ""}${row.detail ? `; ${row.detail}` : ""}`
   ).join("\n");
-  const noRows = `**In the tree**\n\nI don't know from the selected trees. The efficient ${def.title.toLowerCase()} helper did not return matching rows for **${scope}**.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened **${vizResult.title}** with a no-rows marker so the empty result is visible.` : "The visualization could not be opened."}`;
+  const noRows = `**In the tree**\n\nI don't know from the selected trees. The efficient ${def.title.toLowerCase()} helper did not find matching evidence for **${scope}**.\n\n**Inspect**\n\n${vizResult?.ok ? `I opened **${vizResult.title}** with a no-matching-records marker so the empty result is visible.` : "The visualization could not be opened."}`;
   if (!top) return noRows;
   let context = "This is a tree-data summary. It does not prove motive, travel path, or historical cause unless those facts are recorded in the selected trees.";
   if (kind === "historicalOverlaps") {

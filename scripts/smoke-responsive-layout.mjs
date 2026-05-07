@@ -230,6 +230,7 @@ async function assertTouchScrollable(client, selector, label) {
 }
 
 async function assertCompactMapVisible(client, label) {
+  const minimumStoryTimelineGap = 16;
   const budget = await waitFor(
     client,
     `(() => {
@@ -269,7 +270,7 @@ async function assertCompactMapVisible(client, label) {
       const storyVisible = !!story && storyStyle?.display !== "none" && story.width > 0 && story.height > 0;
       const storyTimelineGap = storyVisible && ui ? ui.top - story.bottom : null;
       return {
-        ok: maxRun >= 320 && (!storyVisible || storyTimelineGap >= 8),
+        ok: maxRun >= 320 && (!storyVisible || storyTimelineGap >= ${minimumStoryTimelineGap}),
         maxClearRun: maxRun,
         storyTimelineGap,
         viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -283,7 +284,10 @@ async function assertCompactMapVisible(client, label) {
   );
   assert.ok(budget.maxClearRun >= 320, `${label} should leave a map-dominant visible band`);
   if (budget.storyTimelineGap != null) {
-    assert.ok(budget.storyTimelineGap >= 8, `${label} should not overlap the story card and timeline: ${JSON.stringify(budget)}`);
+    assert.ok(
+      budget.storyTimelineGap >= minimumStoryTimelineGap,
+      `${label} should not overlap the story card and timeline: ${JSON.stringify(budget)}`,
+    );
   }
 }
 
@@ -669,4 +673,5 @@ await cdpFetch("/json/version").catch(e => {
 await runCase({ name: "desktop", width: 1180, height: 900, compact: false });
 await runCase({ name: "compact", width: 500, height: 844, compact: true });
 await runCase({ name: "iphone-real", width: 390, height: 844, compact: true, realMobile: true, mapOnly: true });
+await runCase({ name: "iphone-short-real", width: 390, height: 694, compact: true, realMobile: true, mapOnly: true });
 await runCase({ name: "compact-short", width: 521, height: 694, compact: true, mapOnly: true });

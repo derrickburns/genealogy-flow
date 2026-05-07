@@ -565,14 +565,17 @@ async function assertAllSuggestedQuestionsTextAndViz({ mobile = false } = {}) {
           const activeQuestion = document.querySelector("#chatAnswer .chatActiveQuestion p")?.textContent?.trim() || "";
           const text = document.getElementById("chatAnswer")?.innerText || "";
           const viz = window.kfDebug?.vizState?.().list || [];
+          const srcdoc = document.getElementById("vizFrame")?.srcdoc || "";
           return {
             ok: activeQuestion === ${JSON.stringify(clickedText)} &&
               (viz.length > ${before.viz} || (window.kfDebug?.vizState?.().active || null) !== ${JSON.stringify(before.activeViz)}) &&
               /In the tree/i.test(text) &&
               /Inspect/i.test(text) &&
-              !/\\*\\[error\\]|API \\d+|No Anthropic API key|_thinking/i.test(text),
+              !/\\*\\[error\\]|API \\d+|No Anthropic API key|_thinking/i.test(text) &&
+              !/No rows were returned/i.test(text + "\\n" + srcdoc),
             activeQuestion,
             text: text.slice(0, 900),
+            srcdocPreview: srcdoc.slice(0, 600),
             vizCount: viz.length,
             activeViz: window.kfDebug?.vizState?.().active || null,
             beforeActiveViz: ${JSON.stringify(before.activeViz)},

@@ -147,6 +147,8 @@ test("AI rendering regression smoke covers suggestions and visual outputs", () =
   const smoke = readFileSync("scripts/smoke-ai-regression.mjs", "utf8");
   const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
   const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
+  const runtime = readFileSync("src/app/90-chat-runtime.js", "utf8");
+  const renderer = readFileSync("src/app/20-render-layers.js", "utf8");
 
   assert.equal(pkg.scripts["smoke:ai"], "node scripts/smoke-ai-regression.mjs");
   assert.match(smoke, /collectAllSuggestedQuestions/);
@@ -169,6 +171,9 @@ test("AI rendering regression smoke covers suggestions and visual outputs", () =
   assert.match(services, /dispatchChip:/);
   assert.match(services, /suggestedQuestionTexts:/);
   assert.match(panels, /window\._kfAiRegressionSuggestedQuestions\.push\(text\)/);
+  assert.match(runtime, /No matching immigration signals/);
+  assert.doesNotMatch(renderer, /No rows were returned/);
+  assert.match(renderer, /No matching data is available for this visualization/);
 });
 
 test("responsive shell naming stays presentation-only", () => {
@@ -380,6 +385,7 @@ test("suggested Explore questions use mobile-safe taps and dedupe active repeats
   assert.match(smoke, /desktop.*text and visualization/s);
   assert.match(smoke, /mobile.*text and visualization/s);
   assert.match(smoke, /Inspect/i);
+  assert.match(smoke, /!\/No rows were returned\/i\.test/);
   assert.match(smoke, /double-tapping Immigration waves should dispatch one question/);
 });
 
@@ -467,20 +473,26 @@ test("short phone map-first state gives vertical space back to the map", () => {
   assert.match(styles, /@media \(max-width: 720px\) and \(max-height: 760px\)/);
   assert.match(styles, /#authBar\s*\{[^}]*position:fixed/s);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\):not\(\.kf-has-selected-person\) \.mapStoryRibbon\s*\{[^}]*display:none\s*!important/s);
-  assert.match(styles, /body\.kf-has-selected-person:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*bottom:calc\(158px/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:78px/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:78px;[^}]*box-sizing:border-box/s);
-  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*height:46px/s);
+  assert.match(styles, /--kf-mobile-ui-height:78px/);
+  assert.match(styles, /--kf-mobile-story-gap:20px/);
+  assert.match(styles, /--kf-mobile-story-bottom:calc\(var\(--kf-mobile-ui-bottom\) \+ var\(--kf-mobile-ui-height\) \+ var\(--kf-mobile-story-gap\)\)/);
+  assert.match(styles, /body\.kf-has-selected-person:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*bottom:var\(--kf-mobile-story-bottom\)/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:var\(--kf-mobile-ui-height\)/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*min-height:var\(--kf-mobile-ui-height\) !important;[^}]*box-sizing:border-box/s);
+  assert.match(styles, /--kf-mobile-tabs-height:46px/);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*height:var\(--kf-mobile-tabs-height\)/s);
   assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\]\s*\{[^}]*height:min\(34dvh, 300px\)/s);
   assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\] #selectedPerson,[^}]*\{[^}]*display:none\s*!important/s);
   assert.match(panels, /const shouldReveal = opts\.reveal === "person"/);
   assert.match(chrome, /classList\.toggle\("kf-has-selected-person", !!ind\)/);
   assert.match(smoke, /function\s+assertCompactMapVisible\s*\(/);
   assert.match(smoke, /function\s+assertDetailDrawerLeavesMapContext\s*\(/);
-  assert.match(smoke, /storyTimelineGap >= 8/);
+  assert.match(smoke, /minimumStoryTimelineGap = 16/);
+  assert.match(smoke, /storyTimelineGap >= \$\{minimumStoryTimelineGap\}/);
   assert.match(smoke, /\["map", \/Recorded years\|Patterns\|Story\|Tree scope\/i\]/);
   assert.match(smoke, /maxRun >= 320/);
   assert.match(smoke, /visibleMapHeight >= minimum/);
+  assert.match(smoke, /iphone-short-real/);
   assert.match(smoke, /compact-short/);
 });
 

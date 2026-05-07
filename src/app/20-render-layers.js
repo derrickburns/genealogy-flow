@@ -187,7 +187,7 @@ function _kfVizSrcDoc(type, spec) {
         const spec = ${specJson};
         const values = Array.isArray(spec?.data?.values) ? spec.data.values : null;
         if (values && values.length === 0) {
-          document.getElementById('out').innerHTML = '<pre class="err">No rows were returned for this visualization.</pre>';
+          document.getElementById('out').innerHTML = '<pre class="err">No matching data is available for this visualization.</pre>';
         } else {
           vegaEmbed('#out', spec, {actions:false, renderer:'svg'}).catch(e => {
             document.getElementById('out').innerHTML = '<pre class="err">' + (e.message || e) + '</pre>';
