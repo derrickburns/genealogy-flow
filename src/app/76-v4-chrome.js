@@ -87,8 +87,14 @@ function _kfV4ShortPlace(place) {
   return String(place || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 2).join(", ");
 }
 
+function _kfV4PendingTreeText() {
+  const selectedRefs = typeof _kfReadSelectedTreeRefs === "function" ? _kfReadSelectedTreeRefs() : [];
+  if (selectedRefs.length) return "Restoring selected tree evidence before a path can be shown.";
+  return "Loading the DEMO tree before a path can be shown.";
+}
+
 function _kfV4RouteText(ind) {
-  if (!ind) return "Load a tree, then select a person to see the recorded path through time.";
+  if (!ind) return _kfV4PendingTreeText();
   const events = _kfV4PlacedEvents(ind);
   if (!events.length) return "This person has no placed events in the selected trees yet.";
   const first = events[0];

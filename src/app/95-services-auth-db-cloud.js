@@ -646,6 +646,13 @@ async function _kfLoadServerSelectedTrees() {
         ? new Date(Number(payload.updated_at) * 1000).toISOString()
         : new Date().toISOString();
       _kfSetPersistedSelectedTreeRefs(payload.refs, { source: "server", updated_at: updatedAt });
+    } else if (!payload?.has_selection && typeof _kfDefaultDemoTreeSelectionRefs === "function" && typeof _kfSetPersistedSelectedTreeRefs === "function") {
+      const defaultPayload = _kfSetPersistedSelectedTreeRefs(_kfDefaultDemoTreeSelectionRefs(), {
+        source: "default-demo",
+        updated_at: new Date().toISOString(),
+      });
+      _kfPersistSelectedTreesToServer(defaultPayload);
+      return { ...(payload || {}), has_selection: true, refs: defaultPayload.refs, defaulted: "demo" };
     }
     return payload;
   } catch (e) {

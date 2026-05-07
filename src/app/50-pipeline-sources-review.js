@@ -638,6 +638,21 @@ function _kfStoredTreeSelectionPayload(refs, opts = {}) {
   };
 }
 
+function _kfDefaultDemoTreeSelectionRefs() {
+  const demoMeta = (_kfCatalogTrees || []).find(t => t?.key === "demo") || VIP_CATALOG_TREES[0] || null;
+  return [{
+    source_kind: "catalog",
+    catalog_key: "demo",
+    tree_uuid: demoMeta?.tree_uuid || null,
+    content_hash: null,
+    content_etag: demoMeta?.content_etag || null,
+    content_changed_at: demoMeta?.content_changed_at || null,
+    owner_email: demoMeta?.owner_email || null,
+    name: "DEMO",
+    canonical_name: _kfCanonicalTreeName("DEMO"),
+  }];
+}
+
 function _kfSetPersistedSelectedTreeRefs(refs, opts = {}) {
   const payload = _kfStoredTreeSelectionPayload(refs, opts);
   try {

@@ -1,3 +1,12 @@
+function _kfPendingTimelineCaption() {
+  const startup = typeof _kfReadUxState === "function" ? _kfReadUxState().startup : null;
+  const message = String(startup?.message || "").trim();
+  if (message && message !== "starting...") return message;
+  const selectedRefs = typeof _kfReadSelectedTreeRefs === "function" ? _kfReadSelectedTreeRefs() : [];
+  if (selectedRefs.length) return "restoring selected trees...";
+  return "loading DEMO tree...";
+}
+
 function _kfRefreshTimelineChrome() {
   const ui = $("ui");
   const current = $("timelineCurrentYear");
@@ -13,7 +22,7 @@ function _kfRefreshTimelineChrome() {
   if (caption) {
     caption.textContent = loaded
       ? "Recorded years"
-      : "Load a tree to begin";
+      : _kfPendingTimelineCaption();
   }
   if (start) start.textContent = loaded && Number.isFinite(Number(minYear)) ? String(Math.floor(minYear)) : "-";
   if (end) end.textContent = loaded && Number.isFinite(Number(maxYear)) ? String(Math.floor(maxYear)) : "-";

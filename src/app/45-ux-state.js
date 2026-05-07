@@ -18,9 +18,7 @@ export const KF_STARTUP_ACTION = Object.freeze({
 
 export function _kfChooseStartupAction(input = {}) {
   const hasSelectedVisualizationTree = !!input.hasSelectedVisualizationTree;
-  const hasAvailableNonDemoRemoteTree = !!input.hasAvailableNonDemoRemoteTree;
   if (hasSelectedVisualizationTree) return KF_STARTUP_ACTION.READY;
-  if (hasAvailableNonDemoRemoteTree) return KF_STARTUP_ACTION.SHOW_TREE_PICKER;
   return KF_STARTUP_ACTION.LOAD_DEMO;
 }
 
