@@ -316,6 +316,16 @@ test("people panel includes a compact scrolling living-people list after selecte
   assert.match(styles, /@media \(max-width:720px\)\s*\{[\s\S]*\.livingPersonRow\s*\{[^}]*grid-template-areas/s);
 });
 
+test("Explore panel uses one branch heading and a separate scope strip", () => {
+  const html = readFileSync("index.html", "utf8");
+  const styles = readFileSync("styles/app.css", "utf8");
+  const matches = html.match(/Explore this branch/g) || [];
+
+  assert.equal(matches.length, 1, "Explore should not repeat its branch heading inside the scope strip");
+  assert.match(html, /<div id="chatInsightHeader">\s*<div id="chatInsightScope">Selected trees and year appear here\.<\/div>\s*<div id="chatInsightMode">Evidence first<\/div>\s*<\/div>/);
+  assert.match(styles, /@media \(min-width: 721px\) and \(hover:hover\)[\s\S]*#chatInsightScope\s*\{[^}]*font-weight:800/s);
+});
+
 test("suggested Explore questions use mobile-safe taps and dedupe active repeats", () => {
   const panels = readFileSync("src/app/70-chat-panels.js", "utf8");
   const derived = readFileSync("src/app/75-derived-cache.js", "utf8");

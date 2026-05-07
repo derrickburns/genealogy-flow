@@ -4118,6 +4118,23 @@ html, body {
   }
 }
 
+@media (min-width: 721px) and (hover:hover) {
+  #chatInsightHeader {
+    min-height:50px;
+    box-sizing:border-box;
+  }
+  #chatInsightScope {
+    flex:1 1 auto;
+    min-width:0;
+    margin-top:0;
+    color:#334155;
+    font-size:12px;
+    font-weight:800;
+    line-height:1.3;
+    max-width:none;
+  }
+}
+
 @media (max-width: 720px), (hover:none) and (pointer:coarse) {
   body:has(#vizPane.on) #authBar {
     display:none !important;
