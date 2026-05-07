@@ -521,7 +521,17 @@ async function assertMobileVizTimelineRail(client, label) {
 
 async function assertFollowPathFocusesPerson(client, label) {
   const before = await client.eval(`window.kfApi?.getState?.()`);
-  await tapSelector(client, "#mapStoryAction", `${label} follow their path`);
+  const actionState = await client.eval(`(() => {
+    const action = document.getElementById("mapStoryAction")?.textContent?.trim() || "";
+    const route = document.getElementById("mapStoryRoute")?.textContent || "";
+    return {
+      action,
+      route,
+      ok: action !== "Follow their path" || !/One placed record|no placed events/i.test(route)
+    };
+  })()`);
+  assert.ok(actionState.ok, `${label} should not offer to follow a path without a path: ${JSON.stringify(actionState)}`);
+  await tapSelector(client, "#mapStoryAction", `${label} person location action`);
   const state = await waitFor(
     client,
     `(() => {
@@ -542,7 +552,7 @@ async function assertFollowPathFocusesPerson(client, label) {
     10000,
     value => !!value?.ok,
   );
-  assert.ok(state.ok, `${label} follow their path should narrow map markers to one person: ${JSON.stringify(state)}`);
+  assert.ok(state.ok, `${label} person location action should narrow map markers to one person: ${JSON.stringify(state)}`);
 }
 
 async function dismissStartupDialogs(client) {

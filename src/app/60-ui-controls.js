@@ -497,28 +497,7 @@ function _kfSyncOptionSelectors() {
 }
 
 function _kfRefreshQuickChips() {
-  // Sync visual on/off state with the underlying filters.
   _kfSyncOptionSelectors();
-  document.querySelectorAll("#quickChips .quickChip").forEach(el => {
-    const cluster = el.dataset.cluster;
-    const filt = el.dataset.filter;
-    let on = false;
-    if (cluster) on = (clusterMode === cluster);
-    else if (filt) {
-      const [kind, val] = filt.split(":");
-      if (kind === "show") on = (curFilter === val);
-      else if (kind === "sex") on = (_kfSexFilter === val);
-    }
-    else if (el.dataset.overlay === "treeMatches") {
-      on = !!_kfMatchOverlayOn;
-      // Mark the chip as loading (visual cue) while the SQL fetch is in flight.
-      el.style.opacity = _kfMatchFetching ? "0.55" : "";
-    }
-    el.classList.toggle("on", on);
-  });
-  // Show/hide overlay group based on whether multiple trees are loaded
-  const overlayGrp = document.querySelector("#quickChips .chipGroup[data-grp='overlay']");
-  if (overlayGrp) overlayGrp.style.display = _kfLoadedTreeCount >= 2 ? "" : "none";
 }
 
 function _kfSetClusterRadius(n) {
@@ -535,100 +514,6 @@ function _kfSetClusterRadius(n) {
   if (typeof _kfRenderClusterControls === "function") _kfRenderClusterControls();
 }
 
-
-async function _kfToggleMatchOverlay() {
-  if (_kfMatchOverlayOn) {
-    _kfMatchOverlayOn = false;
-    _kfMatchData = null;
-    if (_kfDeckOverlay) updateDeckDwellLayer();
-    _kfRefreshQuickChips();
-    return;
-  }
-  // Turn on: fetch data first, then enable.
-  _kfRefreshQuickChips();  // show "loading" state
-  const r = await _kfFetchMatchData();
-  if (!r.ok) {
-    alert(`Tree matches unavailable: ${r.reason}.\n\nCheck at least two loaded trees. The hosted app computes conservative browser-side matches and does not require the local dev proxy.`);
-    _kfMatchOverlayOn = false;
-    _kfRefreshQuickChips();
-    return;
-  }
-  if (!_kfMatchData || !_kfMatchData.length) {
-    alert("No high-confidence cross-tree matches found for the checked trees.");
-    _kfMatchOverlayOn = false;
-    _kfRefreshQuickChips();
-    return;
-  }
-  _kfMatchOverlayOn = true;
-  if (_kfDeckOverlay) updateDeckDwellLayer();
-  _kfRefreshQuickChips();
-}
-
-function _kfRunIntent(intent) {
-  if (!timelineLoaded && intent !== "weak") {
-    alert("Load GEDCOM data before using this view helper.");
-    return;
-  }
-  if (intent === "tour") {
-    _kfShowYearTour();
-    return;
-  }
-  if (intent === "migration") {
-    if (migrationViewSel) {
-      migrationViewSel.value = "observations";
-      migrationViewSel.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    _kfShowYearTour();
-    return;
-  }
-  if (intent === "cluster") {
-    const selectedSources = typeof _kfSelectedVizSourceList === "function" ? _kfSelectedVizSourceList() : [];
-    const mode = selectedSources.length > 1 ? "tree" : "state";
-    window.kfApi.setClusterMode(mode);
-    _kfSetSideTab("cluster");
-    return;
-  }
-  if (intent === "weak") {
-    _kfShowOutlierReport(8);
-    return;
-  }
-  if (intent === "relation") {
-    _kfSetKinLines(Math.max(5, kinLinesN || 0));
-    _kfRefreshViewChrome(true);
-  }
-}
-
-document.querySelectorAll("#quickChips .quickChip").forEach(el => {
-  el.addEventListener("click", () => {
-    const intent = el.dataset.intent;
-    const cluster = el.dataset.cluster;
-    const filt = el.dataset.filter;
-    const overlay = el.dataset.overlay;
-    if (intent) {
-      _kfRunIntent(intent);
-      return;
-    } else if (cluster) {
-      window.kfApi.setClusterMode(cluster);
-    } else if (filt) {
-      const [kind, val] = filt.split(":");
-      if (kind === "show") {
-        // Toggle: clicking the active one returns to "all".
-        const next = (curFilter === val) ? "all" : val;
-        $("filt").value = next;
-        $("filt").dispatchEvent(new Event("change", { bubbles: true }));
-      } else if (kind === "sex") {
-        _kfSexFilter = (_kfSexFilter === val) ? null : val;
-        _kfPersonsCacheYear = "";
-        if (_kfDeckOverlay) updateDeckDwellLayer();
-        _kfRefreshViewChrome(true);
-      }
-    } else if (overlay === "treeMatches") {
-      _kfToggleMatchOverlay();
-      return; // _kfToggleMatchOverlay handles its own refresh
-    }
-    _kfRefreshQuickChips();
-  });
-});
 $("clusterMode").addEventListener("change", e => {
   clusterMode = e.target.value;
   if (clusterMode === "none") _kfSetActiveClusterLabel("");

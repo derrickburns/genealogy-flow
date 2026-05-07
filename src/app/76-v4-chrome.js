@@ -109,6 +109,19 @@ function _kfV4RouteText(ind) {
   return `${firstYear || "?"} ${firstPlace} → ${lastYear || "?"} ${lastPlace}. Recorded places show the span; unknown gaps stay unknown.`;
 }
 
+function _kfV4HasFollowablePath(ind) {
+  const events = _kfV4PlacedEvents(ind);
+  if (events.length < 2) return false;
+  const firstPlace = _kfV4ShortPlace(events[0].place).toLowerCase();
+  const lastPlace = _kfV4ShortPlace(events[events.length - 1].place).toLowerCase();
+  return !!firstPlace && !!lastPlace && firstPlace !== lastPlace;
+}
+
+function _kfV4StoryActionLabel(ind) {
+  if (!ind) return "Open story";
+  return _kfV4HasFollowablePath(ind) ? "Follow their path" : "Show last known location";
+}
+
 function _kfV4RelationLabel(ind) {
   if (!ind) return "evidence-backed movement";
   if (ind.id === lastRootId) return "home person";
@@ -305,12 +318,28 @@ function _kfRefreshV4Chrome() {
   }
   if (relEl) relEl.textContent = _kfV4RelationLabel(ind);
   if (routeEl) routeEl.textContent = _kfV4RouteText(ind);
+  _kfSetText("mapStoryAction", _kfV4StoryActionLabel(ind));
   _kfRefreshV4SheetCards();
   if (typeof _kfIsSideTabActive === "function" &&
       _kfIsSideTabActive("chat") &&
       typeof _kfRefreshChatInsightHeader === "function") {
     _kfRefreshChatInsightHeader();
   }
+}
+
+function _kfV4ShowSelectedLastKnownLocation(ind) {
+  const events = _kfV4PlacedEvents(ind);
+  if (!ind || !events.length) {
+    if (typeof _kfSetSideTab === "function") _kfSetSideTab("tour");
+    return;
+  }
+  const name = _kfV4CleanName(ind.name);
+  const years = events.map(_kfV4EventYear).filter(Number.isFinite);
+  const lastYear = years.length ? Math.max(...years) : null;
+  if (typeof _kfSetFocusedPersonFilter === "function") _kfSetFocusedPersonFilter(ind.id);
+  if (Number.isFinite(lastYear) && window.kfApi?.setYear) window.kfApi.setYear(lastYear);
+  if (window.kfApi?.centerOn) window.kfApi.centerOn(name);
+  if (typeof _kfSetSideTab === "function") _kfSetSideTab("person");
 }
 
 function _kfV4FollowSelectedPath() {
@@ -322,6 +351,10 @@ function _kfV4FollowSelectedPath() {
   const name = _kfV4CleanName(ind.name);
   const events = _kfV4PlacedEvents(ind);
   const years = events.map(_kfV4EventYear).filter(Number.isFinite);
+  if (!_kfV4HasFollowablePath(ind)) {
+    _kfV4ShowSelectedLastKnownLocation(ind);
+    return;
+  }
   const moves = window.kfApi?.getMigrations?.(ind.id);
   if (typeof _kfSetFocusedPersonFilter === "function") _kfSetFocusedPersonFilter(ind.id);
   if (moves?.ok && moves.moves?.length && window.kfApi?.addRoute) {

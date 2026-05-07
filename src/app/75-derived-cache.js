@@ -242,10 +242,6 @@ function _kfDwellEvidenceBadgesHtml(di) {
   return _kfBadgesHtml(_kfDwellEvidenceBadges(di));
 }
 
-function _kfPersonIssuesHtml(ind, di = -1) {
-  return "";
-}
-
 function _kfQuestionChipsHtml(questions) {
   const uniq = [];
   const seen = new Set();
@@ -700,10 +696,6 @@ function _kfHideYearDigest() {
   _kfRenderActiveYearDigest();
 }
 
-function _kfBindYearDigestControls(digestEl) {
-  digestEl.querySelector("[data-year-digest-close]")?.addEventListener("click", _kfHideYearDigest);
-}
-
 function _kfRenderActiveYearDigest(force = false) {
   const digestEl = $("tourPaneContent");
   if (!digestEl) return;
@@ -711,7 +703,6 @@ function _kfRenderActiveYearDigest(force = false) {
   if (!force && key === _kfDerivedCache.lastDigestRenderKey) return;
   _kfDerivedCache.lastDigestRenderKey = key;
   digestEl.innerHTML = _kfYearTourHtml();
-  _kfBindYearDigestControls(digestEl);
 }
 
 function _kfShowYearTour(selectTab = true) {

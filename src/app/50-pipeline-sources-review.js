@@ -1463,7 +1463,6 @@ function renderSources(list) {
   if (!wrap || !inner) return;
   if (_kfPruneDuplicateLoadedSources()) list = _kfGetLoadedSourcesList();
   const filtered = (list || []).filter(s => (s.n_individuals || 0) > 0);
-  _kfLoadedTreeCount = filtered.length;
   const remoteTrees = _kfDedupeRemoteTrees([...(_kfCatalogTrees || []), ...(_kfCloudTrees || [])]);
   const inventory = _kfBuildTreeInventory(filtered, remoteTrees);
   const model = _kfCreateTreeInventoryModel(filtered, remoteTrees, inventory);
@@ -1791,7 +1790,6 @@ async function processFile(file) {
 
   rootwrap.style.display = "";
   $("clusterSection").classList.remove("hidden");
-  $("quickChips")?.classList.remove("hidden");
   $("mapLegend").classList.remove("hidden");
   updateMapLegend();
   _kfBuildSurnameTopN(12);

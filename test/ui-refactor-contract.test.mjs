@@ -598,6 +598,10 @@ test("follow their path narrows the map to the focused person", () => {
   assert.match(state, /let _kfFocusedPersonId = null/);
   assert.match(graph, /function _kfSetFocusedPersonFilter\(id\)/);
   assert.match(graph, /curFilter === "person"[^?]+ind\.id === _kfFocusedPersonId/s);
+  assert.match(chrome, /function\s+_kfV4HasFollowablePath\(ind\)/);
+  assert.match(chrome, /Show last known location/);
+  assert.match(chrome, /return _kfV4HasFollowablePath\(ind\) \? "Follow their path" : "Show last known location"/);
+  assert.match(chrome, /function\s+_kfV4ShowSelectedLastKnownLocation\(ind\)/);
   assert.match(chrome, /_kfSetFocusedPersonFilter\(ind\.id\)/);
   assert.match(render, /if \(!_kfFilterAllowsIndiIdx\(idx\)\) continue/);
   assert.match(render, /return _kfFilterAllowsIndiIdx\(flowIndi\[i\]\)/);
@@ -606,6 +610,7 @@ test("follow their path narrows the map to the focused person", () => {
   assert.match(api, /showFilter:\s*curFilter/);
   assert.match(api, /focusedPerson:\s*_kfFocusedPersonId/);
   assert.match(smoke, /function\s+assertFollowPathFocusesPerson\s*\(/);
+  assert.match(smoke, /action !== "Follow their path" \|\| !\/One placed record\|no placed events\/i\.test\(route\)/);
   assert.match(smoke, /state\.showFilter === "person"/);
   assert.match(smoke, /state\.visiblePeople <= 1/);
 });

@@ -1143,7 +1143,6 @@ function _kfPersonDetailHtml(ind, di, opts = {}) {
   const clickedType = dwellType?.[di];
   const clickedYear = Number.isFinite(dwellY?.[di]) ? dwellY[di] : Math.floor(curYear);
   const evidenceHtml = _kfDwellEvidenceBadgesHtml(di);
-  const issuesHtml = _kfPersonIssuesHtml(ind, di);
   const questionsHtml = _kfPersonQuestionHtml(ind);
   const evHtml = _kfPersonTimelineHtml(ind, clickedType, clickedYear);
   const lineageHtml = _kfPersonLineageHtml(ind);
@@ -1195,7 +1194,6 @@ function _kfPersonDetailHtml(ind, di, opts = {}) {
     `<div class="sp-name">${escHtml(ind.name)}</div>` +
     (sub ? `<div class="sp-sub">${escHtml(sub)}</div>` : "") +
     evidenceHtml +
-    issuesHtml +
     questionsHtml +
     tabsHtml +
     panesHtml +
