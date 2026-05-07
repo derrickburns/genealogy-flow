@@ -389,6 +389,10 @@ test("suggested Explore questions use mobile-safe taps and dedupe active repeats
     assert.match(runtime, new RegExp(method));
   }
   assert.match(runtime, /window\.kfApi\.showViz\(\{\s*type: "vega"/s);
+  assert.match(runtime, /function\s+_kfMaybeAutoVisualizeToolResult\s*\(/);
+  assert.match(runtime, /function\s+_kfStandardSuggestionKindForToolMethod\s*\(/);
+  assert.match(runtime, /const callMethods = calls\.map\(c => c\.method\)/);
+  assert.match(runtime, /autoShowViz\(\$\{c\.method\}\)/);
   assert.match(runtime, /const suggested = await _kfTryAnswerSuggestedQuestion\(userText\)/);
   assert.match(smoke, /function\s+assertMobileImmigrationQuestionTap\s*\(/);
   assert.match(smoke, /function\s+assertAllSuggestedQuestionsTextAndViz\s*\(/);

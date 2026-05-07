@@ -970,6 +970,38 @@ function _kfCompactToolValue(value, depth = 0) {
   return String(value);
 }
 
+function _kfStandardSuggestionKindForToolMethod(method) {
+  const toolMethod = String(method || "");
+  const kinds = [
+    "immigrationWaves",
+    "surnameMigrationDistances",
+    "urbanizationShift",
+    "familyCrossroads",
+    "stableBranches",
+    "coMigratingFamilies",
+    "historicalOverlaps",
+    "distantBranchMarriages",
+    "deepestAncestryBranches",
+    "migrationJumps",
+  ];
+  return kinds.find(kind => _kfStandardSuggestionDef(kind)?.method === toolMethod) || "";
+}
+
+function _kfMaybeAutoVisualizeToolResult(method, value, callMethods = []) {
+  if (!window.kfApi || typeof window.kfApi.showViz !== "function") return null;
+  if (callMethods.includes("showViz")) return null;
+  if (value?.error) return null;
+  const kind = _kfStandardSuggestionKindForToolMethod(method);
+  if (!kind) return null;
+  const def = _kfStandardSuggestionDef(kind);
+  const title = kind === "immigrationWaves" ? "Immigration waves" : def?.title;
+  if (!title) return null;
+  const spec = kind === "immigrationWaves"
+    ? _kfImmigrationWaveVizSpec(Array.isArray(value?.waves) ? value.waves : [])
+    : _kfStandardSuggestionVizSpec(title, _kfStandardSuggestionValues(kind, value), def.valueTitle);
+  return window.kfApi.showViz({ type: "vega", title, spec });
+}
+
 function _kfStringifyToolResult(value) {
   let text = JSON.stringify(_kfCompactToolValue(value));
   if (text.length > CHAT_TOOL_RESULT_MAX_CHARS) {
@@ -996,6 +1028,7 @@ async function parseAndRunKfCalls(text) {
     calls.push({ method, args, err });
     return "";
   });
+  const callMethods = calls.map(c => c.method);
   const results = [];
   for (const c of calls) {
     if (c.err) { results.push({ call: c.method, result: { error: c.err } }); continue; }
@@ -1009,6 +1042,13 @@ async function parseAndRunKfCalls(text) {
         ? await fn.apply(window.kfApi, c.args)
         : await fn.call(window.kfApi, c.args);
       results.push({ call: _kfCompactToolCall(c.method, c.args), result: _kfCompactToolValue(out) });
+      const autoViz = _kfMaybeAutoVisualizeToolResult(c.method, out, callMethods);
+      if (autoViz) {
+        results.push({
+          call: `autoShowViz(${c.method})`,
+          result: _kfCompactToolValue(autoViz),
+        });
+      }
     } catch (e) {
       results.push({ call: c.method, result: { error: e.message || String(e) } });
     }
