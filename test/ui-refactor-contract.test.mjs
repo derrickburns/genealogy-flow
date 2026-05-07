@@ -188,6 +188,9 @@ test("AI rendering regression smoke covers suggestions and visual outputs", () =
   assert.match(runtime, /No matching immigration signals/);
   assert.doesNotMatch(renderer, /No rows were returned/);
   assert.match(renderer, /No matching data is available for this visualization/);
+  assert.match(renderer, /#out \{ width:100%; max-width:100%; overflow:auto; \}/);
+  assert.match(renderer, /const renderSeq = \+\+_kfVizRenderSeq;/);
+  assert.match(renderer, /requestAnimationFrame\(\(\) => \{\s*if \(renderSeq !== _kfVizRenderSeq \|\| _kfActiveVizId !== id\) return;\s*frame\.srcdoc = srcdoc;/s);
 });
 
 test("responsive shell naming stays presentation-only", () => {

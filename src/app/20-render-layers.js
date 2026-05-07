@@ -30,6 +30,7 @@ let _kfDwellHaloCount = 0;
 let _kfVizList = [];
 let _kfActiveVizId = null;
 let _kfVizSeq = 0;
+let _kfVizRenderSeq = 0;
 const VIZ_MAX = 12;
 
 const LENS_LS_KEY = "kf-lenses";
@@ -143,7 +144,7 @@ function _kfVizSrcDoc(type, spec) {
   const head = `<style>
     html, body { margin:0; padding:0; background:#fff; color:#1c2433; font:13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
     body { padding:14px; box-sizing:border-box; min-height:100vh; }
-    #out { max-width:100%; overflow:auto; }
+    #out { width:100%; max-width:100%; overflow:auto; }
     #out svg { max-width:100%; height:auto; }
     pre.err { color:#b00020; background:#fff3f3; padding:8px; border-radius:4px; white-space:pre-wrap; word-wrap:break-word; }
     table { border-collapse:collapse; }
@@ -274,9 +275,15 @@ function _kfRenderViz(id) {
   _kfActiveVizId = id;
   const frame = $("vizFrame");
   if (!frame) return false;
-  frame.srcdoc = _kfVizShowSpec
+  const srcdoc = _kfVizShowSpec
     ? _kfSpecSrcDoc(v.type, v.spec)
     : _kfVizSrcDoc(v.type, v.spec);
+  const renderSeq = ++_kfVizRenderSeq;
+  _kfShowVizPane(true);
+  requestAnimationFrame(() => {
+    if (renderSeq !== _kfVizRenderSeq || _kfActiveVizId !== id) return;
+    frame.srcdoc = srcdoc;
+  });
   // Reflect the toggle state on the button so it's clear what mode you're in.
   const btn = $("vizSpecToggle");
   if (btn) {
@@ -284,7 +291,6 @@ function _kfRenderViz(id) {
     btn.style.color = _kfVizShowSpec ? "#fff" : "#566480";
     btn.textContent = _kfVizShowSpec ? "viz" : "spec";
   }
-  _kfShowVizPane(true);
   return true;
 }
 
