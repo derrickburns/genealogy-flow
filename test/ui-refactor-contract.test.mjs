@@ -137,6 +137,7 @@ test("issue reports expose a responsive tree debug snapshot", () => {
   assert.doesNotMatch(services, /snapshot:\s*_kfBuildIssueContext/);
   assert.match(services, /window\.kfDebug\s*=/);
   assert.match(services, /treeSnapshot:\s*_kfBuildTreeDebugSnapshot/);
+  assert.match(services, /layoutCollisionAudit:\s*_kfLayoutCollisionAudit/);
   assert.match(services, /clientErrors:\s*\(\) => _kfClientErrors\.slice\(\)/);
   assert.match(services, /has_available_non_demo_remote_tree/);
 });
@@ -154,8 +155,41 @@ test("responsive browser smoke coverage is wired into package scripts", () => {
   assert.match(smoke, /desktop-scaled-compact/);
   assert.match(smoke, /desktopScaled/);
   assert.match(smoke, /window\.kfDebug\.treeSnapshot/);
+  assert.match(smoke, /window\.kfDebug\?\.layoutCollisionAudit/);
+  assert.match(smoke, /function\s+assertNoLayoutCollisions\s*\(/);
   assert.match(smoke, /window\.kfDebug\.clientErrors/);
   assert.match(smoke, /value => !!value\?\.ok/);
+});
+
+test("collision-free shell contract protects every chrome rail", () => {
+  const styles = readFileSync("styles/app.css", "utf8");
+  const services = readFileSync("src/app/95-services-auth-db-cloud.js", "utf8");
+  const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
+
+  for (const id of [
+    "authBar",
+    "authNotice",
+    "accountMenu",
+    "mapLegend",
+    "responsiveContextStrip",
+    "mapStoryRibbon",
+    "ui",
+    "panel",
+    "sideTabs",
+    "vizTabBar",
+  ]) {
+    assert.match(services, new RegExp(JSON.stringify(id)));
+  }
+
+  assert.match(styles, /Collision-free chrome contract/);
+  assert.match(styles, /#panel,\s*#ui,\s*\.mapStoryRibbon,\s*#authBar,\s*#sideTabs\s*\{[^}]*contain:layout paint/s);
+  assert.match(styles, /--kf-mobile-ui-bottom:calc\(\s*var\(--kf-mobile-tabs-bottom\) \+\s*var\(--kf-mobile-tabs-height\) \+\s*var\(--kf-chrome-gap\)\s*\)/s);
+  assert.match(styles, /--kf-mobile-story-bottom:calc\(\s*var\(--kf-mobile-ui-bottom\) \+\s*var\(--kf-mobile-ui-height\) \+\s*var\(--kf-mobile-story-gap\)\s*\)/s);
+  assert.match(services, /function\s+_kfLayoutCollisionAudit\s*\(/);
+  assert.match(services, /function\s+_kfAllowedLayoutOverlap\s*\(/);
+  assert.match(services, /pair\.has\("panel"\) && pair\.has\("sideTabs"\)/);
+  assert.match(services, /collisions\.length === 0 && !horizontalOverflow/);
+  assert.match(smoke, /assertNoLayoutCollisions\(client, `\$\{name\} after viz cleanup`\)/);
 });
 
 test("AI rendering regression smoke covers suggestions and visual outputs", () => {
@@ -472,7 +506,7 @@ test("phone shell uses primary destinations with contextual patterns and story a
   assert.match(smoke, /#mapStoryStory/);
 });
 
-test("phone panels meet the Pencil readability scale", () => {
+test("phone panels meet the readability scale", () => {
   const styles = readFileSync("styles/app.css", "utf8");
 
   assert.match(styles, /#mapStoryName\s*\{[^}]*font-size:18px/s);
@@ -492,18 +526,25 @@ test("short phone map-first state gives vertical space back to the map", () => {
   const chrome = readFileSync("src/app/76-v4-chrome.js", "utf8");
   const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
 
-  assert.match(styles, /Pencil v5 compact map-first shell/);
+  assert.match(styles, /Collision-free chrome contract/);
   assert.match(styles, /@media \(max-width: 900px\) and \(max-height: 760px\)/);
   assert.match(styles, /#authBar\s*\{[^}]*position:fixed/s);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\):not\(\.kf-has-selected-person\) \.mapStoryRibbon\s*\{[^}]*display:none\s*!important/s);
   assert.match(styles, /--kf-mobile-ui-height:78px/);
+  assert.match(styles, /--kf-mobile-tabs-bottom:calc\(40px \+ env\(safe-area-inset-bottom, 0px\)\)/);
   assert.match(styles, /--kf-mobile-story-gap:20px/);
   assert.match(styles, /--kf-mobile-story-bottom:calc\(var\(--kf-mobile-ui-bottom\) \+ var\(--kf-mobile-ui-height\) \+ var\(--kf-mobile-story-gap\)\)/);
   assert.match(styles, /body\.kf-has-selected-person:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) \.mapStoryRibbon\s*\{[^}]*bottom:var\(--kf-mobile-story-bottom\)/s);
+  assert.match(styles, /max-height:clamp\(/);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*height:var\(--kf-mobile-ui-height\)/s);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #ui\s*\{[^}]*min-height:var\(--kf-mobile-ui-height\) !important;[^}]*box-sizing:border-box/s);
   assert.match(styles, /--kf-mobile-tabs-height:46px/);
   assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*height:var\(--kf-mobile-tabs-height\)/s);
+  assert.match(styles, /body:has\(#panel\[data-active-tab="map"\]\[data-sheet="peek"\]\) #sideTabs\s*\{[^}]*display:flex !important;[^}]*position:fixed !important;[^}]*top:calc\(100dvh - var\(--kf-mobile-tabs-height\) - var\(--kf-mobile-tabs-bottom\)\) !important;[^}]*bottom:auto !important;[^}]*z-index:86 !important/s);
+  assert.match(styles, /body:has\(#panel\[data-sheet="peek"\]\) #panel\s*\{[^}]*contain:none;[^}]*overflow:visible !important/s);
+  assert.match(styles, /body:has\(#panel\[data-sheet="peek"\]\) #chatPanel\s*\{[^}]*overflow:visible !important/s);
+  assert.match(styles, /body:has\(#panel\[data-sheet="open"\]\) #ui,[\s\S]*display:none\s*!important/s);
+  assert.match(styles, /#panel\[data-sheet="open"\],\s*#panel\[data-sheet="full"\]\s*\{[^}]*inset:auto 0 0 0 !important/s);
   assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\]\s*\{[^}]*height:min\(34dvh, 300px\)/s);
   assert.match(styles, /#panel\[data-active-tab="person"\]\[data-sheet="open"\] #selectedPerson,[^}]*\{[^}]*display:none\s*!important/s);
   assert.match(panels, /const shouldReveal = opts\.reveal === "person"/);
@@ -511,8 +552,11 @@ test("short phone map-first state gives vertical space back to the map", () => {
   assert.match(smoke, /function\s+assertCompactMapVisible\s*\(/);
   assert.match(smoke, /function\s+assertDetailDrawerLeavesMapContext\s*\(/);
   assert.match(smoke, /function\s+assertScaledDesktopCompactDrawer\s*\(/);
+  assert.match(smoke, /function\s+assertCompactBottomTabsVisible\s*\(/);
   assert.match(smoke, /minimumStoryTimelineGap = 16/);
   assert.match(smoke, /storyTimelineGap >= \$\{minimumStoryTimelineGap\}/);
+  assert.match(smoke, /assertNoLayoutCollisions\(client, name\)/);
+  assert.match(smoke, /tabRect\.bottom <= viewport\.height \+ 1/);
   assert.match(smoke, /\["map", \/Recorded years\|Patterns\|Story\|Tree scope\/i\]/);
   assert.match(smoke, /maxRun >= 320/);
   assert.match(smoke, /visibleMapHeight >= minimum/);
@@ -526,13 +570,14 @@ test("mobile visualization tabs collapse the timeline into a short scrub rail", 
   const smoke = readFileSync("scripts/smoke-responsive-layout.mjs", "utf8");
 
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:44px/s);
+  assert.match(styles, /body:has\(#vizPane\.on\) #vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:44px\s*!important/s);
   assert.match(styles, /body:has\(#vizPane\.on\) #authBar\s*\{[^}]*display:none\s*!important/s);
   assert.match(styles, /body:has\(#vizPane\.on\) #chatPane:has\(#chatAnswer \.chatActiveAnswer\) #chatScope,[\s\S]*#chatArtifacts\s*\{[^}]*display:none\s*!important/s);
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui \.timelineDeck\s*\{[^}]*grid-template-columns:30px minmax\(0, 1fr\)/s);
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui \.timelineOptions,[\s\S]*display:none\s*!important/s);
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #ui #yearHist,[\s\S]*display:none\s*!important/s);
   assert.match(styles, /#vizArea:has\(#vizPane\.on\) #timelineCurrentYear\s*\{[^}]*font-size:16px/s);
-  assert.match(styles, /max-height: 760px[\s\S]*#vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:40px/s);
+  assert.match(styles, /max-height: 760px[\s\S]*body:has\(#vizPane\.on\) #vizArea:has\(#vizPane\.on\) #ui\s*\{[^}]*height:40px\s*!important/s);
   assert.match(smoke, /function\s+assertMobileVizTimelineRail\s*\(/);
   assert.match(smoke, /uiRect\.height <= 50/);
   assert.match(smoke, /authVisible:\s*visible\(auth\)/);

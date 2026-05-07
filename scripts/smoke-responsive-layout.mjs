@@ -130,6 +130,17 @@ async function assertRealMobileEmulation(client, label, { width, height }) {
   assert.ok(state.viewport.dpr >= 3, `${label} should emulate high DPR mobile`);
 }
 
+async function assertNoLayoutCollisions(client, label) {
+  const audit = await waitFor(
+    client,
+    `window.kfDebug?.layoutCollisionAudit?.() || null`,
+    `${label} collision-free chrome`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.equal(audit.ok, true, `${label} protected UI chrome should not collide: ${JSON.stringify(audit)}`);
+}
+
 async function tapSelector(client, selector, label) {
   const encoded = JSON.stringify(selector);
   await client.eval(`document.querySelector(${encoded})?.scrollIntoView({ block: "center", inline: "center" })`);
@@ -289,6 +300,70 @@ async function assertCompactMapVisible(client, label) {
       `${label} should not overlap the story card and timeline: ${JSON.stringify(budget)}`,
     );
   }
+}
+
+async function assertCompactBottomTabsVisible(client, label) {
+  const state = await waitFor(
+    client,
+    `(() => {
+      const tabs = document.getElementById("sideTabs");
+      const panel = document.getElementById("panel");
+      if (!tabs || !panel) return null;
+      const visible = el => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+      };
+      const tabRect = tabs.getBoundingClientRect();
+      const tabStyle = getComputedStyle(tabs);
+      const buttons = [...tabs.querySelectorAll("button")]
+        .filter(visible)
+        .map(button => {
+          const r = button.getBoundingClientRect();
+          return {
+            label: button.textContent.trim(),
+            top: r.top,
+            bottom: r.bottom,
+            left: r.left,
+            right: r.right,
+            width: r.width,
+            height: r.height
+          };
+        });
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const offscreen = buttons.filter(button =>
+        button.left < -1 ||
+        button.right > viewport.width + 1 ||
+        button.top < -1 ||
+        button.bottom > viewport.height + 1 ||
+        button.width < 30 ||
+        button.height < 30
+      );
+      return {
+        ok: panel.dataset.activeTab === "map" &&
+          panel.dataset.sheet === "peek" &&
+          tabStyle.position === "fixed" &&
+          tabRect.top >= -1 &&
+          tabRect.bottom <= viewport.height + 1 &&
+          buttons.length >= 4 &&
+          offscreen.length === 0,
+        tabStyle: {
+          position: tabStyle.position,
+          top: tabStyle.top,
+          bottom: tabStyle.bottom,
+          height: tabStyle.height
+        },
+        tabs: { top: tabRect.top, bottom: tabRect.bottom, height: tabRect.height },
+        buttons,
+        offscreen,
+        viewport
+      };
+    })()`,
+    `${label} bottom tabs in viewport`,
+    10000,
+    value => !!value?.ok,
+  );
+  assert.equal(state.ok, true, `${label} bottom tabs should be fully visible: ${JSON.stringify(state)}`);
 }
 
 async function assertDetailDrawerLeavesMapContext(client, label) {
@@ -491,11 +566,12 @@ async function dismissStartupDialogs(client) {
 
 function paneAssertion(tab, textPattern) {
   return `(() => {
-    const tree = window.kfDebug.treeSnapshot();
-    const panel = document.getElementById("panel");
-    const activePane = ${JSON.stringify(tab)} === "map"
-      ? document.getElementById("mapWrap")
-      : document.querySelector("#chatPanel .sidePane.on");
+      const tree = window.kfDebug.treeSnapshot();
+      const layoutAudit = window.kfDebug.layoutCollisionAudit?.();
+      const panel = document.getElementById("panel");
+      const activePane = ${JSON.stringify(tab)} === "map"
+        ? document.getElementById("mapWrap")
+        : document.querySelector("#chatPanel .sidePane.on");
     const visibleText = ${JSON.stringify(tab)} === "map"
       ? document.body.innerText
       : activePane?.innerText || "";
@@ -527,21 +603,23 @@ function paneAssertion(tab, textPattern) {
         });
     const offscreen = controls.filter(c => !c.insideHorizontalScroller && (c.left < -1 || c.right > viewportWidth + 1 || c.width < 8 || c.height < 8));
     const horizontalOverflow = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > viewportWidth + 2;
-    return {
-      ok: tree.layout.tab === ${JSON.stringify(tab)} &&
-        panel?.dataset.activeTab === ${JSON.stringify(tab)} &&
-        (${JSON.stringify(tab)} === "map" ? tree.layout.sheet === "peek" : tree.layout.sheet !== "peek") &&
-        ${textPattern}.test(visibleText) &&
-        !horizontalOverflow &&
-        offscreen.length === 0,
-      tab: tree.layout.tab,
-      sheet: tree.layout.sheet,
-      activeTab: panel?.dataset.activeTab,
-      horizontalOverflow,
-      offscreen,
-      visibleText: visibleText.slice(0, 900),
-      errors: window.kfDebug.clientErrors?.() || []
-    };
+      return {
+        ok: tree.layout.tab === ${JSON.stringify(tab)} &&
+          panel?.dataset.activeTab === ${JSON.stringify(tab)} &&
+          (${JSON.stringify(tab)} === "map" ? tree.layout.sheet === "peek" : tree.layout.sheet !== "peek") &&
+          ${textPattern}.test(visibleText) &&
+          !horizontalOverflow &&
+          offscreen.length === 0 &&
+          !!layoutAudit?.ok,
+        tab: tree.layout.tab,
+        sheet: tree.layout.sheet,
+        activeTab: panel?.dataset.activeTab,
+        horizontalOverflow,
+        offscreen,
+        layoutAudit,
+        visibleText: visibleText.slice(0, 900),
+        errors: window.kfDebug.clientErrors?.() || []
+      };
   })()`;
 }
 
@@ -657,11 +735,15 @@ async function runCase({ name, width, height, compact, mapOnly = false, realMobi
       30000,
     );
     const initialSnapshot = await client.eval(`window.kfDebug.treeSnapshot()`);
+    await assertNoLayoutCollisions(client, name);
     if (compact) {
       assert.equal(initialSnapshot.layout.tab, "map", `${name} should start map-first after tree load`);
       assert.equal(initialSnapshot.layout.sheet, "peek", `${name} should keep the sheet collapsed after tree load`);
       await assertCompactMapVisible(client, name);
+      await assertCompactBottomTabsVisible(client, name);
+      await assertNoLayoutCollisions(client, `${name} map peek`);
       await assertMobileVizTimelineRail(client, name);
+      await assertNoLayoutCollisions(client, `${name} after viz cleanup`);
       if (drawerCheck) await assertScaledDesktopCompactDrawer(client, name);
       if (mapOnly) {
         console.log(`${name} map visibility smoke passed`);

@@ -223,11 +223,115 @@ async function _kfReportIssue() {
 }
 $("reportIssue")?.addEventListener("click", _kfReportIssue);
 
+function _kfElementVisibleForLayout(el) {
+  if (!el || el.hidden) return false;
+  const style = getComputedStyle(el);
+  const rect = el.getBoundingClientRect();
+  return style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    Number(style.opacity || 1) !== 0 &&
+    rect.width > 0 &&
+    rect.height > 0;
+}
+
+function _kfLayoutBox(id) {
+  const el = $(id);
+  if (!_kfElementVisibleForLayout(el)) return null;
+  const rect = el.getBoundingClientRect();
+  const style = getComputedStyle(el);
+  return {
+    id,
+    left: rect.left,
+    right: rect.right,
+    top: rect.top,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+    area: rect.width * rect.height,
+    position: style.position,
+    zIndex: style.zIndex,
+  };
+}
+
+function _kfBoxIntersection(a, b) {
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.right, b.right);
+  const top = Math.max(a.top, b.top);
+  const bottom = Math.min(a.bottom, b.bottom);
+  const width = Math.max(0, right - left);
+  const height = Math.max(0, bottom - top);
+  return { left, right, top, bottom, width, height, area: width * height };
+}
+
+function _kfAllowedLayoutOverlap(a, b) {
+  const pair = new Set([a?.id, b?.id]);
+  // The tabs are the panel's own navigation rail; protect them against other
+  // chrome, but do not count their expected containment inside the panel.
+  if (pair.has("panel") && pair.has("sideTabs")) return true;
+  return false;
+}
+
+function _kfLayoutCollisionAudit() {
+  const modalOpen = ["splash", "termsModal", "uploadPolicyModal", "reviewModal"]
+    .some(id => _kfElementVisibleForLayout($(id)));
+  if (modalOpen) {
+    return {
+      ok: true,
+      skipped: "modal-open",
+      viewport: { width: innerWidth, height: innerHeight },
+      boxes: [],
+      collisions: [],
+    };
+  }
+
+  const protectedIds = [
+    "authBar",
+    "authNotice",
+    "accountMenu",
+    "mapLegend",
+    "responsiveContextStrip",
+    "mapStoryRibbon",
+    "ui",
+    "panel",
+    "sideTabs",
+    "vizTabBar",
+  ];
+  const boxes = protectedIds.map(_kfLayoutBox).filter(Boolean);
+  const collisions = [];
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const intersection = _kfBoxIntersection(boxes[i], boxes[j]);
+      if (intersection.area <= 1) continue;
+      if (_kfAllowedLayoutOverlap(boxes[i], boxes[j])) continue;
+      collisions.push({
+        a: boxes[i].id,
+        b: boxes[j].id,
+        intersection,
+      });
+    }
+  }
+  const horizontalOverflow = Math.max(
+    document.documentElement.scrollWidth,
+    document.body.scrollWidth,
+  ) > (innerWidth || document.documentElement.clientWidth) + 2;
+  return {
+    ok: collisions.length === 0 && !horizontalOverflow,
+    viewport: { width: innerWidth, height: innerHeight },
+    responsive: typeof _kfUsesResponsiveShell === "function" ? _kfUsesResponsiveShell() : null,
+    sheet: $("panel")?.dataset.sheet || "",
+    activeTab: $("panel")?.dataset.activeTab || "",
+    horizontalOverflow,
+    boxes,
+    collisions,
+  };
+}
+
 const _kfExistingDebug = { ...(window.kfDebug || {}) };
 delete _kfExistingDebug.snapshot;
 window.kfDebug = {
   ..._kfExistingDebug,
   treeSnapshot: _kfBuildTreeDebugSnapshot,
+  layoutCollisionAudit: _kfLayoutCollisionAudit,
   clientErrors: () => _kfClientErrors.slice(),
   vizState: () => ({
     active: typeof _kfActiveVizId !== "undefined" ? _kfActiveVizId : null,
